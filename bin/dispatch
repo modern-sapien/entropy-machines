@@ -102,19 +102,21 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$id" ] && [ -n "$files" ] && [ -n "$brief" ] || usage
 
-root=$(cd "$(dirname "$0")/.." && pwd)
-CONFIG_PY="$root/lib/config.py"
-NOTES_PY="$root/lib/notes.py"
-LIBDIR="$root/lib"
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+entropy_require_project dispatch
+CONFIG_PY="$ENTROPY_HOME/lib/config.py"
+NOTES_PY="$ENTROPY_HOME/lib/notes.py"
+LIBDIR="$ENTROPY_HOME/lib"
 : "${ENTROPY_ACTOR:=dispatch}"
 export ENTROPY_ACTOR
 
 cfg_get() { python3 "$CONFIG_PY" get "$1" 2>/dev/null; }
 
-if [ "$(pwd -P)" != "$root" ]; then
-  echo "dispatch: REFUSED — cwd is $(pwd -P), not the repo root ($root)." >&2
+if [ "$(pwd -P)" != "$ENTROPY_PROJECT" ]; then
+  echo "dispatch: REFUSED — cwd is $(pwd -P), not the project root ($ENTROPY_PROJECT)." >&2
   echo "  Worktrees are created in the repo the dispatching session's cwd is in." >&2
-  echo "  Run:  cd $root" >&2
+  echo "  Run:  cd $ENTROPY_PROJECT" >&2
   exit 1
 fi
 
@@ -130,20 +132,20 @@ fi
 # worktree whose checkout predates the hook has the shim, has a dead gate,
 # and checking only the shim would report OK.
 hooks=$(git rev-parse --git-path hooks)
-case "$hooks" in /*) ;; *) hooks="$root/$hooks" ;; esac
+case "$hooks" in /*) ;; *) hooks="$ENTROPY_PROJECT/$hooks" ;; esac
 if [ ! -x "$hooks/commit-msg" ]; then
   echo "dispatch: REFUSED — no commit-msg shim in $hooks." >&2
   echo "  Without it nothing requires a handoff when you land this agent, and the" >&2
   echo "  only record of what it found and did not fix dies with its worktree." >&2
-  echo "  Run:  lib/install-hooks.sh" >&2
+  echo "  Run:  $ENTROPY_HOME/lib/install-hooks.sh" >&2
   exit 1
 fi
-if [ ! -x "$root/hooks/commit-msg" ]; then
-  echo "dispatch: REFUSED — the commit-msg shim is installed but this checkout has" >&2
+if [ ! -x "$ENTROPY_HOME/hooks/commit-msg" ]; then
+  echo "dispatch: REFUSED — the commit-msg shim is installed but the harness has" >&2
   echo "  no hooks/commit-msg, so the shim exits 0 and the gate is dead." >&2
-  echo "  $root is on a commit older than the hook." >&2
-  echo "  Merge or rebase onto a commit that has it, or land this work from the" >&2
-  echo "  main checkout instead." >&2
+  echo "  $ENTROPY_HOME is on a commit older than the hook." >&2
+  echo "  Merge or rebase the harness onto a commit that has it, or land this work" >&2
+  echo "  from a harness checkout that does." >&2
   exit 1
 fi
 
@@ -216,7 +218,7 @@ if [ "$(cfg_get changelog.enabled)" = "true" ]; then
 fi
 
 claims=""; deny=""; claim_lines=""; deny_ok=0
-if claims_raw=$("$root/bin/tracker" notes 2>/dev/null); then
+if claims_raw=$("$ENTROPY_HOME/bin/tracker" notes 2>/dev/null); then
   deny_ok=1
   hours="${DISPATCH_CLAIM_HOURS:-24}"
   if [ -n "$never_claimed" ]; then
@@ -283,7 +285,7 @@ else
       --field "brief=$brief" --field "interrogation=$interrogation_field" \
       --field "scope=$files")
   fi
-  if ! out=$("$root/bin/tracker" remember --issue "$id" "$payload" 2>&1); then
+  if ! out=$("$ENTROPY_HOME/bin/tracker" remember --issue "$id" "$payload" 2>&1); then
     echo "dispatch: REFUSED — could not record the brief on $id." >&2
     echo "  bin/tracker said: $out" >&2
     echo "  Nothing is dispatched blind: without this note, no other session can" >&2
@@ -297,7 +299,7 @@ else
   # could see an issue with a live agent on it as free work. The adapter's
   # `claim` op does this atomically and is never fatal here — losing the
   # dispatch over a claim hiccup would be worse than an unclaimed issue.
-  if claim_out=$("$root/bin/tracker" claim "$id" 2>&1); then
+  if claim_out=$("$ENTROPY_HOME/bin/tracker" claim "$id" 2>&1); then
     case "$claim_out" in
       *'"claimed": false'*|*'"claimed":false'*)
         echo "dispatch: NOTE — $id is not notstarted; not claiming it. Re-dispatching" >&2
@@ -336,14 +338,14 @@ fi
 # materialises a commit — untracked files are not carried in. So the path
 # printed in the brief is ABSOLUTE and points back at this checkout, which
 # the agent can read (its worktree lives under it).
-ctxdir="$root/.dispatch-context"
+ctxdir="$ENTROPY_PROJECT/.dispatch-context"
 ctx="$ctxdir/$id.md"
 
 # The three carry-forward fields an incoming agent can act on, read out of
 # the LAST HANDOFF note on this issue via lib/notes.py's verb-anchored
 # lookup (not a free-text scan). verified/scope-released are the lander's
 # bookkeeping, not the next agent's context, so they are left out.
-notes_raw=$("$root/bin/tracker" notes --issue "$id" 2>/dev/null || true)
+notes_raw=$("$ENTROPY_HOME/bin/tracker" notes --issue "$id" 2>/dev/null || true)
 carry=$(printf '%s\n' "$notes_raw" | python3 "$NOTES_PY" record --issue "$id" --verb HANDOFF --last 2>/dev/null | python3 -c '
 import json, sys
 line = sys.stdin.readline()
@@ -395,7 +397,7 @@ if not any_line:
 }
 
 if [ "$dry" -eq 0 ]; then
-  issue_json=$("$root/bin/tracker" show "$id" 2>&1) || issue_json="UNAVAILABLE — bin/tracker could not be reached. It said:
+  issue_json=$("$ENTROPY_HOME/bin/tracker" show "$id" 2>&1) || issue_json="UNAVAILABLE — bin/tracker could not be reached. It said:
 
 $issue_json
 
@@ -435,7 +437,7 @@ for s in suites:
   {
     echo "# Dispatch context — $id"
     echo
-    echo "Written by bin/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $root ($branch @ $head)."
+    echo "Written by bin/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $ENTROPY_PROJECT ($branch @ $head)."
     echo "READ THIS BEFORE YOU DO ANYTHING ELSE. Everything you cannot look up for"
     echo "yourself was captured here at dispatch time — whether the tracker and any"
     echo "local docs directory are reachable from your worktree depends on this"
@@ -513,7 +515,7 @@ for s in suites:
     echo "has them. Gather them AS YOU WORK — they are much harder to reconstruct"
     echo "afterwards, and a wrong answer is worse than a blank one."
     echo
-    qs=$("$root/bin/handoff" "$id" --questions 2>/dev/null || true)
+    qs=$("$ENTROPY_HOME/bin/handoff" "$id" --questions 2>/dev/null || true)
     if [ -n "$qs" ]; then echo "$qs"
     else echo "  (unavailable — bin/handoff --questions could not be read here)"; fi
     echo
@@ -646,12 +648,12 @@ echo "  what it must contain in HANDOFF.md's found: line. The context file above
 echo "  has the full protocol and says what does and does not enforce it."
 echo "  SECOND, before you write anything: run \`git rev-parse --git-common-dir\`."
 echo "  It prints the MAIN repo's .git — which repo your worktree branched from."
-echo "  It MUST contain /$(basename "$root")/. A bare relative \`.git\` means you"
+echo "  It MUST contain /$(basename "$ENTROPY_PROJECT")/. A bare relative \`.git\` means you"
 echo "  are not in a worktree at all: report that."
 echo "  If either is wrong, STOP and report it. NEVER cd to make it pass and"
 echo "  never write to the shared checkout — a cd is the failure, not the fix."
 echo "  Do NOT use --show-toplevel here: yours is the worktree path, so it can"
-echo "  never end in /$(basename "$root") and tells you nothing about the repo."
+echo "  never end in /$(basename "$ENTROPY_PROJECT") and tells you nothing about the repo."
 # THE SCRATCHPAD, IN THE PASTE BLOCK RATHER THAN ONLY IN A DOC. The same
 # measurement that shapes the rest of this block puts a pasted rule at ~96%
 # and one sitting only in a doc the agent was told to go read at far less —

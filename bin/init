@@ -1,0 +1,157 @@
+#!/bin/sh
+# Bootstrap: write a starter entropy.json for a project that has none yet.
+#
+# THE CHICKEN-AND-EGG THIS SOLVES — every other entry point in this harness
+# refuses to run without entropy.json (docs/CONFIG.md rule 2: a missing key
+# is refused by name, never silently defaulted). That is deliberate, but it
+# leaves a brand-new project with no way in: the first thing a new user is
+# meant to do is run the factory once to discover its own config, and that
+# cannot start if the config file it discovers things INTO does not exist.
+# This script writes the minimal file that unblocks everything else, then
+# gets out of the way — completing it honestly is issue q-1's job, not this
+# script's. See docs/CONFIG.md.
+#
+# Usage: bin/init [--force]
+#
+#   (no flags)  refuse if entropy.json already exists — never silently
+#               overwrite a config someone has tuned.
+#   --force     overwrite an existing entropy.json.
+set -e
+
+usage() {
+  cat >&2 <<'EOF'
+usage: bin/init [--force]
+EOF
+  exit 2
+}
+
+force=""
+for arg in "$@"; do
+  case "$arg" in
+    --force) force=1 ;;
+    -h|--help) usage ;;
+    *)
+      echo "init: unrecognized argument: $arg" >&2
+      usage
+      ;;
+  esac
+done
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+
+# Deliberately entropy_project, NOT entropy_require_project: the latter
+# exits unless entropy.json already exists at the resolved root, and this
+# script is the thing that creates it.
+if ! project=$(entropy_project); then
+  echo "init: REFUSED — not inside a git repository, and no entropy.json" >&2
+  echo "  found by walking up from $PWD." >&2
+  echo "  cd into the project you want to run the factory on, or set" >&2
+  echo "  ENTROPY_PROJECT to its root." >&2
+  exit 2
+fi
+
+target="$project/entropy.json"
+
+if [ -f "$target" ] && [ -z "$force" ]; then
+  echo "init: REFUSED — entropy.json already exists at $target." >&2
+  echo "  Not overwriting a config someone has tuned. Re-run with --force" >&2
+  echo "  if you mean to replace it." >&2
+  exit 2
+fi
+
+project_name=$(basename -- "$project")
+
+# EVERY REFUSAL COMES BEFORE EVERY WRITE. This check used to sit down at step
+# 5, after entropy.json and .gitignore had already been written, so a harness
+# missing its PRD left the project half-initialised — configured, but with
+# nothing to do next and an entropy.json that a re-run would then refuse to
+# overwrite. A gate that fires after the damage is not a gate.
+prd_src="$ENTROPY_HOME/docs/QUICKSTART.md"
+prd_dst="$project/PRD-001-orientation.md"
+
+if [ ! -f "$prd_src" ]; then
+  echo "init: REFUSED — $prd_src is missing." >&2
+  echo "  That file is the orientation PRD; without it this command would" >&2
+  echo "  write a config and leave you with nothing to do next. Nothing has" >&2
+  echo "  been written." >&2
+  exit 2
+fi
+
+# STEP 3 — write the starter file. Minimal and honest: every value here is
+# either verified (the directory's own name) or a safe, inert default. In
+# particular, suites is an empty array, not a guess like `npm test` — a
+# fabricated suite command that does not exist is worse than an empty list,
+# because post-fold-audit and the verifier would report a broken command as
+# a failing project instead of an unconfigured one. Filling suites in (and
+# everything else this file leaves out — generate, guards, worktree beyond
+# the placeholder below, unattended) is work the orientation PRD asks the
+# owner to decide and then file as issues.
+cat > "$target" <<EOF
+{
+  "_generatedBy": "bin/init — a deliberately minimal starter, not a finished config. It does not guess at suite commands, protected paths, or anything else it has not verified. Completing it is one of the issues PRD-001-orientation.md asks you to file; see docs/CONFIG.md.",
+  "project": {
+    "name": "$project_name",
+    "protectedPaths": []
+  },
+  "tracker": {
+    "backend": "file",
+    "file": { "path": ".entropy/issues.json" }
+  },
+  "suites": [],
+  "changelog": { "enabled": false },
+  "worktree": { "linkPaths": [] }
+}
+EOF
+
+# STEP 4 — .entropy/ is where the tracker's issues.json lives; it is
+# per-checkout state, not something to commit.
+gitignore="$project/.gitignore"
+entry=".entropy/"
+if [ -f "$gitignore" ]; then
+  if ! grep -qx -- "$entry" "$gitignore"; then
+    printf '%s\n' "$entry" >> "$gitignore"
+  fi
+else
+  printf '%s\n' "$entry" > "$gitignore"
+fi
+
+# STEP 5 — put the orientation PRD in front of the owner.
+#
+# THIS IS THE POINT OF init, AND IT DOES NOT FILE ANY ISSUES. A PRD is the
+# UPSTREAM artifact here: it is what CREATES issues. Seeding a task called
+# "orient the factory" would invert that — it would make the machine hand the
+# owner a job before the owner has decided anything, and it would skip the
+# only step no code path can reach. The PRD's open questions are the owner's
+# to rule on, and the issues fall out of those rulings.
+#
+# The harness's own docs/QUICKSTART.md IS that PRD. It is not a tutorial
+# about a PRD, it is the first one, and it is copied into the project so the
+# owner fills in THEIR answers rather than editing the harness's copy.
+prd_written=""
+if [ -f "$prd_dst" ] && [ -z "$force" ]; then
+  prd_note="init: left existing $prd_dst alone (--force overwrites)."
+else
+  cp -- "$prd_src" "$prd_dst"
+  prd_written=yes
+  prd_note="init: wrote $prd_dst — open it. It is the first PRD, and the"
+fi
+
+# STEP 6 — prove the tracker actually answers before claiming success.
+# A read, not a write: nothing is filed here. An init that reports success
+# while the tracker is unreachable is the exact failure this harness exists
+# to prevent, and the owner would only discover it at the moment they tried
+# to file their first issue.
+if ! ENTROPY_PROJECT="$project" "$ENTROPY_HOME/bin/tracker" ready >/dev/null 2>&1; then
+  echo "init: REFUSED — wrote $target but bin/tracker could not read the" >&2
+  echo "  tracker back afterward. Check $project/.entropy/ by hand." >&2
+  exit 2
+fi
+
+echo "init: wrote $target"
+echo "$prd_note"
+if [ -n "$prd_written" ]; then
+  echo "      questions in it are the ones only you can answer."
+fi
+echo "init: tracker is live and empty — \`bin/tracker ready\` answers."
+echo "init: next — read PRD-001-orientation.md. Filing its issues is step one."

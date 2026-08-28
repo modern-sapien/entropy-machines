@@ -48,7 +48,12 @@ try:
 except Exception:
     print(default); sys.exit(0)
 cur = data
-for part in key.split('.'):
+# TOLERATE A LEADING DOT. Every call site in this file and in bin/drain writes
+# the key as '.unattended.x' (a jq habit), which split('.') turns into a first
+# segment of '' that matches no dict key — so this helper silently returned its
+# DEFAULT for every lookup, and no unattended setting in entropy.json had any
+# effect. Fixed here rather than at a dozen call sites so both spellings work.
+for part in key.lstrip('.').split('.'):
     if isinstance(cur, dict) and part in cur:
         cur = cur[part]
     else:

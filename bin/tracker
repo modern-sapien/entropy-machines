@@ -51,15 +51,11 @@ EOF
 
 [ $# -ge 1 ] || usage
 
-root=$(cd "$(dirname "$0")/.." && pwd)
-config="$root/entropy.json"
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+entropy_require_project tracker
 
-if [ ! -f "$config" ]; then
-  echo "tracker: REFUSED — no entropy.json at $root." >&2
-  echo "  Every hardcoded assumption the harness makes about its host project" >&2
-  echo "  lives there. See docs/CONFIG.md." >&2
-  exit 2
-fi
+config="$ENTROPY_PROJECT/entropy.json"
 
 # One read of entropy.json, here, once. Prints four tab-separated fields:
 #   backend            "file" or "command" (defaults to "file")
@@ -94,13 +90,13 @@ cmd_args=$(printf '%s' "$info" | cut -f4)
 
 case "$backend" in
   file)
-    impl="$root/lib/tracker-file"
+    impl="$ENTROPY_HOME/lib/tracker-file"
     if [ ! -x "$impl" ]; then
       echo "tracker: REFUSED — tracker.backend is \"file\" but $impl is missing" >&2
       echo "  or not executable." >&2
       exit 2
     fi
-    ( cd "$root" && ENTROPY_ROOT="$root" ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
+    ( cd "$ENTROPY_PROJECT" && ENTROPY_ROOT="$ENTROPY_PROJECT" ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
     ;;
   command)
     if [ -z "$cmd_bin" ]; then
@@ -108,7 +104,7 @@ case "$backend" in
       echo "  is empty in $config." >&2
       exit 2
     fi
-    ( cd "$root" && exec "$cmd_bin" $cmd_args "$@" )
+    ( cd "$ENTROPY_PROJECT" && exec "$cmd_bin" $cmd_args "$@" )
     ;;
   *)
     echo "tracker: REFUSED — unknown tracker.backend \"$backend\" in $config" >&2

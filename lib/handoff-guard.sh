@@ -133,7 +133,7 @@ set -euo pipefail
 # Empty unless the project opts in — see the grandfathering note above.
 CUTOFF="$(
   cd "$(git rev-parse --show-toplevel)" 2>/dev/null &&
-  python3 lib/config.py get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
+  python3 "${ENTROPY_HOME:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)}/lib/config.py" get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
 )"
 # `if`, not `[ ... ] && ...` — under `set -e` a failing test as the last
 # command of a compound exits the script, which would make this gate pass
@@ -141,7 +141,14 @@ CUTOFF="$(
 if [ "$CUTOFF" = "null" ]; then CUTOFF=""; fi
 SKIP_MARKER='[skip handoff]'
 
-ROOT="$(git rev-parse --show-toplevel)"
+# See lib/changelog-guard.sh for why these are two separate roots. NOTE the
+# cutoff block ABOVE runs before this assignment, so it derives ENTROPY_HOME
+# itself rather than referencing $ROOT — referencing it there was an unbound
+# variable under `set -u`, i.e. a crash in the gate rather than a refusal.
+if [ -z "${ENTROPY_HOME:-}" ]; then
+  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+fi
+ROOT="${ENTROPY_PROJECT:-$(git rev-parse --show-toplevel)}"
 # HANDOFF_MEMORY is a TEST SEAM, not a bypass — tests/core/commit-gate-open-
 # dispatch.test.ts points it at a fixture so it can exercise the refuse path
 # without writing fake DISPATCH notes into the log two other sessions are
@@ -152,7 +159,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 # than hardcoding a path. Falls back to the built-in backend's default.
 MEMORY="${HANDOFF_MEMORY:-$ROOT/$(
   cd "$ROOT" 2>/dev/null &&
-  python3 lib/config.py get tracker.file.path 2>/dev/null | tr -d '"' || true
+  python3 "$ENTROPY_HOME/lib/config.py" get tracker.file.path 2>/dev/null | tr -d '"' || true
 )}"
 
 # The tracker's store may be a NESTED REPO, absent from dispatched agents'

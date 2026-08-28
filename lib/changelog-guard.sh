@@ -37,8 +37,17 @@
 
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
-CONFIG_PY="$ROOT/lib/config.py"
+# TWO ROOTS. config.py ships with the HARNESS; entropy.json lives in the
+# PROJECT. They are the same directory only when the harness is vendored at the
+# project root, and this line used to assume that — in a drop-in install the
+# hook fired and then died on a missing lib/config.py, which reads as a broken
+# repo rather than a misinstalled harness. The shim installed by
+# lib/install-hooks.sh exports both; the fallbacks are for direct invocation.
+if [ -z "${ENTROPY_HOME:-}" ]; then
+  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+fi
+ROOT="${ENTROPY_PROJECT:-$(git rev-parse --show-toplevel)}"
+CONFIG_PY="$ENTROPY_HOME/lib/config.py"
 
 ENABLED="$(python3 "$CONFIG_PY" get changelog.enabled)"
 if [ "$ENABLED" != "true" ]; then

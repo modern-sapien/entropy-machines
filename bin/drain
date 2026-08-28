@@ -20,7 +20,9 @@
 # installed either way.
 set -e
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+entropy_require_project drain
 os=$(uname)
 
 # ---- config -----------------------------------------------------------------
@@ -32,7 +34,7 @@ os=$(uname)
 # refusal is this script's job for the keys that truly have none, e.g. an
 # unsupported scheduler below).
 cfg() {
-  python3 - "$root/entropy.json" "$1" "$2" <<'PY'
+  python3 - "$ENTROPY_PROJECT/entropy.json" "$1" "$2" <<'PY'
 import json, sys
 path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -41,7 +43,12 @@ try:
 except Exception:
     print(default); sys.exit(0)
 cur = data
-for part in key.split('.'):
+# TOLERATE A LEADING DOT. Every call site in this file and in bin/drain writes
+# the key as '.unattended.x' (a jq habit), which split('.') turns into a first
+# segment of '' that matches no dict key — so this helper silently returned its
+# DEFAULT for every lookup, and no unattended setting in entropy.json had any
+# effect. Fixed here rather than at a dozen call sites so both spellings work.
+for part in key.lstrip('.').split('.'):
     if isinstance(cur, dict) and part in cur:
         cur = cur[part]
     else:
@@ -125,7 +132,7 @@ PY
     # The quota probe lives in bin/drain-run.sh (--probe-quota) so there is
     # exactly one implementation; see that file for what it assumes.
     lookback=$(cfg '.unattended.agent.quotaProbe.lookbackSeconds' '3600')
-    l=$("$root/bin/drain-run.sh" --probe-quota 2>/dev/null || true)
+    l=$("$ENTROPY_HOME/bin/drain-run.sh" --probe-quota 2>/dev/null || true)
     if [ -n "$l" ]; then
       echo "quota wall: $l"
     else
@@ -133,15 +140,15 @@ PY
     fi
     # What it would actually take, so `status` answers "is there anything to
     # do" and not merely "is the switch up".
-    if [ -x "$root/bin/tracker" ]; then
-      n=$("$root/bin/tracker" ready 2>/dev/null | grep -c . || true)
+    if [ -x "$ENTROPY_HOME/bin/tracker" ]; then
+      n=$("$ENTROPY_HOME/bin/tracker" ready 2>/dev/null | grep -c . || true)
       echo "eligible:   ${n:-0} issue(s) an unattended run may take"
     fi
     ;;
 
   now)
     echo "drain: firing once in the foreground (ignores the armed flag)"
-    exec "$root/bin/drain-run.sh" --foreground
+    exec "$ENTROPY_HOME/bin/drain-run.sh" --foreground
     ;;
 
   at)
@@ -201,7 +208,7 @@ PY
     if [ -f "$state/once.pid" ] && kill -0 "$(cat "$state/once.pid")" 2>/dev/null; then
       kill "$(cat "$state/once.pid")" 2>/dev/null || true
     fi
-    nohup sh -c "sleep $wait_s; exec '$root/bin/drain-run.sh' --foreground" \
+    nohup sh -c "sleep $wait_s; exec '$ENTROPY_HOME/bin/drain-run.sh' --foreground" \
       > "$state/once.log" 2>&1 &
     echo $! > "$state/once.pid"
     printf '%s\n' "$tgt_str" > "$state/once.at"
@@ -247,7 +254,7 @@ PY
       esac
     fi
 
-    runner="$root/bin/drain-run.sh"
+    runner="$ENTROPY_HOME/bin/drain-run.sh"
 
     case "$scheduler" in
       launchd)
@@ -261,27 +268,46 @@ PY
         # ~/Documents and ~/Downloads. Installing a job that is denied before
         # its first line is worse than installing none, because `launchctl
         # list` shows it loaded and everything looks armed. Check the actual
-        # repo location and say so. This entire check is a macOS concept and
-        # does not apply on Linux.
-        case "$root" in
-          "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
-            echo "bin/drain install: refusing — this repo is in a TCC-protected folder." >&2
-            echo "  $root" >&2
-            echo "  A LaunchAgent is denied here before it runs a line. Three ways forward:" >&2
-            echo "    1. bin/drain at HH:MM      — a detached timer, works today," >&2
-            echo "                                 no permissions, no reboot survival" >&2
-            echo "    2. move the repo out of that folder (e.g. ~/code/<project>)" >&2
-            echo "    3. System Settings -> Privacy & Security -> Full Disk Access," >&2
-            echo "       add /bin/sh — broad, since it grants every shell script" >&2
-            echo "  Override once you have done 2 or 3: ENTROPY_DRAIN_FORCE=1" >&2
-            [ -z "$ENTROPY_DRAIN_FORCE" ] && exit 3
-            echo "  ENTROPY_DRAIN_FORCE set — installing anyway." >&2
-            ;;
-        esac
+        # repo location(s) and say so. This entire check is a macOS concept
+        # and does not apply on Linux.
+        #
+        # TWO locations matter now that harness and project can differ:
+        # launchd has to reach ENTROPY_HOME to exec the runner script at all,
+        # and drain-run.sh then reads/writes inside ENTROPY_PROJECT (git,
+        # entropy.json, .entropy/) to do the actual work. Either one sitting
+        # under a protected folder denies the job — checked separately so the
+        # message names the one that is actually the problem.
+        tcc_blocked=""
+        for tcc_dir in "$ENTROPY_HOME" "$ENTROPY_PROJECT"; do
+          case "$tcc_dir" in
+            "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
+              echo "bin/drain install: refusing — this is in a TCC-protected folder:" >&2
+              echo "  $tcc_dir" >&2
+              tcc_blocked=1
+              ;;
+          esac
+        done
+        if [ -n "$tcc_blocked" ]; then
+          echo "  A LaunchAgent is denied here before it runs a line. Three ways forward:" >&2
+          echo "    1. bin/drain at HH:MM      — a detached timer, works today," >&2
+          echo "                                 no permissions, no reboot survival" >&2
+          echo "    2. move it out of that folder (e.g. ~/code/<project>)" >&2
+          echo "    3. System Settings -> Privacy & Security -> Full Disk Access," >&2
+          echo "       add /bin/sh — broad, since it grants every shell script" >&2
+          echo "  Override once you have done 2 or 3: ENTROPY_DRAIN_FORCE=1" >&2
+          [ -z "$ENTROPY_DRAIN_FORCE" ] && exit 3
+          echo "  ENTROPY_DRAIN_FORCE set — installing anyway." >&2
+        fi
+        # GAP (see HANDOFF-lane-b.md): a scheduler unit has no cwd and no git
+        # context to resolve ENTROPY_PROJECT from when it fires, but neither
+        # this template nor bin/drain-run.sh has a placeholder/env var to
+        # carry it in explicitly yet. Until that lands, an installed job only
+        # works in the layout it was extracted from (harness vendored at the
+        # project root).
         plist="$HOME/Library/LaunchAgents/$label.plist"
         mkdir -p "$HOME/Library/LaunchAgents"
         sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g; s|__LABEL__|$label|g" \
-          "$root/lib/entropy-drain.plist.in" > "$plist"
+          "$ENTROPY_HOME/lib/entropy-drain.plist.in" > "$plist"
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
         launchctl bootstrap "gui/$(id -u)" "$plist"
         echo "drain: launchd job installed and loaded (hourly probe)"
@@ -302,9 +328,9 @@ PY
         unitdir="$HOME/.config/systemd/user"
         mkdir -p "$unitdir"
         sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
-          "$root/lib/entropy-drain.service.in" > "$unitdir/$label.service"
+          "$ENTROPY_HOME/lib/entropy-drain.service.in" > "$unitdir/$label.service"
         sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
-          "$root/lib/entropy-drain.timer.in" > "$unitdir/$label.timer"
+          "$ENTROPY_HOME/lib/entropy-drain.timer.in" > "$unitdir/$label.timer"
         systemctl --user daemon-reload
         systemctl --user enable --now "$label.timer"
         echo "drain: systemd timer installed and enabled (hourly probe)"

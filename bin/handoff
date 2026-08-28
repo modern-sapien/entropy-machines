@@ -225,7 +225,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+entropy_require_project handoff
 
 # The dispatch note carries two lists and they do opposite jobs
 #:
@@ -249,7 +251,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # unknown, and then the ADVISORY list is enforced as an allowlist, i.e. the old
 # behaviour verbatim. There is no state in which nothing is checked.
 notes=""
-[ -n "$id" ] && notes=$("$root/bin/tracker" notes --issue "$id" 2>/dev/null || true)
+[ -n "$id" ] && notes=$("$ENTROPY_HOME/bin/tracker" notes --issue "$id" 2>/dev/null || true)
 scope=$(printf '%s\n' "$notes" \
   | sed -n 's/.*DISPATCH .* — scope: \(.*\) — brief: .*/\1/p' | tail -1 || true)
 deny=$(printf '%s\n' "$notes" \
@@ -337,7 +339,7 @@ is_claimed() {
 # has always failed open the same way for unclaimed files; this extends it to
 # claimed ones. Filed as its own issue.
 absent_from_main() {
-  if [ -e "$root/$1" ]; then return 1; fi
+  if [ -e "$ENTROPY_PROJECT/$1" ]; then return 1; fi
   if [ -n "$2" ]; then return 1; fi
   return 0
 }
@@ -443,7 +445,7 @@ record_skipped_interrogation() {
     echo "handoff: --dry-run — would record: interrogation SKIPPED — $no_interrogation"
     return 0
   fi
-  "$root/bin/tracker" remember \
+  "$ENTROPY_HOME/bin/tracker" remember \
     "INTERROGATION $id — SKIPPED by the lander — why: $(flatten_answer "$no_interrogation")" \
     --issue "$id" >/dev/null 2>&1 || true
   echo "handoff: interrogation SKIPPED — recorded on $id as a claim, not an absence:"
@@ -544,7 +546,7 @@ if [ "$record_interrogation" -eq 1 ]; then
     echo "  $note"
     exit 0
   fi
-  "$root/bin/tracker" remember "$note" --issue "$id" >/dev/null
+  "$ENTROPY_HOME/bin/tracker" remember "$note" --issue "$id" >/dev/null
   echo "handoff: interrogation recorded on $id ($nq answer(s))."
   echo "  --lift and the record step will now run for this id."
   exit 0
@@ -562,12 +564,12 @@ gen_set() {
   # So the list is declared in entropy.json as `generate.outputs`. If a project
   # declares none, this prints one !ROT line and the caller degrades loudly
   # rather than quietly passing.
-  python3 - "$root" <<'PYGEN'
+  python3 - "$ENTROPY_HOME" "$ENTROPY_PROJECT" <<'PYGEN'
 import os, sys
 sys.path.insert(0, os.path.join(sys.argv[1], 'lib'))
 try:
     from config import load_config
-    cfg = load_config(sys.argv[1])
+    cfg = load_config(sys.argv[2])
 except Exception as e:
     print('!ROT entropy.json could not be read (%s)' % e)
     raise SystemExit(0)
@@ -588,7 +590,7 @@ PYGEN
 
 # --- worktree drift scan ----------------------------------------------------
 #
-# Everything here resolves refs with `git -C "$root"` and never against the
+# Everything here resolves refs with `git -C "$ENTROPY_PROJECT"` and never against the
 # ambient cwd. The tracker's store may be a separate nested repo that does not exist
 # inside a worktree at all, and a session parked in it took out three dispatches
 # on 2026-08-17; a ref resolved against "whatever repo the cwd is in" is that
@@ -597,18 +599,33 @@ wt=""; wt_head=""; base=""
 scan_worktree() {
   wt=$(cd "$from" 2>/dev/null && pwd -P) || wt=""
   if [ -z "$wt" ]; then echo "handoff: no such worktree: $from" >&2; exit 1; fi
-  if [ "$wt" = "$root" ]; then
-    echo "handoff: REFUSED — --from is this checkout ($root), not a worker's worktree." >&2
+  if [ "$wt" = "$ENTROPY_PROJECT" ]; then
+    echo "handoff: REFUSED — --from is this checkout ($ENTROPY_PROJECT), not a worker's worktree." >&2
     exit 1
   fi
   # Same repository, established through the object store rather than the path.
   # A worktree of a nested repo has its own .git and would
   # otherwise be scanned against refs that mean nothing here.
-  a=$(cd "$root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)
-  b=$(cd "$wt" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || b=""
+  #
+  # $a is just $ENTROPY_PROJECT — it was already resolved this same way
+  # (parent of `git rev-parse --git-common-dir`) at the top of the script.
+  # $b has to be resolved the identical way from $wt, not compared against
+  # the bare git-common-dir itself: that is one directory level too deep
+  # (the .git dir, not its parent) and made every worktree of this very
+  # repository read as "not a worktree of this repository."
+  a=$ENTROPY_PROJECT
+  b_gitdir=$(cd "$wt" && git rev-parse --git-common-dir 2>/dev/null) || b_gitdir=""
+  b=""
+  if [ -n "$b_gitdir" ]; then
+    case "$b_gitdir" in
+      /*) ;;
+      *) b_gitdir="$wt/$b_gitdir" ;;
+    esac
+    b=$(cd "$b_gitdir/.." 2>/dev/null && pwd -P) || b=""
+  fi
   if [ "$a" != "$b" ]; then
     echo "handoff: REFUSED — $wt is not a worktree of this repository." >&2
-    echo "  its git dir: ${b:-<none>}" >&2
+    echo "  its git dir: ${b_gitdir:-<none>}" >&2
     echo "  this one:    $a" >&2
     exit 1
   fi
@@ -617,7 +634,7 @@ scan_worktree() {
   # Agents do not commit, so a worktree's HEAD normally IS the commit it
   # branched from (worktree.baseRef is "head"). merge-base covers the agent that
   # committed anyway, and resolves in the main repo's object store.
-  base=$(git -C "$root" merge-base "$wt_head" HEAD 2>/dev/null || echo "$wt_head")
+  base=$(git -C "$ENTROPY_PROJECT" merge-base "$wt_head" HEAD 2>/dev/null || echo "$wt_head")
 
   tmp=$(mktemp -d)
   : > "$tmp/copy"; : > "$tmp/same"; : > "$tmp/deleted"; : > "$tmp/outscope"
@@ -640,7 +657,7 @@ scan_worktree() {
         if (x == "D" || y == "D") { print "DEL " p; next }
         print "MOD " p
       }'
-    git -C "$root" diff --name-status "$base" "$wt_head" | awk '
+    git -C "$ENTROPY_PROJECT" diff --name-status "$base" "$wt_head" | awk '
       {
         if ($1 ~ /^R/) { print "DEL " $2; print "MOD " $3; next }
         if ($1 == "D") { print "DEL " $2; next }
@@ -656,7 +673,7 @@ scan_worktree() {
     # Drift is recorded for EVERY changed file, before any other verdict, so
     # the record step's stale-copy gate sees the whole picture even for a file
     # --lift itself would have refused for another reason.
-    moved=$(git -C "$root" log --oneline "$base..HEAD" -- "$path" || true)
+    moved=$(git -C "$ENTROPY_PROJECT" log --oneline "$base..HEAD" -- "$path" || true)
     if [ -n "$moved" ]; then
       echo "$path" >> "$tmp/drifted"
       printf '%s\n' "$moved" | sed 's/^/      /' > "$tmp/log.$(echo "$path" | tr / _)"
@@ -689,12 +706,12 @@ scan_worktree() {
       continue
     fi
 
-    if [ "$kind" = "ADD" ] && [ -e "$root/$path" ]; then
-      if cmp -s "$wt/$path" "$root/$path"; then echo "$path" >> "$tmp/same"
+    if [ "$kind" = "ADD" ] && [ -e "$ENTROPY_PROJECT/$path" ]; then
+      if cmp -s "$wt/$path" "$ENTROPY_PROJECT/$path"; then echo "$path" >> "$tmp/same"
       else echo "$path" >> "$tmp/collide"; fi
       continue
     fi
-    if [ -e "$root/$path" ] && cmp -s "$wt/$path" "$root/$path"; then
+    if [ -e "$ENTROPY_PROJECT/$path" ] && cmp -s "$wt/$path" "$ENTROPY_PROJECT/$path"; then
       echo "$path" >> "$tmp/same"; continue
     fi
     echo "$path" >> "$tmp/copy"
@@ -789,10 +806,10 @@ if [ "$lift" -eq 1 ]; then
 
   echo "handoff: --lift $id"
   echo "  from   $wt"
-  echo "  into   $root"
-  echo "  worker branched at $(git -C "$root" log -1 --format='%h %s' "$base")"
-  echo "  HEAD here is      $(git -C "$root" log -1 --format='%h %s' HEAD)"
-  echo "  $(git -C "$root" rev-list --count "$base..HEAD") commit(s) landed since the worker branched"
+  echo "  into   $ENTROPY_PROJECT"
+  echo "  worker branched at $(git -C "$ENTROPY_PROJECT" log -1 --format='%h %s' "$base")"
+  echo "  HEAD here is      $(git -C "$ENTROPY_PROJECT" log -1 --format='%h %s' HEAD)"
+  echo "  $(git -C "$ENTROPY_PROJECT" rev-list --count "$base..HEAD") commit(s) landed since the worker branched"
   echo
 
   n=0
@@ -801,8 +818,8 @@ if [ "$lift" -eq 1 ]; then
     if [ "$dry" -eq 1 ]; then
       echo "  would copy  $p"
     else
-      mkdir -p "$root/$(dirname "$p")"
-      cp "$wt/$p" "$root/$p"
+      mkdir -p "$ENTROPY_PROJECT/$(dirname "$p")"
+      cp "$wt/$p" "$ENTROPY_PROJECT/$p"
       echo "  copied      $p"
     fi
     n=$((n + 1))
@@ -844,12 +861,12 @@ if [ "$lift" -eq 1 ]; then
       echo "    $p" >&2
       cat "$tmp/log.$(echo "$p" | tr / _)" >&2
     done < "$tmp/drift_src"
-    echo "  The worker edited the version at $(git -C "$root" rev-parse --short "$base"). Copying its copy reverts" >&2
+    echo "  The worker edited the version at $(git -C "$ENTROPY_PROJECT" rev-parse --short "$base"). Copying its copy reverts" >&2
     echo "  those commits — silently, and the test that covered them goes red later" >&2
     echo "  somewhere else (2026-08-22: select_option, cli-tool-reachability 2/2)." >&2
     echo "  This needs a merge or a re-dispatch, not a copy. Read both halves:" >&2
     echo "      git -C $wt diff -- <file>" >&2
-    echo "      git -C $root diff $(git -C "$root" rev-parse --short "$base")..HEAD -- <file>" >&2
+    echo "      git -C $ENTROPY_PROJECT diff $(git -C "$ENTROPY_PROJECT" rev-parse --short "$base")..HEAD -- <file>" >&2
     echo "  then apply the worker's change on top by hand, or re-dispatch the issue" >&2
     echo "  from current HEAD." >&2
     echo >&2
@@ -999,7 +1016,7 @@ if [ -n "$from" ]; then
   if [ -s "$tmp/drifted" ]; then
     while read -r p; do
       [ -n "$p" ] || continue
-      if [ -e "$root/$p" ] && cmp -s "$wt/$p" "$root/$p"; then stale="$stale $p"; fi
+      if [ -e "$ENTROPY_PROJECT/$p" ] && cmp -s "$wt/$p" "$ENTROPY_PROJECT/$p"; then stale="$stale $p"; fi
     done < "$tmp/drifted"
   fi
   if [ -n "$stale" ] && [ -z "$drift_reviewed" ]; then
@@ -1048,7 +1065,7 @@ if [ "$dry" -eq 1 ]; then
   exit 0
 fi
 
-"$root/bin/tracker" remember "$note" --issue "$id" >/dev/null
+"$ENTROPY_HOME/bin/tracker" remember "$note" --issue "$id" >/dev/null
 
 echo "handoff: recorded on $id."
 [ -n "$scope" ] && echo "  scope released: $scope"

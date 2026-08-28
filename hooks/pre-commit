@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
 # Repo pre-commit hook — VERSION-CONTROLLED, unlike the copy in .git/hooks.
 #
-# `npm run hooks:install` drops a three-line shim into the resolved hooks
-# directory that execs THIS file via `git rev-parse --show-toplevel`. So the
-# installed artefact never goes stale, each worktree runs its own checked-in
-# copy, and reviewing the hook means reviewing this file.
+# The installed shim (lib/install-hooks.sh) execs THIS working-tree file
+# directly, by an ABSOLUTE path baked in at install time, so the installed
+# artefact never goes stale, each worktree runs its own checked-in copy, and
+# reviewing the hook means reviewing this file.
+#
+# TWO ROOTS. lib/changelog-guard.sh is a HARNESS file — it lives beside this
+# hook (one directory up, in ENTROPY_HOME/lib/), not necessarily beside
+# whatever project tree the commit belongs to. `git diff --cached`, which
+# changelog-guard.sh reads, still operates on the PROJECT's working tree via
+# cwd — git already puts pre-commit's cwd at the project's working-tree root,
+# and nothing here changes that.
+#
+# The installed shim exports both ENTROPY_HOME and ENTROPY_PROJECT before
+# exec'ing this file (see lib/install-hooks.sh), so the normal run costs
+# nothing extra. The fallback below only matters when this file is run
+# directly — by hand, or from a test — bypassing the shim.
 #
 # Keep it fast. It runs on every commit; anything slower than a `git diff`
 # belongs in CI.
 
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
-exec "$ROOT/lib/changelog-guard.sh" --staged
+. "$(dirname "$0")/../lib/roots.sh"
+
+: "${ENTROPY_HOME:=$(entropy_home "$0")}"
+export ENTROPY_HOME
+if [ -z "${ENTROPY_PROJECT:-}" ]; then
+  entropy_require_project pre-commit
+fi
+
+exec "$ENTROPY_HOME/lib/changelog-guard.sh" --staged

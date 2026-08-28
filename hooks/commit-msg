@@ -1,15 +1,29 @@
 #!/usr/bin/env bash
 # Repo commit-msg hook — VERSION-CONTROLLED, like its pre-commit sibling.
 #
-# `npm run hooks:install` iterates every file in hooks/, so this
-# one was picked up the moment it landed; the installer needed no change.
-#
 # It exists separately from pre-commit because handoff-guard keys on the issue
 # id in the commit message, and pre-commit runs before a message exists.
+#
+# TWO ROOTS. lib/handoff-guard.sh is a HARNESS file (ENTROPY_HOME/lib/), not
+# necessarily beside the project tree the commit belongs to. $1, the message
+# file path git passes in, is already project-relative/absolute as git gives
+# it — nothing here needs to touch it beyond passing it through.
+#
+# The installed shim exports both ENTROPY_HOME and ENTROPY_PROJECT before
+# exec'ing this file (see lib/install-hooks.sh), so the normal run costs
+# nothing extra. The fallback below only matters when this file is run
+# directly — by hand, or from a test — bypassing the shim.
 #
 # Keep it fast. $1 is the path to the message file.
 
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
-exec "$ROOT/lib/handoff-guard.sh" --message "$1"
+. "$(dirname "$0")/../lib/roots.sh"
+
+: "${ENTROPY_HOME:=$(entropy_home "$0")}"
+export ENTROPY_HOME
+if [ -z "${ENTROPY_PROJECT:-}" ]; then
+  entropy_require_project commit-msg
+fi
+
+exec "$ENTROPY_HOME/lib/handoff-guard.sh" --message "$1"
