@@ -1,0 +1,52 @@
+#!/bin/sh
+# Run the production-plan tracker WITHOUT changing the caller's cwd.
+#
+#   scripts/tracker orient
+#   scripts/tracker show i-foo
+#   scripts/tracker set i-foo status=done
+#   scripts/tracker remember "..."
+#
+# WHY THIS EXISTS — it is not ergonomics, it is a correctness guard.
+#
+# `issues.py` resolves issues.json relative to the process cwd, so every
+# invocation used to be written `cd planning-docs/feature-guidance/production-plan
+# && python3 issues.py ...`. The Bash tool's cwd PERSISTS between calls, so that
+# `cd` silently relocated the session into the nested `planning-docs` repo and
+# left it there.
+#
+# That matters because a dispatched agent's git worktree is created in whatever
+# repo the dispatching session's cwd belongs to. With the session parked in
+# planning-docs, agents get a worktree of the DOCS repo: no janus-bridge/, no
+# package.json, no changelog.d/, nothing in their file scope. The task cannot be
+# done and the agent burns its budget discovering that.
+#
+# This has now happened three times (2026-08-05, and twice on 2026-08-06 — the
+# second time taking out two agents at once, one of which had already been
+# stopped mid-flight). It is documented in agent memory as "Dispatch cwd decides
+# the worktree's repo", and being documented did not stop it, which is the whole
+# argument for a mechanical measure over a reminder.
+#
+# The subshell is the entire fix: `( cd ... && ... )` changes the CHILD's cwd and
+# leaves the caller's alone. Use this wrapper and the session can never drift out
+# of the repo root.
+# INSIDE A DISPATCHED AGENT'S WORKTREE THIS DEPENDS ON THE HOOKS. planning-docs/
+# is gitignored and a nested repo, so `git worktree add` does not check it out.
+# scripts/git-hooks/post-checkout symlinks it in at worktree creation, which
+# makes this wrapper work there — against the SHARED issues.json, read-write.
+# But hooks are per-clone: if nobody ran `npm run hooks:install`, the symlink is
+# absent and this exits 2 (an agent hit the bare `cd: no such file or directory`
+# on 2026-08-07, before the hook existed). An agent should work from its brief
+# either way; the guard below tells it which case it is in.
+set -e
+root=$(cd "$(dirname "$0")/.." && pwd)
+dir="$root/planning-docs/feature-guidance/production-plan"
+if [ ! -d "$dir" ]; then
+  echo "scripts/tracker: $dir does not exist." >&2
+  echo "  planning-docs/ is gitignored and a NESTED REPO, so a worktree does not" >&2
+  echo "  get it. post-checkout normally symlinks it in — its absence here means" >&2
+  echo "  the hooks were never installed in this clone (npm run hooks:install)." >&2
+  echo "  If you are a dispatched agent: work from your brief and report the gap" >&2
+  echo "  rather than trying to reach the tracker." >&2
+  exit 2
+fi
+( cd "$dir" && TRACKER_WRAPPED=1 exec python3 issues.py "$@" )

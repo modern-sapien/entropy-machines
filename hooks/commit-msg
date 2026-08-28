@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Repo commit-msg hook — VERSION-CONTROLLED, like its pre-commit sibling.
+#
+# `npm run hooks:install` iterates every file in scripts/git-hooks/, so this
+# one was picked up the moment it landed; the installer needed no change.
+#
+# It exists separately from pre-commit because handoff-guard keys on the issue
+# id in the commit message, and pre-commit runs before a message exists.
+#
+# Keep it fast. $1 is the path to the message file.
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+exec "$ROOT/scripts/handoff-guard.sh" --message "$1"

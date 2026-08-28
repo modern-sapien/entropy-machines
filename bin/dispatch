@@ -1,0 +1,784 @@
+#!/bin/sh
+# Pre-flight gate for dispatching a writing agent (i-scripts-dispatch-dispatch-wrappe).
+#
+#   scripts/dispatch i-foo --files "src/x.ts tests/x.test.ts" --brief "one-line task"
+#
+# Exit 0 means SAFE TO DISPATCH; anything else names the hazard. It does not
+# spawn the agent — the Agent tool does that — it refuses the four dispatch
+# mistakes that have each burned a real agent run:
+#
+#   1. NON-ROOT CWD. A worktree is created in whatever repo the dispatching
+#      session's cwd belongs to; parked inside the nested planning-docs repo,
+#      agents get a docs worktree with no janus-bridge/ or package.json.
+#      Happened three times before scripts/tracker removed the cd; this checks
+#      the caller too.
+#   2. UNCOMMITTED WORK INSIDE THE AGENT'S OWN FILE SCOPE. worktree.baseRef is
+#      "head" (2026-08-09), so an agent inherits local HEAD — unpushed commits
+#      ARE visible and nothing has to be pushed before dispatching. What is
+#      still invisible is uncommitted edits, so handing an agent a file you are
+#      mid-edit in means it works from the committed version and its result
+#      silently drops your changes. Only the declared scope is checked; a dirty
+#      tree elsewhere is none of this agent's business.
+#   3. ALREADY-LANDED WORK. If git log already mentions the issue id, the task
+#      may be partly or fully done (i-verify-retempto sat unflipped for a day
+#      after its flag landed). The audit comes before the dispatch.
+#   4. UNRECORDED BRIEFS. The brief + file scope are appended to the tracker
+#      notes log in the same act, so any session can see what was handed out
+#      and scopes can be checked for overlap before agents collide in a file.
+#
+# THE SCOPE LIST IS A DENYLIST, NOT AN ALLOWLIST
+# (i-dispatch-declares-what-is-claimed-by-others-not). --files used to declare
+# the files the agent MAY write: a prediction made at the moment of least
+# information, by the one party who has not read the code, and correcting it
+# 20 minutes in costs a round trip. The dispatcher does not know what the agent
+# will need. It knows one thing that is true and small: which files OTHER
+# agents are holding right now, because it dispatched them. So the ENFORCED,
+# PASTED thing is now the exclusion set, and --files stays as an advisory
+# prediction that is still recorded for the audit trail.
+#
+# All three recorded scope failures were exclusions with nothing behind them:
+#   i-commune-s-failed-controller-turn  could not reach src/shared/types.ts, so
+#       a Go writer shipped an undeclared event kind — but types.ts is
+#       append-only and tested as such, so it never needed to be off-limits.
+#   i-dist-version-stamp                shipped a janusVersion wire field with
+#       no producer because cmd/janus-bridge was outside scope. Nobody else was
+#       in that file; it was excluded by omission.
+#   i-a-dispatched-agent-cannot-read-the-tracker-its  had its own brand-new
+#       changelog.d fragment refused by `handoff --lift`, purely because the
+#       scope line had been narrowed to get past a gate.
+#
+# THE CLAIM SET NEEDS NO NEW STATE. This script already writes `DISPATCH <id> —
+# scope: …` to the notes log and scripts/handoff already records the release,
+# so the live claims are derivable from the log: an issue whose last event is a
+# DISPATCH holds its scope, a HANDOFF releases it, and a claim by the id being
+# dispatched now is not a claim against this agent. Unreachable tracker degrades
+# to "unavailable" and the context file tells the agent to treat the advisory
+# list as hard — an unreadable claim log is not an empty one.
+#
+# COLLISION DETECTION STAYS AT THE LAND STEP. `handoff --lift` compares what the
+# worker changed against the recorded denylist and refuses a claimed file just
+# as hard as it used to refuse an out-of-allowlist one; a file outside --files
+# that nobody claimed is now reported for the lander to read, not refused.
+#
+# IT ALSO WRITES THE AGENT'S CONTEXT FILE (i-a-dispatched-agent-cannot-read-the-tracker-its).
+# Everything this script already knew was printed to the DISPATCHER's terminal
+# and reached the agent only if a human retyped it. Measured over 224 subagent
+# transcripts / 152 worktree agents: 12 of 152 (8%) ever opened .claude/CLAUDE.md
+# — 15 of the 40 whose brief said to read it — while 67 of the 70 told to write
+# HANDOFF.md did (96%) and ~0 of the 82 not told did. Compliance tracks what the
+# brief PASTES, not what it points at. 60 of 152 reached for planning-docs/ or
+# scripts/tracker anyway: 322 calls, 49 hard failures. One run burned ~75k tokens
+# on work that had already landed, because nobody checked git log for the id.
+# So the issue JSON, the carry-forward lines, `git log --grep`, the scope, the
+# brief and .claude/CLAUDE.md verbatim are now WRITTEN to a file, and the brief
+# block's first line is the absolute path to it.
+#
+# WHY baseRef IS "head" AND WHY THAT IS SAFE NOW. It was "fresh" (origin/main)
+# because "head" resolves against whatever repo the session's cwd belongs to,
+# and sessions kept drifting into the nested planning-docs repo — every dispatch
+# then died with `fatal: invalid reference: <a planning-docs SHA>`. Both halves
+# of that drift are now mechanically closed: scripts/tracker runs in a subshell
+# so the cwd cannot move, and check 1 below refuses a non-root cwd outright.
+# With "fresh", every dispatch required a push first, which serialised landing
+# across concurrent sessions for no safety benefit — agents are isolated by
+# their worktree, not by their base commit.
+#
+# --anyway skips check 3 only (the git-log hits are printed regardless); checks
+# 1 and 2 have no override, because there is no correct dispatch from a wrong
+# cwd or over your own uncommitted edits.
+set -e
+
+usage() { echo "usage: scripts/dispatch <issue-id> --files \"<paths>\" --brief \"<text>\" [--anyway] [--dry-run]" >&2; exit 2; }
+
+id=""; files=""; brief=""; anyway=0; dry=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --files) files="$2"; shift 2 ;;
+    --brief) brief="$2"; shift 2 ;;
+    --anyway) anyway=1; shift ;;
+    # Run every check and print the brief block, but write nothing to the log.
+    # Added after a smoke test of this script left a phantom `DISPATCH
+    # i-probe-smoke` in the shared append-only log — a note that can be
+    # annotated but never removed, and that reads to any later session as an
+    # agent someone forgot to land. scripts/handoff already had --dry-run for
+    # exactly this reason; the script that writes FIRST did not.
+    --dry-run) dry=1; shift ;;
+    -*) usage ;;
+    *) [ -n "$id" ] && usage; id="$1"; shift ;;
+  esac
+done
+[ -n "$id" ] && [ -n "$files" ] && [ -n "$brief" ] || usage
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ "$(pwd -P)" != "$root" ]; then
+  echo "dispatch: REFUSED — cwd is $(pwd -P), not the repo root ($root)." >&2
+  echo "  Worktrees are created in the repo the dispatching session's cwd is in." >&2
+  echo "  Run:  cd $root" >&2
+  exit 1
+fi
+
+# The handoff gate is a commit-msg hook and nothing else — this project's agents
+# are dispatched, landed and verified locally, so there is no CI copy to fall
+# back on (scripts/handoff-guard.sh explains why one is neither wanted nor
+# possible). That makes an uninstalled hook a silent total loss of the gate, in a
+# checkout that looks identical to one that has it. Checked HERE because dispatch
+# is the last moment before the only activity the gate protects, and because
+# commit-msg is NEWER than pre-commit: a session that installed hooks before
+# 2026-08-09 has the changelog hook, no handoff hook, and no reason to suspect it.
+#
+# BOTH halves are checked, because either one missing kills the gate silently
+# and the first version of this check only tested the shim. The installed shim
+# execs "$(git rev-parse --show-toplevel)/scripts/git-hooks/commit-msg" and
+# self-disables with `[ -x "$HOOK" ] || exit 0` when that file is absent. The
+# hooks directory is SHARED by every worktree of this repo, but the file the
+# shim resolves is per-worktree — so in a worktree whose checkout predates the
+# hook (verified in browser-wrap-bridge on feat/bridge-v1) the shim is present,
+# the gate is dead, and checking only the shim reports OK.
+hooks=$(git rev-parse --git-path hooks)
+case "$hooks" in /*) ;; *) hooks="$root/$hooks" ;; esac
+if [ ! -x "$hooks/commit-msg" ]; then
+  echo "dispatch: REFUSED — no commit-msg shim in $hooks." >&2
+  echo "  Without it nothing requires a handoff when you land this agent, and the" >&2
+  echo "  only record of what it found and did not fix dies with its worktree." >&2
+  echo "  Run:  npm run hooks:install" >&2
+  exit 1
+fi
+if [ ! -x "$root/scripts/git-hooks/commit-msg" ]; then
+  echo "dispatch: REFUSED — the commit-msg shim is installed but this checkout has" >&2
+  echo "  no scripts/git-hooks/commit-msg, so the shim exits 0 and the gate is dead." >&2
+  echo "  $root is on a commit older than the hook." >&2
+  echo "  Merge or rebase onto a commit that has it, or land this work from the" >&2
+  echo "  main checkout instead." >&2
+  exit 1
+fi
+
+branch=$(git branch --show-current)
+head=$(git rev-parse --short HEAD)
+echo "dispatch: agent will branch from $branch @ $head (baseRef: head)."
+
+# Uncommitted edits are invisible inside the worktree. Only a collision with the
+# agent's OWN declared scope is a hazard, so that is all this refuses on — a
+# dirty tree elsewhere is normal and none of this agent's business.
+dirty=$(git status --porcelain 2>/dev/null | awk '{print $NF}')
+clash=""
+for f in $files; do
+  # Strip the annotations a scope line carries: "path/(own)", "path/*.md", "dir/".
+  pat=$(echo "$f" | sed 's|(own)$||; s|/\*.*$||; s|/$||')
+  [ -n "$pat" ] || continue
+  for d in $dirty; do
+    case "$d" in $pat|$pat/*) clash="$clash $d" ;; esac
+  done
+done
+if [ -n "$clash" ]; then
+  echo "dispatch: REFUSED — you have uncommitted edits inside the agent's own file scope:" >&2
+  for c in $clash; do echo "    $c" >&2; done
+  echo "  The agent inherits committed HEAD, so it would work from the old version" >&2
+  echo "  and its result would silently drop these edits. Commit them first." >&2
+  exit 1
+fi
+
+hits=$(git log --oneline --grep="$id" | head -5)
+if [ -n "$hits" ]; then
+  echo "dispatch: git log already mentions $id:" >&2
+  echo "$hits" >&2
+  if [ "$anyway" != "1" ]; then
+    echo "  Audit what landed before briefing (scripts/tracker show $id), then rerun with --anyway." >&2
+    exit 1
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# THE DENYLIST — what OTHER agents are holding right now
+# ---------------------------------------------------------------------------
+# Derived from the shared notes log, which already carries both halves: this
+# script writes `DISPATCH <id> — scope: …` and scripts/handoff writes
+# `HANDOFF <id> — … | scope released: …`. Last event per id wins, so a
+# re-dispatched issue reclaims its files and a handed-off one releases them.
+# No new state, no registry file, nothing to keep in sync.
+#
+# A CLAIM EXPIRES AFTER 24h (DISPATCH_CLAIM_HOURS), and changelog.d/ is never
+# claimable. Both were found by running the parser against the REAL notes log
+# rather than a fixture: it returned nine live claims, four of them smoke tests
+# of this script that can never be handed off, and two of them listing
+# changelog.d/ — which every agent writes its own file in, by design. See the
+# python below for the reasoning; the fixtures could not have shown either.
+#
+# THREE STATES, and they are not the same. A real list is enforced at lift; an
+# empty list (`(none)`) means the log was read and nobody holds anything, so
+# every file is the agent's; `(unavailable)` means the log could not be read at
+# all, and that degrades to the OLD allowlist behaviour on both ends — the
+# context file tells the agent to treat --files as hard, and handoff falls back
+# to refusing anything outside it. An unreadable claim log is not an empty one,
+# and the fail-open version of this would hand every concurrent agent a blank
+# cheque on the exact round the tracker is down.
+claims=""; deny=""; claim_lines=""; deny_ok=0
+if claims_raw=$("$root/scripts/tracker" notes 2>/dev/null); then
+  deny_ok=1
+  claims=$(printf '%s\n' "$claims_raw" | python3 -c '
+import datetime, os, re, sys
+me = sys.argv[1]
+
+# A CLAIM EXPIRES. The notes log is append-only with no delete, so a dispatch
+# that was never handed off holds its files forever — and running this parser
+# against the real log the day it was written found NINE live claims, four of
+# them (i-probe, i-probe-smoke, i-scratch-dispatch-probe, i-scratch-claim-probe)
+# smoke tests of this very script, which can never be handed off. That is the
+# incident --dry-run was added for, seen from the other end. Without a window
+# the denylist only grows, and its end state is an exclusion set that denies
+# everything — the allowlist again, with worse ergonomics. A round is hours; 24
+# is generous.
+try:
+    hours = float(os.environ.get("DISPATCH_CLAIM_HOURS", "24"))
+except ValueError:
+    hours = 24.0
+cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+
+# PATHS THAT CANNOT BE CONTENDED, so a claim on one is not a wall. changelog.d/
+# is one file per entry BY DESIGN — precisely so two agents writing entries
+# touch two different files — and every agent writes its own. Denying it would
+# reproduce the 2026-08-26 failure this whole inversion exists to fix, through
+# the other door: on the real log that day two live claims listed changelog.d/
+# and would have walled off every incoming agent from its own fragment.
+NEVER_CLAIMED = ("changelog.d",)
+
+def ts_of(line):
+    m = re.match(r"\s*(\d{4}-\d\d-\d\d)T(\d\d:\d\d:\d\d)", line)
+    if not m:
+        return None
+    try:
+        return datetime.datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+def strip(p):
+    p = re.sub(r"\(own\)$", "", p)
+    p = re.sub(r"/\*.*$", "", p)
+    return p.rstrip("/")
+
+# THE VERB IS ANCHORED TO THE NOTE PREFIX, NOT SEARCHED FOR ANYWHERE IN THE
+# LINE, and both verbs are read from ONE match so their order cannot matter.
+# A free-text search found DISPATCH inside a HANDOFF note and the mistake was
+# not theoretical - it shipped and was caught by using it, 40 minutes after it
+# landed. The worker on i-dispatch-declares-what-is-claimed-by-others-not
+# documented the note format in its own HANDOFF.md assumed: line:
+#     "<ts> [<id>]  DISPATCH <id> - scope: ... - brief: ..."
+# --verified lifted that text into the note verbatim. The old loop matched the
+# DISPATCH branch inside that HANDOFF line, hit `continue`, and never reached
+# the release - so BOTH issues landed that day went on holding scripts/dispatch
+# and scripts/handoff after being handed off, and a phantom claim was registered
+# under the literal id "<id>". A note that describes the log format must not be
+# read as an entry in it.
+VERB = re.compile(r"(?:^|\]\s+|note:\s+)(DISPATCH|HANDOFF)\s+(\S+)\s+—")
+
+live, order = {}, []
+for line in sys.stdin:
+    m = VERB.search(line)
+    if not m:
+        continue
+    verb, iid = m.group(1), m.group(2)
+    if verb == "HANDOFF":
+        live.pop(iid, None)
+        continue
+    # From the end of the ID group, not the end of the whole match: VERB
+    # consumes the em dash, so searching the remainder for one finds nothing.
+    scope_m = re.search(r"—\s+scope:\s*(.*?)\s+—\s+brief:", line[m.end(2):])
+    if not scope_m:
+        continue
+    when = ts_of(line)
+    # An unparseable timestamp counts as live: failing safe here costs a
+    # false wall, failing open costs a clobber.
+    if when is not None and when < cutoff:
+        live.pop(iid, None)
+        continue
+    live[iid] = scope_m.group(1).strip()
+    if iid not in order:
+        order.append(iid)
+
+paths = []
+for iid in order:
+    # A claim by the id being dispatched now is this agent re-taking its own
+    # files, not a wall against it.
+    if iid == me or iid not in live:
+        continue
+    # SPLIT ON COMMAS TOO. The log holds both separators: the usage line for
+    # this script shows spaces, but a caller who wrote --files "a.ts,b.ts"
+    # recorded one comma-joined token, and 4 of the 8 most recent scope lines
+    # are that shape. Splitting on whitespace alone made the whole blob ONE
+    # path: NEVER_CLAIMED missed the changelog.d/ inside it (walling every
+    # agent off its own fragment - the 2026-08-26 incident this inversion
+    # exists to prevent, live on the real log), and is_claimed could never
+    # match a comma-joined token against a real path, so the claim silently
+    # protected nothing.
+    keep = [p for p in re.split(r"[\s,]+", live[iid]) if p and strip(p) not in NEVER_CLAIMED]
+    if not keep:
+        continue
+    print("CLAIM\t%s\t%s" % (iid, " ".join(keep)))
+    for p in keep:
+        if p not in paths:
+            paths.append(p)
+print("PATHS\t%s" % " ".join(paths))
+' "$id" 2>/dev/null || true)
+  deny=$(printf '%s\n' "$claims" | awk -F'\t' '$1=="PATHS"{print $2}' || true)
+  # One line per claiming issue, so the agent can see WHO holds a file and the
+  # lander can go ask them. A flat path list alone reads as an arbitrary wall.
+  claim_lines=$(printf '%s\n' "$claims" \
+    | awk -F'\t' '$1=="CLAIM"{printf "    %s\n        (claimed by %s)\n", $3, $2}' || true)
+fi
+
+if [ "$deny_ok" -eq 0 ]; then deny_field="(unavailable)"
+elif [ -z "$deny" ]; then deny_field="(none)"
+else deny_field="$deny"; fi
+
+# --files overlapping a live claim is dispatch rule 3 — two issues in one file
+# serialize, they do not run concurrently. Printed, not refused: re-dispatching
+# an issue over its own predecessor's files is legitimate, and the lander is the
+# one who can tell that from a genuine collision. The lift-side refusal is the
+# mechanism; this is the early warning.
+overlap=""
+for f in $files; do
+  pat=$(echo "$f" | sed 's|(own)$||; s|/\*.*$||; s|/$||')
+  [ -n "$pat" ] || continue
+  for d in $deny; do
+    case "$d" in $pat|$pat/*) overlap="$overlap $d" ;; esac
+    case "$pat" in $d|$d/*) overlap="$overlap $d" ;; esac
+  done
+done
+if [ -n "$overlap" ]; then
+  echo "dispatch: WARNING — your --files overlaps a LIVE claim by another issue:" >&2
+  for o in $overlap; do echo "    $o" >&2; done
+  echo "  Two issues touching one file serialize; they do not run concurrently." >&2
+  echo "  Land or hand off the other agent first, or narrow this one." >&2
+  echo "  scripts/handoff --lift will refuse these files when this agent returns." >&2
+fi
+
+# THE INTERROGATION FIELD (i-an-agent-that-stops-is-interrogated-before-the).
+# Written into the note, BEFORE the denylist field so the existing parsers that
+# read `— denylist: …` to end-of-line and `— scope: … — brief: …` are unchanged.
+#
+# It is what makes the gate in scripts/handoff enforce a contract the agent was
+# actually given rather than one invented at landing time: a note carrying this
+# field is an agent that was told, in its own brief, that it would be questioned
+# before its work was lifted. Notes without it — every note written before this
+# landed, and hand-done work — are reported and never refused.
+interrogation_field="required"
+
+if [ "$dry" -eq 1 ]; then
+  echo "dispatch: --dry-run — all checks passed, nothing recorded. Would log:"
+  echo "  DISPATCH $id — scope: $files — brief: $brief — interrogation: $interrogation_field — denylist: $deny_field"
+else
+  "$root/scripts/tracker" remember "DISPATCH $id — scope: $files — brief: $brief — interrogation: $interrogation_field — denylist: $deny_field" --issue "$id" >/dev/null
+  # CLAIM THE ISSUE IN THE SAME ACT THAT RECORDS THE BRIEF
+  # (i-scripts-dispatch-does-not-claim). Recording a DISPATCH note left status
+  # at `notstarted`, so a second session running `issues.py orient` saw an
+  # issue with a live agent on it as free work. That happened: two issues sat
+  # notstarted while agents were editing their files. The query half was fixed
+  # first (is_ready excludes progress; orient prints IN PROGRESS with a claim
+  # age so a stale claim cannot hide dead work) — this is the write half.
+  #
+  # Only notstarted is claimed. A `done` issue being re-dispatched is a
+  # correction and its status is not ours to reopen silently; `progress` is
+  # already claimed. Never fatal: the brief is recorded either way, and losing
+  # the dispatch over a tracker hiccup would be worse than an unclaimed issue.
+  # Parse the FIRST balanced JSON object, not everything up to the last brace.
+  # `tracker show` prints the issue JSON and then its notes; rindex("}") found a
+  # brace inside a NOTE, json.loads raised, the shell swallowed it, and the claim
+  # silently did not happen — i-network-tools-answer-inside-cont was dispatched
+  # on 2026-08-17 and still read `notstarted` to every other session. The old
+  # form only worked for an issue with no notes yet, which is why it looked fine.
+  cur=$("$root/scripts/tracker" show "$id" 2>/dev/null \
+    | python3 -c 'import json,sys
+s=sys.stdin.read(); d=json.JSONDecoder()
+i=s.find("{")
+print(d.raw_decode(s[i:])[0].get("status","") if i>=0 else "")' 2>/dev/null || true)
+  if [ "$cur" = "notstarted" ]; then
+    if "$root/scripts/tracker" set "$id" status=progress >/dev/null 2>&1; then
+      echo "dispatch: $id claimed — status notstarted → progress."
+    else
+      echo "dispatch: WARNING — could not claim $id; it still reads '$cur' to other sessions." >&2
+    fi
+  elif [ -n "$cur" ] && [ "$cur" != "progress" ]; then
+    echo "dispatch: NOTE — $id is '$cur', not claiming it. Re-dispatching finished work is a correction; set the status yourself if that is what you mean." >&2
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# THE AGENT'S CONTEXT FILE
+# ---------------------------------------------------------------------------
+# WHY A FILE AND NOT MORE TERMINAL OUTPUT. planning-docs/ is a nested, gitignored
+# repo, so it does not exist inside a worktree: an agent cannot read issues.json,
+# its own issue text, the notes log or any PRD (scripts/tracker exits 2 there and
+# says so). Subagents are also NOT given .claude/CLAUDE.md — it is not in their
+# system prompt or first message, and 140 of 152 measured worktree agents never
+# opened it. The one channel that reliably lands is what the brief pastes, so
+# everything is written here and the brief's first line is this file's path.
+#
+# WHY PER-ISSUE AND NOT A SINGLE .dispatch-context.md AT THE ROOT. A dispatch
+# round briefs N agents back to back from one checkout; a fixed filename means
+# agent A's file is overwritten by agent B's dispatch before A ever reads it,
+# and A then reads B's issue, B's scope and B's brief as its own. That is worse
+# than absent, because nothing looks wrong. One file per issue cannot collide;
+# re-dispatching the same issue overwrites its own file, which is correct.
+#
+# WHY IT LIVES IN THE MAIN CHECKOUT. It is untracked, and `git worktree add`
+# materialises a commit — untracked files are NOT carried in. Verified: after
+# writing it, `git worktree add` produced a tree with no .dispatch-context/ in
+# it. So the path printed in the brief is ABSOLUTE and points back at this
+# checkout, which the agent can read (its worktree lives under it).
+#
+# NOTHING HERE IS FATAL. Same principle as the claim step: the brief is recorded
+# either way. A section that could not be gathered says so, and says why.
+ctxdir="$root/.dispatch-context"
+ctx="$ctxdir/$id.md"
+
+# The three carry-forward fields an incoming agent can act on, lifted from the
+# HANDOFF notes earlier agents left on this issue. verified/scope-released are
+# the lander's bookkeeping, not the next agent's context, so they are left out.
+# Computed here because it now feeds BOTH the context file and the paste block.
+carry=$("$root/scripts/tracker" notes --issue "$id" 2>/dev/null | python3 -c '
+import sys, re
+KEEP = ("next-agent", "found-not-fixed", "assumed")
+out = []
+for line in sys.stdin:
+    if "HANDOFF " not in line:
+        continue
+    for part in line.split(" | ")[1:]:
+        part = part.strip()
+        k = part.split(":", 1)[0].strip().lower()
+        if k in KEEP and len(part) > len(k) + 1:
+            out.append((k, part.split(":", 1)[1].strip()))
+for k, v in out:
+    v = re.sub(r"\s+", " ", v)
+    print(f"    - [{k}] {v}")
+' 2>/dev/null || true)
+
+if [ "$dry" -eq 0 ]; then
+  issue_text=$("$root/scripts/tracker" show "$id" 2>&1) || issue_text="UNAVAILABLE — scripts/tracker could not be reached. It said:
+
+$issue_text
+
+planning-docs/ is a NESTED, GITIGNORED repo. It is absent from every agent
+worktree and from any checkout that has not cloned it, so the tracker exits 2
+there. Ask the dispatching session for the issue text."
+
+  # Not capped: an id with a long history is exactly the case the audit is for.
+  landed=$(git log --oneline --grep="$id" || true)
+  [ -n "$landed" ] || landed="(nothing — git log --oneline --grep=$id is empty; no commit in this checkout names this issue)"
+
+  carry_text="$carry"
+  [ -n "$carry_text" ] || carry_text="(nothing recorded — no earlier HANDOFF note on this issue)"
+
+  mkdir -p "$ctxdir"
+  {
+    echo "# Dispatch context — $id"
+    echo
+    echo "Written by scripts/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $root ($branch @ $head)."
+    echo "READ THIS BEFORE YOU DO ANYTHING ELSE. Your worktree does not contain"
+    echo "planning-docs/, so the tracker, this issue's text and the shared notes log"
+    echo "are unreachable from it — scripts/tracker exits 2 in there. Everything you"
+    echo "cannot look up for yourself was captured here at dispatch time."
+    echo
+    echo "## Files you must NOT write — CLAIMED by another agent right now"
+    echo
+    if [ "$deny_ok" -eq 0 ]; then
+      echo "    UNAVAILABLE — scripts/tracker could not be reached, so the live-claim"
+      echo "    log could not be read. Treat the advisory list below as a HARD"
+      echo "    boundary instead: an unreadable claim log is not an empty one."
+    elif [ -z "$deny" ]; then
+      echo "    (none — no other issue holds a live claim this round)"
+      echo
+      echo "Every file in this repo is yours to write if the fix genuinely needs it."
+    else
+      echo "$claim_lines"
+      echo
+      echo "Every OTHER file in this repo is yours to write if the fix genuinely"
+      echo "needs it. Say in HANDOFF.md's changed: line what you took beyond the"
+      echo "advisory list below, so the lander reads that diff on purpose."
+    fi
+    echo
+    echo "Derived from the shared notes log, not from a guess: an issue whose last"
+    echo "event is a DISPATCH holds its scope, a HANDOFF releases it, and a claim"
+    echo "by this issue's own id is not a claim against you."
+    echo
+    echo "### If your fix needs a CLAIMED file: STOP AND REPORT. This is a refusal,"
+    echo "### not a preference."
+    echo
+    echo "Both recorded failures of this rule were a quiet HALF-CHANGE, not a"
+    echo "refusal. An agent that finds it needs a claimed file has three options —"
+    echo "write it anyway and risk clobbering a concurrent agent, ship the half it"
+    echo "was allowed to write, or stop — and the record shows it takes the middle"
+    echo "one every time, and reports success:"
+    echo
+    echo "  i-commune-s-failed-controller-turn  shipped a Go writer emitting an"
+    echo "      event kind whose declaration in src/shared/types.ts it could not"
+    echo "      add. Both halves individually green, the wire format broken."
+    echo "  i-dist-version-stamp                shipped a janusVersion wire field"
+    echo "      with no producer, because cmd/janus-bridge was outside its scope."
+    echo "      'daemon:' read unstamped on every build."
+    echo
+    echo "Neither agent said it was blocked. The cost landed on the lander, who is"
+    echo "the one context that can see both halves — which is exactly the"
+    echo "serialisation the dispatch model exists to avoid. So:"
+    echo
+    echo "  1. STOP at the boundary. Do not write the claimed file, and do not"
+    echo "     ship the half of the change that does not work without it."
+    echo "  2. Leave the in-scope work UNCOMMITTED AND COHERENT — it must build"
+    echo "     and test on its own. If it cannot, say so in changed: rather than"
+    echo "     leaving a green half that is wrong on the wire."
+    echo "  3. Put the blocked half in HANDOFF.md's found: line, naming the EXACT"
+    echo "     file and what it must contain — the field, the event kind, the"
+    echo "     declaration. 'needed a file outside scope' is not enough for the"
+    echo "     lander to finish it."
+    echo "  4. Say the same in your final report, in the same words."
+    echo
+    echo "WHAT ENFORCES THIS: nothing mechanical, and pretending otherwise would be"
+    echo "worse than saying it. Nothing can detect a half-change from outside — the"
+    echo "Go half and the TS half are each individually green, which is the whole"
+    echo "failure. The mechanism is this wording plus the lander reading your"
+    echo "found: line, and scripts/handoff refuses a record with no --found and no"
+    echo "--next unless the lander passes --clean as a positive claim."
+    echo
+    echo "## What the dispatcher expected you to touch — ADVISORY, not a boundary"
+    echo
+    echo "    $files"
+    echo
+    echo "This is a prediction made before anyone read the code, by the party that"
+    echo "has not read it. It is recorded for the audit trail and it is NOT the"
+    echo "limit of what you may write. The enforced limit is the claimed list above."
+    echo
+    echo "## Your brief"
+    echo
+    echo "    $brief"
+    echo
+    echo "## You will be QUESTIONED before your work is lifted"
+    echo
+    echo "When you stop, you are still resumable and you still hold context nobody"
+    echo "else has. The lander will put these questions to you and record your"
+    echo "answers on the issue; scripts/handoff refuses to record the landing until"
+    echo "it has them. Gather them AS YOU WORK — they are much harder to"
+    echo "reconstruct afterwards, and a wrong answer is worse than a blank one."
+    echo
+    # ASKED OF scripts/handoff, not restated here. Two copies of a question set
+    # drift, and the copy the agent is shown is the one that would rot silently
+    # — handoff owns the questions because handoff is what refuses without them.
+    qs=$("$root/scripts/handoff" "$id" --questions 2>/dev/null || true)
+    if [ -n "$qs" ]; then echo "$qs"
+    else echo "  (unavailable — scripts/handoff --questions could not be read here)"; fi
+    echo
+    echo "None of these can be answered with \"no\", and that is deliberate. Both"
+    echo "recorded half-changes were reported as successes by the agent that shipped"
+    echo "them, so \"are you complete?\" is worse than asking nothing. At least one"
+    echo "of your answers must be substantive — \"nothing\" across the whole set is"
+    echo "refused, so silence has to be a claim you made rather than an absence."
+    echo
+    echo "## The issue (scripts/tracker show $id — JSON, then its notes)"
+    echo
+    echo "$issue_text"
+    echo
+    echo "## What already landed for this issue (git log --oneline --grep=$id)"
+    echo
+    echo "IF THIS IS NON-EMPTY, AUDIT IT BEFORE WRITING CODE. An issue whose desc has"
+    echo "gone stale reads as unstarted work; one run burned ~75k tokens reimplementing"
+    echo "a fix that was already in the log under its own id."
+    echo
+    echo "$landed"
+    echo
+    echo "## What earlier work on this issue left you"
+    echo
+    echo "$carry_text"
+    echo
+    echo "## The repo's working rules — .claude/CLAUDE.md, VERBATIM"
+    echo
+    echo "You are NOT given this file automatically: it is not in your system prompt"
+    echo "and not in your first message. It is inlined whole rather than summarised,"
+    echo "because a hand-picked subset drifts from the real file and nothing notices."
+    echo
+    echo "===== BEGIN .claude/CLAUDE.md ====="
+    if [ -f "$root/.claude/CLAUDE.md" ]; then
+      cat "$root/.claude/CLAUDE.md"
+    else
+      echo "UNAVAILABLE — $root/.claude/CLAUDE.md does not exist in this checkout."
+    fi
+    echo "===== END .claude/CLAUDE.md ====="
+    echo
+    echo "## Before you finish: write HANDOFF.md at the root of YOUR worktree"
+    echo
+    echo "Exactly these four keys, ONE LINE each, no prose, under six lines total:"
+    echo
+    echo "    changed: <what you changed>"
+    echo "    found:   <seen but not fixed, out of scope — or: none>"
+    echo "    assumed: <what you took as given — or: none>"
+    echo "    next:    <what the next agent needs to know — or: none>"
+    echo
+    echo "Do not commit it; it is gitignored. found and next are why the file exists"
+    echo "— your diff already says what changed. Do not commit, push or merge anything"
+    echo "at all: the dispatching session lifts your worktree and lands it."
+  } > "$ctx"
+  echo "dispatch: context written — $ctx"
+fi
+
+# The issue's own note thread, printed at the moment a brief is being written.
+# `notes --issue` has existed all along and nothing ever put it in front of the
+# person who needed it, so a prior agent's findings on the same issue stayed
+# unread by the next one. Excludes the DISPATCH line just written.
+prior=$("$root/scripts/tracker" notes --issue "$id" 2>/dev/null | grep -v "brief: $brief" || true)
+if [ -n "$prior" ]; then
+  echo
+  echo "PRIOR NOTES ON $id — read before briefing; fold anything load-bearing into the brief:"
+  echo "$prior" | sed 's/^/  /'
+fi
+
+echo
+if [ "$dry" -eq 1 ]; then
+  echo "dispatch: OK (dry run) — nothing recorded on $id."
+else
+  echo "dispatch: OK — brief + scope recorded on $id."
+fi
+echo "Dispatch as subagent_type: isolated-worker with:"
+echo "  issue: $id"
+echo "  advisory --files: $files"
+echo "  ENFORCED denylist: $deny_field"
+echo "  brief: $brief"
+echo "Remind the agent: npm run e2e (never npm run build); changelog.d fragment"
+echo "per commit; leave edits uncommitted. node_modules and planning-docs are"
+echo "linked into a new worktree by scripts/git-hooks/post-checkout, so the agent"
+echo "no longer has to be told to do it by hand. Hooks are PER-CLONE: if nobody"
+echo "ran \`npm run hooks:install\` here, the links are absent and"
+echo "scripts/preflight-tree.mjs prints the ln -s to run."
+echo
+# Pasted verbatim into the agent's brief. Four keys, one line each, and the
+# instruction says so twice — an agent given a free-form "write up what you
+# found" returns prose the lander then has to read and compress, which is the
+# work this was meant to remove. The file is gitignored, so the agent cannot
+# accidentally add it to the tree.
+echo "PASTE INTO THE AGENT'S BRIEF:"
+# FIRST LINE OF THE PASTE BLOCK, and the load-bearing one. Measured across 152
+# worktree agents: a brief that PASTES an instruction gets ~96% compliance, a
+# brief that POINTS AT A FILE gets 38%, and a file nobody mentions gets 8%. So
+# the context file is only worth writing if its path is pasted — and it must be
+# the ABSOLUTE path, because the file lives in this checkout and untracked files
+# are not carried into a worktree.
+echo "  FIRST, before anything else: read this file, in full, with one Read:"
+echo "    $ctx"
+echo "  It is your issue text, what already landed under this id, your scope and"
+echo "  brief, what earlier agents left you, and this repo's working rules"
+echo "  (.claude/CLAUDE.md — you are NOT given it automatically). It is in the MAIN"
+echo "  checkout, NOT in your worktree; the path above is absolute, use it as-is."
+if [ "$dry" -eq 1 ]; then
+  echo "  (--dry-run: that file was NOT written. Rerun without --dry-run.)"
+fi
+# The cwd check, stated to the AGENT. This script already refuses a non-root
+# cwd, but it runs when the brief is written and the Agent call happens after —
+# a `cd` in between still misroutes the worktree, and on 2026-08-17 that took
+# out three agents at once (worktrees of the nested planning-docs repo: no
+# src/, no janus-bridge/, no package.json). Nothing in the tool chain can catch
+# that on the way in, so the agent checks on the way out.
+#
+# IT ASKED FOR --show-toplevel UNTIL 2026-08-27, AND NO AGENT COULD EVER PASS
+# IT (i-the-dispatch-brief-tells-every-agent-to-run-a). The old text was: run
+# `git rev-parse --show-toplevel`, it MUST end in /browser-wrap and MUST NOT
+# contain /planning-docs, if it does STOP and do not write to the shared
+# checkout. Every dispatched agent is in a WORKTREE, whose toplevel is
+# .claude/worktrees/agent-<id> — it can never end in /browser-wrap, so the
+# first half was false for every reader. The two halves also contradicted each
+# other: the path ending in /browser-wrap IS the shared checkout, so read
+# literally it said pass by being in the shared checkout, then stop because you
+# are in the shared checkout. A literal agent either halts on a correct setup
+# or cds INTO the shared tree to comply — which is the 2026-08-17 disaster this
+# check exists to prevent. Reported by the worker on
+# i-dispatch-declares-what-is-claimed-by-others-not (which reasoned past it by
+# substituting --git-common-dir) and confirmed by a verifier sweep from inside
+# its own worktree.
+#
+# --git-common-dir is the check that answers the question actually being asked:
+# WHICH REPO IS THIS A WORKTREE OF. From a linked worktree it resolves to the
+# MAIN repo's .git as an ABSOLUTE path (probed: a worktree of a repo at
+# /tmp/dispatch-ctx-X reports /tmp/dispatch-ctx-X/.git), so it carries the
+# repo's own path and the /planning-docs refusal keeps working verbatim. From a
+# non-worktree checkout at its root it prints a bare relative `.git`, which is
+# why the wording calls that out as its own reportable state rather than
+# leaving the agent to interpret it.
+#
+# WHAT ENFORCES IT: tests/core/dispatch-context.test.ts extracts this command
+# from the printed paste block, RUNS it in a real worktree, and asserts the
+# result satisfies both MUSTs — and asserts in the same place that the old
+# --show-toplevel check does not. A prose instruction that nothing executes is
+# how the broken one survived from the day it was added.
+# The denylist, IN the paste block. The measured numbers above are the whole
+# argument: pasted text lands at ~96%, a pointed-at file at 38%. The context
+# file carries the full stop-and-report protocol; this is the one line that has
+# to survive a dispatcher who pastes and nothing else.
+echo "  Your scope is a DENYLIST, not an allowlist. These files are claimed by"
+echo "  another agent RIGHT NOW and you must NOT write them: $deny_field"
+echo "  Everything else is yours if the fix needs it. If your fix needs a CLAIMED"
+echo "  file: STOP — do not write it, and do NOT ship the half you were allowed"
+echo "  to write. Leave the in-scope work coherent and name the exact file and"
+echo "  what it must contain in HANDOFF.md's found: line. The context file above"
+echo "  has the full protocol and says what does and does not enforce it."
+echo "  SECOND, before you write anything: run \`git rev-parse --git-common-dir\`."
+echo "  It prints the MAIN repo's .git — which repo your worktree branched from."
+echo "  It MUST contain /$(basename "$root")/ and MUST NOT contain /planning-docs."
+echo "  A bare relative \`.git\` means you are not in a worktree at all: report that."
+echo "  If any of those is wrong, STOP and report it. NEVER cd to make it pass and"
+echo "  never write to the shared checkout — a cd is the failure, not the fix."
+echo "  Do NOT use --show-toplevel here: yours is the worktree path, so it can"
+echo "  never end in /$(basename "$root") and tells you nothing about the repo."
+# THE SCRATCHPAD, IN THE PASTE BLOCK RATHER THAN ONLY IN A SKILL
+# (i-concurrent-agents-share-one-scratchpad-and). The worker-facing half of that
+# fix could not be written when it landed, because this file was claimed by
+# another agent that round; its own HANDOFF found: line asked for these lines.
+# It matters where it goes: the same measurement that shapes the rest of this
+# block puts a pasted rule at ~96% and one sitting in CLAUDE.md at 7-8%, and a
+# scratchpad the worker never hears about is the shared one it was already using.
+echo "  YOUR PRIVATE SCRATCHPAD is \`.scratch\` at the root of your worktree —"
+echo "  mutators, probe harnesses, captured suite output go THERE. The session"
+echo "  scratchpad is shared with every agent running beside you: on 2026-08-27"
+echo "  two of them wrote m1/m2/m3 mutators into one directory nine minutes"
+echo "  apart and missed each other only on the suffix. If a tool refuses to"
+echo "  write through .scratch, say so in HANDOFF.md — do not fall back to the"
+echo "  shared scratchpad silently."
+# Earlier agents' carry-forward lines, INSIDE the paste block rather than above
+# it. The agent cannot look any of this up for itself: planning-docs/ is a
+# nested repo and is gitignored, so it does not exist in a worktree and neither
+# scripts/tracker nor the notes log is reachable from there. Whatever is not
+# pasted is, for the agent, unwritten.
+#
+# Until now this printed only as "PRIOR NOTES … fold anything load-bearing into
+# the brief" — advice, above the block, with nothing enforcing the fold. It was
+# the one link in the chain with no mechanism behind it. Now the three fields an
+# incoming agent can act on (next-agent, found-not-fixed, assumed) are inside
+# the text that gets pasted, and verified/scope-released are left out because
+# they are the lander's bookkeeping, not the next agent's context.
+if [ -n "$carry" ]; then
+  echo "  WHAT EARLIER WORK ON THIS ISSUE LEFT YOU (you cannot look this up —"
+  echo "  the tracker does not exist inside your worktree):"
+  echo "$carry"
+  echo
+fi
+echo "  Before you finish, write HANDOFF.md at the root of your worktree."
+echo "  Exactly these four keys, ONE LINE each, no prose:"
+echo "    changed: <what you changed>"
+echo "    found:   <seen but not fixed, out of scope — or: none>"
+echo "    assumed: <what you took as given — or: none>"
+echo "    next:    <what the next agent needs to know — or: none>"
+echo "  Keep it under six lines total. Do not commit it; it is gitignored."
+# IN THE PASTE BLOCK, not only in the context file, for the measured reason: 96%
+# compliance for what a brief pastes against 38% for what it points at. The
+# questions themselves are in the context file; what has to survive a dispatcher
+# who pastes and nothing else is that the questions are COMING, so the agent
+# tracks the answers instead of reconstructing them.
+echo "  AFTER YOU STOP YOU WILL BE QUESTIONED, while you are still resumable, and"
+echo "  your work is not lifted until your answers are recorded. The questions are"
+echo "  adversarial on purpose — what you did NOT run, which of your assertions is"
+echo "  weakest, what you took on trust, what in the brief you skipped, what you"
+echo "  would check next. They are listed in the context file above; note the"
+echo "  answers as you work. \"Nothing\" to every one of them is refused."
+echo
+echo "WHEN YOU LAND IT, before committing:"
+echo "  scripts/handoff $id --interrogate                     # the questions; send them to the LIVE agent"
+echo "  scripts/handoff $id --record-interrogation --answer \"...\"   # what it said"
+echo "  scripts/handoff $id --from <agent-worktree> --lift    # copies the files IN, refusing any that drifted"
+echo "  ...then verify in THIS tree, then:"
+echo "  scripts/handoff $id --from <agent-worktree> --verified \"what YOU re-ran\""
+echo "  (or spell the fields out: --changed \"...\" [--found \"...\"] [--next \"...\"] [--clean])"
+echo "  The commit-msg hook refuses a commit naming $id until that exists."

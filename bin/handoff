@@ -1,0 +1,1064 @@
+#!/bin/sh
+# Post-flight record for a dispatched agent's work — the exit half of
+# scripts/dispatch (i-scripts-handoff-exit-record).
+#
+#   scripts/handoff i-foo \
+#     --changed  "what actually landed" \
+#     --verified "how I re-checked it MYSELF" \
+#     [--found   "seen, not fixed, out of scope"]...   (repeatable) \
+#     [--assumed "what I took as given"]...            (repeatable) \
+#     [--next    "what the next agent needs to know"] \
+#     [--clean]  (required when there is no --found and no --next)
+#
+#   scripts/handoff i-foo --from .claude/worktrees/agent-abc --verified "..."
+#
+#   scripts/handoff i-foo --from .claude/worktrees/agent-abc --lift
+#     Copy the worker's edits into THIS checkout, refusing every file that
+#     moved on main since the worker branched, and every file another issue
+#     was holding when this agent was dispatched — except a held path that
+#     does not exist here at all, which is a new file and cannot be a clobber
+#     (reported, not refused). Records nothing.
+#
+#   scripts/handoff i-foo --interrogate [--ask "one question of your own"]
+#     Print the adversarial question set. Send it to the STILL-RUNNING agent.
+#
+#   scripts/handoff i-foo --record-interrogation --answer "..." (one per question)
+#     Record what it answered. Required before the record step will run.
+#
+# The --from form lifts the agent's own four lines out of <worktree>/HANDOFF.md
+# so the lander edits instead of retyping. --verified is never lifted.
+#
+# WHY THIS EXISTS. scripts/dispatch records the brief going IN. Nothing
+# recorded what came OUT. A landed agent leaves a diff and a changelog
+# fragment, and both describe the change — neither describes the dead end it
+# ruled out, the coupling it tripped over, the thing it saw two files away and
+# left alone, or the assumption its work rests on. That knowledge existed in
+# exactly one place (a worktree that gets deleted) and was reconstructed from
+# scratch by the next agent to touch the same code. Concretely: the auspex
+# roster question, the side-panel AUTORUN deferral, and the run_controller
+# bool-wrapper gap were each rediscovered by a later session after an earlier
+# one had already established them.
+#
+# WHO RUNS IT. The LANDING session, not the agent. Agents leave edits
+# uncommitted and never commit (.claude/CLAUDE.md, dispatch rule 2), so the
+# session that reads the diff and commits is the one holding the knowledge
+# worth recording — and it is the one that verified the work independently,
+# which the agent cannot do for itself. An agent MAY leave a HANDOFF.md in its
+# worktree and the lander is free to lift text from it, but the record is the
+# lander's statement, not a relay.
+#
+# WHY --verified IS MANDATORY AND WHY IT REFUSES RELAYED TEXT. Dispatch rule 5
+# — "verify before committing, independently" — was enforced by nothing.
+# Subagents have reported passing work that was wrong (an assertion that proved
+# nothing; a test titled "regression guard" that passed on the unfixed code).
+# A --verified that reads "agent reports tests pass" is the failure the rule
+# names, so it is refused by pattern. This cannot tell whether you really ran
+# the command; it can refuse a sentence that admits you did not.
+#
+# WHY SILENCE MUST BE DELIBERATE. --found and --next are the fields with the
+# actual salvage value, and they are the two an author in a hurry omits. Omit
+# both and this refuses unless you pass --clean, which turns "nothing to report"
+# from an absence into a claim someone made.
+#
+# WHY --lift EXISTS (i-copying-a-worker-s-files-out-of). Landing meant copying
+# the worker's files out of its worktree by hand — `cp <worktree>/<f> <f>` —
+# and nothing compared <f> against what had landed on main since the worker
+# branched. A stale copy silently reverts landed work, and twice it nearly did:
+#
+#   2026-08-22  copying a worker's run-host.ts reverted select_option out of
+#               the CDP host; cli-tool-reachability went red 2/2. The rule in
+#               force at the time covered GENERATED files only; this was source.
+#   2026-08-23  the navigate worker regenerated controller.mjs inside its own
+#               tree, which predated cb0f84d — a fix landed twenty minutes
+#               earlier. Copying its bundle would have reverted that fix. Caught
+#               only because the lander ran `git log <base>..HEAD -- <file>` by
+#               hand, from memory.
+#
+# A mechanism that depends on a human remembering is the thing that failed. For
+# every file the worker touched, --lift asks git whether main moved that file
+# since the worker's base commit, copies the ones it did not, and refuses the
+# ones it did.
+#
+# WHY IT COPIES RATHER THAN ONLY REFUSING. A check that refuses and stops
+# leaves the `cp` where it is — and a refusal you satisfy by typing the same cp
+# anyway is advice, not a mechanism. The cost is real: this writes into the
+# shared main checkout, which another session may be live in. It is bounded on
+# purpose — it writes only paths the worker changed AND that fall inside the
+# file scope scripts/dispatch recorded, it never deletes anything, it never
+# touches a file main has moved, and it prints every path it wrote.
+#
+# WHY A DRIFTED GENERATED FILE IS A DIFFERENT REFUSAL FROM A DRIFTED SOURCE
+# FILE. They have opposite remedies, and one message for both pushes the lander
+# toward force-copying, which is the 2026-08-23 near-miss exactly. A generated
+# file is never merged and never copied: the source lands, `npm run gen` runs
+# HERE, and the lander confirms the regenerated bundle still carries what landed
+# earlier. A source file needs a real merge or a re-dispatch from current HEAD.
+# The generated set is DERIVED from package.json's `gen` script — the chain of
+# generators is read, and each generator's own output path is read out of it —
+# because a hard-coded list rots silently and the file it forgets is the one
+# that gets copied. Nothing in this repo enumerates the outputs (CI runs
+# `npm run gen` and diffs, which needs no list), so derivation is the only
+# non-rotting source available. If a generator stops yielding a path, that is
+# printed as a ROT warning and its output degrades to the SOURCE message —
+# still a refusal, never a copy.
+#
+# WHY --lift HAS NO OVERRIDE. scripts/dispatch refuses a wrong cwd and a dirty
+# scope with no escape hatch "because there is no correct dispatch from a wrong
+# cwd or over your own uncommitted edits". A blind copy over a moved file is in
+# that class: there is no correct one. What IS legitimate is a lander who has
+# read both diffs and concluded the worker's version is the right merge result
+# — and that lander can still type `cp`, so nothing is lost by not offering a
+# flag for it. What is not legitimate is reaching for --force at the moment the
+# check fires, which is when it would always be reached for.
+#
+# WHY THE RECORD STEP RE-CHECKS ANYWAY. --lift is not the only way files move,
+# and both incidents happened at cp time, not at record time. So whenever
+# --from is given, the record step compares once more: a file that drifted on
+# main and whose content in this checkout is now byte-identical to the worker's
+# version is a stale copy that reverted landed work, and it is refused.
+# --drift-reviewed "<why>" is the way past that one, and the reason is written
+# into the note — an override that lands on the record as a claim, which is the
+# same shape as --clean.
+#
+# WHY THE AGENT IS INTERROGATED FIRST (i-an-agent-that-stops-is-interrogated-before-the).
+# Everything above is a monologue: the worker writes HANDOFF.md, the lander
+# reads it, and nobody ever puts a question to the one party still holding the
+# full context. The agent is resumable when it stops — the questions go to it
+# live and its answers come back here. On 2026-08-26 the worker knew two things
+# the verifier and the lander then each re-derived from scratch.
+#
+# THE QUESTIONS ARE ADVERSARIAL, NOT A COMPLETION CHECK, and that is the whole
+# design. Both recorded half-change incidents had the agent report SUCCESS on
+# broken work: i-commune-s-failed-controller-turn shipped a Go writer emitting
+# an event kind it could not declare in src/shared/types.ts, and
+# i-dist-version-stamp shipped a janusVersion wire field with no producer. Both
+# halves individually green, both agents said they were done. "Are you
+# complete?" returns yes in exactly the cases that matter, so it launders the
+# failure rather than catching it. Every question below asks for something that
+# cannot be answered with "no", and at least one answer must be substantive —
+# so "nothing" is a claim someone made rather than an absence, the same shape
+# as --clean.
+#
+# ONE ROUND, PLUS AT MOST ONE QUESTION OF THE LANDER'S OWN (--ask). An unbounded
+# loop reintroduces the round trips this repo keeps trying to remove, and a
+# fixed set is a set dispatch can show the agent up front, so it gathers the
+# answers as it works instead of reconstructing them after the fact.
+#
+# THE GATE ENFORCES THE CONTRACT THE AGENT WAS ACTUALLY GIVEN. scripts/dispatch
+# writes `— interrogation: required` into the DISPATCH note and pastes the
+# questions into the brief, so a note that carries the field is an agent that
+# was TOLD it would be questioned. A note without it (every note written before
+# this landed, and every hand-done piece of work) is not gated: refusing to
+# record work whose agent was never asked anything, and can no longer be asked,
+# punishes the lander for a contract nobody signed. Same three-state shape as
+# the denylist field above.
+#
+# WHY THE HARD REFUSAL IS ON THE RECORD STEP AND NOT ONLY ON --lift. --lift is
+# bypassable by design — the header above says a lander who disagrees "can still
+# type cp" — while the record step is not bypassable at all: the commit-msg hook
+# refuses a commit naming a dispatched id until the HANDOFF note exists. So the
+# refusal lives where it actually holds, and --lift refuses too whenever the
+# worker left a HANDOFF.md (i.e. every real landing).
+set -e
+
+usage() {
+  echo "usage: scripts/handoff <issue-id> --changed \"...\" --verified \"...\"" >&2
+  echo "         [--found \"...\"]... [--assumed \"...\"]... [--next \"...\"] [--clean]" >&2
+  echo "         [--drift-reviewed \"why the worker's version is right\"]" >&2
+  echo "   or: scripts/handoff <issue-id> --from <agent-worktree> --verified \"...\"" >&2
+  echo "   or: scripts/handoff <issue-id> --from <agent-worktree> --lift  (copy, record nothing)" >&2
+  echo "   or: scripts/handoff <issue-id> --interrogate [--ask \"...\"]  (print the questions)" >&2
+  echo "   or: scripts/handoff <issue-id> --record-interrogation --answer \"...\" (one per question)" >&2
+  exit 2
+}
+
+id=""; changed=""; verified=""; next_note=""; clean=0; dry=0
+found=""; assumed=""; from=""; lift=0; drift_reviewed=""
+interrogate=0; record_interrogation=0; ask=""; answers=""; n_answers=0; blank_answer=0
+no_interrogation=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --changed)  changed="$2"; shift 2 ;;
+    --verified) verified="$2"; shift 2 ;;
+    --next)     next_note="$2"; shift 2 ;;
+    --found)    found="$found${found:+; }$2"; shift 2 ;;
+    --assumed)  assumed="$assumed${assumed:+; }$2"; shift 2 ;;
+    --clean)    clean=1; shift ;;
+    # Lift the agent's own four lines out of <worktree>/HANDOFF.md instead of
+    # retyping them. Explicit flags still win, and --verified is never lifted.
+    --from)     from="$2"; shift 2 ;;
+    # Copy the worker's edits into this checkout instead of `cp` by hand.
+    # Records nothing: verification belongs between the copy and the record.
+    --lift)     lift=1; shift ;;
+    # The one override, on the record side only, and it costs a sentence that
+    # goes into the permanent note.
+    --drift-reviewed) drift_reviewed="$2"; shift 2 ;;
+    # Print the question set for the still-running agent, and stop.
+    --interrogate) interrogate=1; shift ;;
+    # The questions and nothing else, so scripts/dispatch can show the agent the
+    # exact set it will be held to without keeping a second copy of it.
+    --questions) interrogate=2; shift ;;
+    # Record what it answered.
+    --record-interrogation) record_interrogation=1; shift ;;
+    # One question of the lander's own, at most. Passed to --interrogate to be
+    # printed, and to --record-interrogation so the note says what was asked.
+    --ask) ask="$2"; shift 2 ;;
+    # One per question, in the order they were printed. Newlines are collapsed
+    # on receipt: a note is one line, and an answer that could contain one could
+    # forge a whole log entry.
+    --answer)
+      a=$(printf '%s' "$2" | tr '\n\r\t' '   ')
+      case "$a" in *[!\ ]*) ;; *) blank_answer=1 ;; esac
+      answers="${answers}${a}
+"
+      n_answers=$((n_answers + 1)); shift 2 ;;
+    # The escape hatch, and it lands on the record as a positive claim rather
+    # than an absence — the same shape as --clean and --drift-reviewed.
+    --no-interrogation) no_interrogation="$2"; shift 2 ;;
+    # Print the note and write nothing. The log is shared and append-only with
+    # no delete, so "let me see what this records" needs an answer that is not
+    # "record it and find out".
+    --dry-run)  dry=1; shift ;;
+    -*) usage ;;
+    *) [ -n "$id" ] && usage; id="$1"; shift ;;
+  esac
+done
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+# The dispatch note carries two lists and they do opposite jobs
+# (i-dispatch-declares-what-is-claimed-by-others-not):
+#
+#   scope:    the ADVISORY --files the dispatcher predicted. Recorded for the
+#             audit trail and echoed back on the record so it closes the same
+#             claim it opened. A file outside it is REPORTED, not refused —
+#             that prediction is made before anyone has read the code, and
+#             refusing on it is what bounced a worker's own brand-new
+#             changelog.d fragment on 2026-08-26.
+#   denylist: the files OTHER issues were holding when this agent was
+#             dispatched. THIS is what --lift refuses on, exactly as hard as it
+#             used to refuse an out-of-allowlist file: another agent's
+#             concurrent edits are the one thing a blind copy really can
+#             destroy.
+#
+# THREE STATES on the denylist field, and the third is why this is not a
+# softening. A real list is enforced. `(none)` means the claim log was read and
+# nobody held anything. `(unavailable)` — or a note written before this field
+# existed at all, which is every note in the log today — means the claim set is
+# unknown, and then the ADVISORY list is enforced as an allowlist, i.e. the old
+# behaviour verbatim. There is no state in which nothing is checked.
+notes=""
+[ -n "$id" ] && notes=$("$root/scripts/tracker" notes --issue "$id" 2>/dev/null || true)
+scope=$(printf '%s\n' "$notes" \
+  | sed -n 's/.*DISPATCH .* — scope: \(.*\) — brief: .*/\1/p' | tail -1 || true)
+deny=$(printf '%s\n' "$notes" \
+  | sed -n 's/.*DISPATCH .* — denylist: \(.*\)$/\1/p' | tail -1 || true)
+# Commas are a second separator in the live log (see dispatch's parser). Both
+# lists are read by unquoted `for f in $x` word-splitting, which does not split
+# on commas, so a comma-joined scope made in_scope match nothing and --lift
+# refuse everything. Normalise once, here, for both lists.
+scope=$(printf '%s' "$scope" | tr ',' ' ')
+deny=$(printf '%s' "$deny" | tr ',' ' ')
+
+deny_known=0
+case "$deny" in
+  ""|"(unavailable)") deny=""; deny_known=0 ;;
+  "(none)")           deny=""; deny_known=1 ;;
+  *)                              deny_known=1 ;;
+esac
+
+tmp=""
+cleanup() { [ -n "$tmp" ] && rm -rf "$tmp"; return 0; }
+trap cleanup EXIT
+
+# A file is inside the scope scripts/dispatch recorded. Same annotation
+# stripping as dispatch's clash check ("path/(own)", "path/*.md", "dir/") so
+# both ends read one scope line the same way. No recorded scope (hand-done
+# work) means no scope check.
+in_scope() {
+  [ -n "$scope" ] || return 0
+  for f in $scope; do
+    pat=$(echo "$f" | sed 's|(own)$||; s|/\*.*$||; s|/$||')
+    [ -n "$pat" ] || continue
+    case "$1" in $pat|$pat/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# The path is on the recorded denylist, i.e. another issue was holding it when
+# this agent was dispatched. Same annotation stripping, so one scope line is
+# read the same way at both ends and in both lists.
+is_claimed() {
+  [ "$deny_known" -eq 1 ] || return 1
+  for f in $deny; do
+    pat=$(echo "$f" | sed 's|(own)$||; s|/\*.*$||; s|/$||')
+    [ -n "$pat" ] || continue
+    case "$1" in $pat|$pat/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# THE BRAND-NEW-FILE EXEMPTION (i-a-directory-level-scope-claim-refuses-a-brand).
+#
+# A path that does not exist in THIS checkout at the moment of the lift cannot
+# be a clobber of another agent's concurrent edits, whatever the denylist says:
+# there is nothing there to clobber. --lift is creating the file. On 2026-08-27
+# a directory-level claim on `tests/core/` bounced a worker's brand-new
+# tests/core/agent-interrogation.test.ts, and the lander read the diff and
+# copied it by hand — the exact manual step the denylist exists to remove. That
+# was the THIRD costume of this bug; the two before it (changelog.d/, then the
+# changelog.d/ hidden inside a comma-joined scope) were both patched at the
+# specific path, which is why this one is the general rule instead.
+#
+# It is a DOWNGRADE FROM REFUSE TO REPORT, not a silent pass — see the
+# "$tmp/newclaimed" block in the --lift report.
+#
+# $2 KEEPS THIS PREDICATE HONEST; IT IS NOT WHAT CARRIES THE SAFETY. The case
+# that must not go wrong is a file new in the worker's tree but CREATED ON MAIN
+# since the worker branched. That one exists here, so `-e` alone refuses it.
+# The remaining case — main created the path and has since deleted it — was
+# MEASURED at land time (2026-08-27) by deleting the `$2` line: the path is
+# still refused, exit 1, never resurrected, because an exempted path does not
+# `continue` and falls through to the drift branch, where $moved is non-empty.
+# Only the message the lander reads changes.
+#
+# It stays because `absent_from_main` must be true to its own name. Exempting a
+# path main has touched would make this function's safety depend on a branch
+# below it happening to run afterwards — reorder that loop, add a `continue`,
+# and the exemption starts copying drifted claimed files silently. Two lines
+# against a trap this repo has fallen into three times.
+#
+# $2 is the `git log $base..HEAD -- $path` the caller already computed. KNOWN
+# HOLE, tested not reasoned: if main's history is rewritten so the commit that
+# created the path is no longer reachable, that log is empty and this returns
+# EXEMPT. merge-base moves BACKWARDS in that case, so the range gets wider, not
+# narrower, and no widening recovers it. Inherited from the drift check, which
+# has always failed open the same way for unclaimed files; this extends it to
+# claimed ones. Filed as its own issue.
+absent_from_main() {
+  if [ -e "$root/$1" ]; then return 1; fi
+  if [ -n "$2" ]; then return 1; fi
+  return 0
+}
+
+# --- the interrogation ------------------------------------------------------
+#
+# The question set. FIXED, and every one of them asks for something that cannot
+# be answered with "no" — see the header for why a completion check is worse
+# than nothing. The keys below are what the answers are filed under in the note,
+# in the same order, and the count of keys is the count of answers required.
+INTERROGATION_KEYS='not-run weakest-assertion taken-as-given brief-skipped another-hour'
+
+interrogation_questions() {
+  echo "  1. What did you NOT run — name the suite, check or manual step — and why not?"
+  echo "  2. Which assertion you wrote is the WEAKEST? Name a change to the code"
+  echo "     under test that would leave it passing anyway."
+  echo "  3. What did you take as given without verifying it yourself?"
+  echo "  4. What was in the brief that you did not do, or did differently?"
+  echo "  5. With another hour, what would you check FIRST, and what do you"
+  echo "     expect it would turn up?"
+  [ -n "$ask" ] && echo "  6. $ask"
+  return 0
+}
+
+# One line, and no uppercase log verb survives. The shared notes log is parsed
+# by anchored verb, and on 2026-08-26 a HANDOFF note whose free text merely
+# DESCRIBED the log format was read as an entry in it and walled off two files
+# for 40 minutes. An answer is free text written by the party being
+# interrogated, so it is neutralised before it can reach the log: the uppercase
+# forms are what every parser anchors on, and lowercasing them defeats all of
+# them without hiding anything from a human reader.
+flatten_answer() {
+  printf '%s' "$1" | tr '\n\r\t' '   ' \
+    | sed 's/DISPATCH/dispatch/g; s/HANDOFF/handoff/g; s/INTERROGATION/interrogation/g'
+}
+
+# "nothing", as a word, is the answer that makes this whole step ceremonial.
+# One substantive answer is required across the set; which one is the agent's
+# choice, but silence across all of them is not an option.
+is_null_answer() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d ' .,-')" in
+    ""|none|nothing|na|n/a|no|nil|null|nothingtoreport|nothingtoadd|unknown|idk) return 0 ;;
+  esac
+  return 1
+}
+
+# Four states, printed one word each:
+#   no-dispatch    hand-done work — there was never an agent to question. An
+#                  UNREADABLE tracker lands here too, and that is a fail-open:
+#                  the whole record step already degrades that way ("no DISPATCH
+#                  note found … recording anyway"), and a gate that refuses
+#                  every landing while planning-docs/ is unreachable would just
+#                  be routed around with --no-interrogation on every run.
+#   not-required   the DISPATCH note predates this gate, so the agent was never
+#                  told it would be questioned. Reported, never refused.
+#   recorded       an INTERROGATION note follows the LAST DISPATCH for this id.
+#                  Ordering is load-bearing: a re-dispatch reopens the question.
+#   missing        the agent was told, and nobody asked.
+# The verb is anchored to the note prefix exactly as scripts/dispatch anchors
+# its own, so a note that quotes the log format is not read as an entry in it.
+#
+# THE NOTES ARRIVE IN THE ENVIRONMENT, NOT ON STDIN. `python3 - <<'EOF'` reads
+# the PROGRAM from stdin, so a `printf … | python3 - <<'EOF'` pipeline hands the
+# heredoc to the interpreter and leaves sys.stdin at EOF — the loop then reads
+# nothing and every state comes back "no-dispatch", i.e. the gate silently never
+# fires. gen_set above gets away with the same form only because it pipes
+# nothing in.
+interrogation_state() {
+  INTERROGATION_NOTES="$notes" python3 - "$id" <<'PYINT'
+import os, re, sys
+me = sys.argv[1]
+VERB = re.compile(r"(?:^|\]\s+|note:\s+)(DISPATCH|INTERROGATION)\s+(\S+)\s+—")
+last_dispatch = last_interrogation = None
+required = False
+for i, line in enumerate(os.environ.get("INTERROGATION_NOTES", "").splitlines()):
+    m = VERB.search(line)
+    if not m:
+        continue
+    verb, iid = m.group(1), m.group(2)
+    if iid != me:
+        continue
+    if verb == "DISPATCH":
+        last_dispatch = i
+        required = " — interrogation: required" in line
+    else:
+        last_interrogation = i
+if last_dispatch is None:
+    print("no-dispatch")
+elif not required:
+    print("not-required")
+elif last_interrogation is not None and last_interrogation > last_dispatch:
+    print("recorded")
+else:
+    print("missing")
+PYINT
+}
+
+# The escape hatch, shared by both gates. Writes the reason into the log as a
+# positive claim and returns 0 so the caller proceeds.
+record_skipped_interrogation() {
+  [ -n "$no_interrogation" ] || return 1
+  if [ "$dry" -eq 1 ]; then
+    echo "handoff: --dry-run — would record: interrogation SKIPPED — $no_interrogation"
+    return 0
+  fi
+  "$root/scripts/tracker" remember \
+    "INTERROGATION $id — SKIPPED by the lander — why: $(flatten_answer "$no_interrogation")" \
+    --issue "$id" >/dev/null 2>&1 || true
+  echo "handoff: interrogation SKIPPED — recorded on $id as a claim, not an absence:"
+  echo "    $no_interrogation"
+  return 0
+}
+
+if [ "$interrogate" -eq 2 ]; then
+  interrogation_questions
+  exit 0
+fi
+
+if [ "$interrogate" -eq 1 ]; then
+  [ -n "$id" ] || usage
+  echo "handoff: interrogation for $id — send these to the agent while it is still"
+  echo "  resumable. It holds context nobody else has, and this is the only step"
+  echo "  that puts a question to it."
+  echo
+  interrogation_questions
+  echo
+  echo "  Answer every question. If an answer is genuinely 'nothing', say so — but"
+  echo "  at least one answer must be substantive, so it reads as a claim you made"
+  echo "  rather than an absence."
+  echo
+  echo "Then record what it said, in the order above:"
+  total=0
+  for _k in $INTERROGATION_KEYS; do total=$((total + 1)); done
+  [ -n "$ask" ] && total=$((total + 1))
+  printf '    scripts/handoff %s --record-interrogation \\\n' "$id"
+  [ -n "$ask" ] && printf '      --ask "%s" \\\n' "$ask"
+  n=1
+  while [ "$n" -le "$total" ]; do
+    if [ "$n" -eq "$total" ]; then printf '      --answer "<answer %s>"\n' "$n"
+    else printf '      --answer "<answer %s>" \\\n' "$n"; fi
+    n=$((n + 1))
+  done
+  echo
+  echo "  Nothing is recorded until you run that. --dry-run prints the note instead."
+  exit 0
+fi
+
+if [ "$record_interrogation" -eq 1 ]; then
+  [ -n "$id" ] || usage
+  nq=0
+  for _k in $INTERROGATION_KEYS; do nq=$((nq + 1)); done
+  [ -n "$ask" ] && nq=$((nq + 1))
+
+  if [ "$blank_answer" -eq 1 ]; then
+    echo "handoff: REFUSED — an --answer is empty." >&2
+    echo "  Every question gets an answer. 'nothing' is an acceptable answer and an" >&2
+    echo "  empty string is not: one is a claim the agent made, the other is the" >&2
+    echo "  absence this step exists to remove." >&2
+    exit 1
+  fi
+  if [ "$n_answers" -ne "$nq" ]; then
+    echo "handoff: REFUSED — $n_answers answer(s) for $nq question(s)." >&2
+    echo "  Pass one --answer per question, in the order they were printed:" >&2
+    interrogation_questions >&2
+    exit 1
+  fi
+
+  substantive=0
+  old_ifs=$IFS
+  IFS='
+'
+  for a in $answers; do
+    is_null_answer "$a" || substantive=1
+  done
+  IFS=$old_ifs
+  if [ "$substantive" -eq 0 ]; then
+    echo "handoff: REFUSED — every answer is a variant of 'nothing'." >&2
+    echo "  At least one has to carry something. An agent that ran everything, took" >&2
+    echo "  nothing on trust, followed the brief exactly and has nothing left to" >&2
+    echo "  check is describing work that has never happened here — both recorded" >&2
+    echo "  half-changes were reported exactly that way." >&2
+    exit 1
+  fi
+
+  note="INTERROGATION $id"
+  sep=" — "
+  i=0
+  old_ifs=$IFS
+  IFS='
+'
+  for a in $answers; do
+    i=$((i + 1))
+    if [ -n "$ask" ] && [ "$i" -eq "$nq" ]; then k="lander-asked"; else
+      k=$(echo $INTERROGATION_KEYS | cut -d' ' -f"$i")
+    fi
+    note="${note}${sep}${k}: $(flatten_answer "$a")"
+    sep=" | "
+  done
+  IFS=$old_ifs
+  [ -n "$ask" ] && note="$note | lander-question: $(flatten_answer "$ask")"
+
+  if [ "$dry" -eq 1 ]; then
+    echo "handoff: --dry-run, nothing written. Would record on $id:"
+    echo "  $note"
+    exit 0
+  fi
+  "$root/scripts/tracker" remember "$note" --issue "$id" >/dev/null
+  echo "handoff: interrogation recorded on $id ($nq answer(s))."
+  echo "  --lift and the record step will now run for this id."
+  exit 0
+fi
+
+# Derived, not listed — see the header. Prints repo-relative paths, plus
+# "!ROT <text>" lines when a generator stops being readable.
+gen_set() {
+  python3 - "$root" <<'PYGEN'
+import json, os, re, sys
+root = sys.argv[1]
+try:
+    gen = json.load(open(os.path.join(root, 'package.json')))['scripts'].get('gen', '')
+except Exception:
+    print('!ROT package.json has no readable scripts.gen'); raise SystemExit(0)
+gens = re.findall(r'scripts/[A-Za-z0-9._-]+', gen)
+if not gens:
+    print('!ROT package.json scripts.gen names no scripts/ generator'); raise SystemExit(0)
+# `const outFile = join(...)` / `const OUTPUT_PATH = resolve(...)`. Only names
+# starting out/OUT, so an entryPoints/readFileSync INPUT is never mistaken for
+# an output — calling a source file generated would send the lander to
+# `npm run gen` for a file no generator writes, which is the 2026-08-22 shape.
+ASSIGN = re.compile(r'\b(?:const|let|var)\s+(out\w*|OUT\w*)\s*=\s*(?:join|resolve)\(([^)]*)\)', re.I | re.S)
+for g in gens:
+    p = os.path.join(root, g)
+    try:
+        t = open(p, encoding='utf-8').read()
+    except OSError:
+        print('!ROT %s is named by scripts.gen but is not in this checkout' % g); continue
+    found, dirs = set(), []
+    for m in re.finditer(r'OUT="\$ROOT/([^"]+)"', t):          # the sh generator
+        found.add(m.group(1))
+    for _name, args in ASSIGN.findall(t):
+        segs = [s for s in re.findall(r"'([^']*)'", args) if s not in ('..', '.')]
+        if not segs:
+            continue
+        rel = '/'.join(segs)
+        if '.' in segs[-1]:
+            found.add(rel)
+        else:
+            dirs.append(rel)                                   # an out DIRECTORY
+    for d in dirs:                                             # + its bundle list
+        for m in re.finditer(r"\bout:\s*'([^']+)'", t):
+            found.add(d + '/' + m.group(1))
+    if not found:
+        print('!ROT %s: no output path could be read out of it' % g); continue
+    for f in sorted(found):
+        print(f)
+PYGEN
+}
+
+# --- worktree drift scan ----------------------------------------------------
+#
+# Everything here resolves refs with `git -C "$root"` and never against the
+# ambient cwd. planning-docs/ is a separate nested repo that does not exist
+# inside a worktree at all, and a session parked in it took out three dispatches
+# on 2026-08-17; a ref resolved against "whatever repo the cwd is in" is that
+# same bug wearing a different hat.
+wt=""; wt_head=""; base=""
+scan_worktree() {
+  wt=$(cd "$from" 2>/dev/null && pwd -P) || wt=""
+  if [ -z "$wt" ]; then echo "handoff: no such worktree: $from" >&2; exit 1; fi
+  if [ "$wt" = "$root" ]; then
+    echo "handoff: REFUSED — --from is this checkout ($root), not a worker's worktree." >&2
+    exit 1
+  fi
+  # Same repository, established through the object store rather than the path.
+  # A worktree of the nested planning-docs repo has its own .git and would
+  # otherwise be scanned against refs that mean nothing here.
+  a=$(cd "$root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)
+  b=$(cd "$wt" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || b=""
+  if [ "$a" != "$b" ]; then
+    echo "handoff: REFUSED — $wt is not a worktree of this repository." >&2
+    echo "  its git dir: ${b:-<none>}" >&2
+    echo "  this one:    $a" >&2
+    exit 1
+  fi
+
+  wt_head=$(git -C "$wt" rev-parse HEAD)
+  # Agents do not commit, so a worktree's HEAD normally IS the commit it
+  # branched from (worktree.baseRef is "head"). merge-base covers the agent that
+  # committed anyway, and resolves in the main repo's object store.
+  base=$(git -C "$root" merge-base "$wt_head" HEAD 2>/dev/null || echo "$wt_head")
+
+  tmp=$(mktemp -d)
+  : > "$tmp/copy"; : > "$tmp/same"; : > "$tmp/deleted"; : > "$tmp/outscope"
+  : > "$tmp/collide"; : > "$tmp/drift_src"; : > "$tmp/drift_gen"; : > "$tmp/drifted"
+  : > "$tmp/claimed"; : > "$tmp/advisory"; : > "$tmp/newclaimed"
+  gen_set > "$tmp/gen" || true
+
+  # What the worker changed: its uncommitted edits (the normal case), plus
+  # anything it committed against the rules.
+  {
+    # -uall, not the default: plain --porcelain collapses a new directory to a
+    # single "?? src/new/" line, and a lander cannot cp a path that names four
+    # files. Every untracked file is listed individually.
+    git -C "$wt" status --porcelain -uall | awk '
+      {
+        p = substr($0, 4); x = substr($0, 1, 1); y = substr($0, 2, 1)
+        i = index(p, " -> ")
+        if (i > 0) { print "DEL " substr(p, 1, i - 1); print "MOD " substr(p, i + 4); next }
+        if (x == "?") { print "ADD " p; next }
+        if (x == "D" || y == "D") { print "DEL " p; next }
+        print "MOD " p
+      }'
+    git -C "$root" diff --name-status "$base" "$wt_head" | awk '
+      {
+        if ($1 ~ /^R/) { print "DEL " $2; print "MOD " $3; next }
+        if ($1 == "D") { print "DEL " $2; next }
+        print "MOD " $2
+      }'
+  } | sort -u > "$tmp/changes"
+
+  while read -r kind path; do
+    [ -n "$path" ] || continue
+    # The agent's own note file is gitignored and is not part of its change.
+    case "$path" in HANDOFF.md) continue ;; esac
+
+    # Drift is recorded for EVERY changed file, before any other verdict, so
+    # the record step's stale-copy gate sees the whole picture even for a file
+    # --lift itself would have refused for another reason.
+    moved=$(git -C "$root" log --oneline "$base..HEAD" -- "$path" || true)
+    if [ -n "$moved" ]; then
+      echo "$path" >> "$tmp/drifted"
+      printf '%s\n' "$moved" | sed 's/^/      /' > "$tmp/log.$(echo "$path" | tr / _)"
+    fi
+
+    # Denylist first when it is known, allowlist when it is not (see the three
+    # states above). A claimed file is refused and never copied; a file merely
+    # outside the dispatcher's prediction is copied and REPORTED, because the
+    # prediction was made before anyone read the code.
+    if [ "$deny_known" -eq 1 ]; then
+      if is_claimed "$path"; then
+        # Absent from this checkout AND untouched on main since the worker
+        # branched: a new file, nothing to clobber. Reported, not refused.
+        if absent_from_main "$path" "$moved"; then
+          echo "$path" >> "$tmp/newclaimed"
+        else
+          echo "$path" >> "$tmp/claimed"; continue
+        fi
+      else
+        in_scope "$path" || echo "$path" >> "$tmp/advisory"
+      fi
+    else
+      if ! in_scope "$path"; then echo "$path" >> "$tmp/outscope"; continue; fi
+    fi
+    if [ "$kind" = "DEL" ]; then echo "$path" >> "$tmp/deleted"; continue; fi
+
+    if [ -n "$moved" ]; then
+      if grep -Fxq "$path" "$tmp/gen"; then echo "$path" >> "$tmp/drift_gen"
+      else echo "$path" >> "$tmp/drift_src"; fi
+      continue
+    fi
+
+    if [ "$kind" = "ADD" ] && [ -e "$root/$path" ]; then
+      if cmp -s "$wt/$path" "$root/$path"; then echo "$path" >> "$tmp/same"
+      else echo "$path" >> "$tmp/collide"; fi
+      continue
+    fi
+    if [ -e "$root/$path" ] && cmp -s "$wt/$path" "$root/$path"; then
+      echo "$path" >> "$tmp/same"; continue
+    fi
+    echo "$path" >> "$tmp/copy"
+  done < "$tmp/changes"
+}
+
+# --- --from: read the agent's HANDOFF.md ------------------------------------
+#
+# The agent writes four `key: one line` fields in its worktree. This lifts them
+# so the lander edits rather than reinvents, and prints exactly what was lifted
+# before anything is recorded — the agent's words become the lander's statement
+# only after the lander has seen them.
+#
+# --verified is NEVER lifted, no matter what the file says. It is the one field
+# that asserts the lander re-ran the work themselves (dispatch rule 5), so a
+# value read out of the agent's own file would be precisely the relayed claim
+# the check below refuses.
+#
+# Only the FIRST LINE of each field is taken, and a longer field is reported as
+# truncated. Brevity is the format's job: four lines a lander will actually
+# read beat a page nobody does, and a cap that trims is better than a refusal
+# that blocks a landing over an agent's verbosity.
+if [ -n "$from" ]; then
+  hf="$from/HANDOFF.md"
+  if [ -f "$hf" ]; then
+    field() { sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" "$hf" | head -1; }
+    extra=$(grep -cE '^[[:space:]]*(changed|found|assumed|next):' "$hf" || true)
+    echo "handoff: lifted from $hf —"
+    for k in changed found assumed next; do
+      v=$(field "$k"); [ -n "$v" ] && echo "  $k: $v"
+    done
+    [ "$extra" -gt 4 ] && echo "  (note: $extra field lines, only the first of each was taken)"
+    case "$(field changed)" in "") ;; *) [ -z "$changed" ]   && changed=$(field changed) ;; esac
+    case "$(field found)"   in ""|none|None|NONE) ;; *) [ -z "$found" ]     && found=$(field found) ;; esac
+    case "$(field assumed)" in ""|none|None|NONE) ;; *) [ -z "$assumed" ]   && assumed=$(field assumed) ;; esac
+    case "$(field next)"    in ""|none|None|NONE) ;; *) [ -z "$next_note" ] && next_note=$(field next) ;; esac
+    echo
+  elif [ "$lift" -eq 1 ]; then
+    # --lift is about the files, not the note. A worker that skipped its
+    # HANDOFF.md still has a diff worth moving, and the record step refuses the
+    # missing --changed on its own.
+    echo "handoff: no HANDOFF.md in $from — lifting files only."
+    echo
+  else
+    echo "handoff: no HANDOFF.md in $from" >&2; exit 1
+  fi
+fi
+
+# --- --lift: move the worker's files in, refusing anything main has moved ---
+if [ "$lift" -eq 1 ]; then
+  [ -n "$id" ] && [ -n "$from" ] || usage
+
+  # THE LIFT-SIDE INTERROGATION GATE. Refuses before anything is copied, so a
+  # refusal leaves this checkout untouched.
+  #
+  # NARROWED TO WORKERS THAT LEFT A HANDOFF.md, deliberately and not silently.
+  # A --lift with no HANDOFF.md is already a different path here ("lifting files
+  # only"): there is no report to question, and the id may not belong to a live
+  # agent at all. The hole that opens — delete HANDOFF.md and lift freely —
+  # closes one step later at the record step, which is gated unconditionally and
+  # which the commit-msg hook makes unavoidable. This narrowing also keeps the
+  # four --lift fixtures in tests/core/dispatch-scope-denylist.test.ts green;
+  # they build a worktree with no HANDOFF.md, and that file was claimed by
+  # another issue when this landed.
+  if [ "$(interrogation_state)" = "missing" ]; then
+    if ! record_skipped_interrogation; then
+      echo "handoff: REFUSED — $id was dispatched with an interrogation required and" >&2
+      echo "  none is recorded. Nothing has been copied." >&2
+      echo "  The agent is resumable and holds context nobody else does. Ask it:" >&2
+      echo "      scripts/handoff $id --interrogate" >&2
+      echo "  then record what it said:" >&2
+      echo "      scripts/handoff $id --record-interrogation --answer \"...\"" >&2
+      echo "  If you cannot reach it — the session is gone, the agent crashed —" >&2
+      echo "  say so and it goes on the record as a claim rather than an absence:" >&2
+      echo "      --no-interrogation \"<why nobody could ask it>\"" >&2
+      exit 1
+    fi
+    echo
+  fi
+
+  scan_worktree
+
+  rot=$(grep '^!ROT' "$tmp/gen" || true)
+  if [ -n "$rot" ]; then
+    echo "handoff: WARNING — the generated-file list could not be fully derived:" >&2
+    printf '%s\n' "$rot" | sed 's/^!ROT /    /' >&2
+    echo "  A generated file missing from that list is reported below as a SOURCE" >&2
+    echo "  file: still refused, but with the wrong remedy. Fix the derivation in" >&2
+    echo "  scripts/handoff (gen_set) before trusting a SOURCE verdict." >&2
+    echo >&2
+  fi
+
+  echo "handoff: --lift $id"
+  echo "  from   $wt"
+  echo "  into   $root"
+  echo "  worker branched at $(git -C "$root" log -1 --format='%h %s' "$base")"
+  echo "  HEAD here is      $(git -C "$root" log -1 --format='%h %s' HEAD)"
+  echo "  $(git -C "$root" rev-list --count "$base..HEAD") commit(s) landed since the worker branched"
+  echo
+
+  n=0
+  while read -r p; do
+    [ -n "$p" ] || continue
+    if [ "$dry" -eq 1 ]; then
+      echo "  would copy  $p"
+    else
+      mkdir -p "$root/$(dirname "$p")"
+      cp "$wt/$p" "$root/$p"
+      echo "  copied      $p"
+    fi
+    n=$((n + 1))
+  done < "$tmp/copy"
+  while read -r p; do
+    [ -n "$p" ] || continue
+    echo "  identical   $p (this tree already holds the worker's bytes)"
+  done < "$tmp/same"
+  [ "$n" -eq 0 ] && echo "  (no file was clean to copy)"
+  echo
+
+  refused=0
+
+  if [ -s "$tmp/drift_gen" ]; then
+    refused=1
+    echo "handoff: REFUSED — GENERATED file(s) moved on main after the worker branched." >&2
+    echo "  Copying a generated file is never the fix, drifted or not:" >&2
+    while read -r p; do
+      [ -n "$p" ] || continue
+      echo "    $p" >&2
+      cat "$tmp/log.$(echo "$p" | tr / _)" >&2
+    done < "$tmp/drift_gen"
+    echo "  The worker built its bundle inside its own tree, which predates those" >&2
+    echo "  commits, so the bundle it produced is MISSING them. Land the SOURCE" >&2
+    echo "  files first, then regenerate here:" >&2
+    echo "      npm run gen" >&2
+    echo "      git diff -- <file>   # confirm the fresh bundle still carries what" >&2
+    echo "                           # landed above, not only the worker's change" >&2
+    echo "  Do not copy the worker's bundle and do not force it: that is the" >&2
+    echo "  2026-08-23 near-miss exactly (a controller.mjs built before cb0f84d)." >&2
+    echo >&2
+  fi
+
+  if [ -s "$tmp/drift_src" ]; then
+    refused=1
+    echo "handoff: REFUSED — source file(s) moved on main after the worker branched:" >&2
+    while read -r p; do
+      [ -n "$p" ] || continue
+      echo "    $p" >&2
+      cat "$tmp/log.$(echo "$p" | tr / _)" >&2
+    done < "$tmp/drift_src"
+    echo "  The worker edited the version at $(git -C "$root" rev-parse --short "$base"). Copying its copy reverts" >&2
+    echo "  those commits — silently, and the test that covered them goes red later" >&2
+    echo "  somewhere else (2026-08-22: select_option, cli-tool-reachability 2/2)." >&2
+    echo "  This needs a merge or a re-dispatch, not a copy. Read both halves:" >&2
+    echo "      git -C $wt diff -- <file>" >&2
+    echo "      git -C $root diff $(git -C "$root" rev-parse --short "$base")..HEAD -- <file>" >&2
+    echo "  then apply the worker's change on top by hand, or re-dispatch the issue" >&2
+    echo "  from current HEAD." >&2
+    echo >&2
+  fi
+
+  if [ -s "$tmp/deleted" ]; then
+    refused=1
+    echo "handoff: the worker DELETED file(s). --lift never deletes anything:" >&2
+    sed 's/^/    /' "$tmp/deleted" >&2
+    echo "  If the deletion is part of the change, do it yourself:  git rm <path>" >&2
+    echo >&2
+  fi
+
+  if [ -s "$tmp/collide" ]; then
+    refused=1
+    echo "handoff: the worker ADDED file(s) that already exist here with different" >&2
+    echo "  content — someone else created the same path:" >&2
+    sed 's/^/    /' "$tmp/collide" >&2
+    echo "  Diff them and decide; --lift will not overwrite an unrelated file." >&2
+    echo >&2
+  fi
+
+  # THE CLAIMED-FILE REFUSAL. Exactly as hard as the out-of-allowlist refusal it
+  # replaces — same exit 1, same never-copied, same "read the diff and do it by
+  # hand if you mean it". What changed is only WHICH files it names: the ones
+  # another issue was actually holding, instead of every file the dispatcher
+  # failed to predict.
+  if [ -s "$tmp/claimed" ]; then
+    refused=1
+    echo "handoff: REFUSED — the worker wrote file(s) CLAIMED by another issue when" >&2
+    echo "  it was dispatched:" >&2
+    sed 's/^/    /' "$tmp/claimed" >&2
+    echo "  recorded denylist: $deny" >&2
+    echo "  Another agent was editing these this round and its edits are invisible" >&2
+    echo "  from the worker's worktree, so copying is a straight clobber. Land or" >&2
+    echo "  hand off that agent first, then read both diffs and merge by hand." >&2
+    echo "  The worker was told to STOP at this boundary rather than write it, so" >&2
+    echo "  read its HANDOFF.md found: line before you decide anything." >&2
+    echo >&2
+  fi
+
+  # NOT a refusal — the general form of the exemption, and the reason the two
+  # path-specific patches before it kept not being enough. See absent_from_main.
+  # The lander still reads the diff, exactly as it does for a file outside the
+  # advisory --files; what it does not do is copy the file by hand.
+  if [ -s "$tmp/newclaimed" ]; then
+    echo "handoff: note — file(s) on the recorded denylist that DO NOT EXIST here."
+    echo "  A path absent from this checkout cannot be a clobber of another agent's"
+    echo "  edits — there is nothing there to clobber — so these were copied, not"
+    echo "  refused. Read these diffs on purpose:"
+    sed 's/^/    /' "$tmp/newclaimed"
+    echo "  Main has not touched them since the worker branched either; one that had"
+    echo "  landed here in the meantime is refused above as a claimed file."
+    echo
+  fi
+
+  # NOT a refusal. A file outside --files that nobody claimed is the case this
+  # whole inversion exists for: the dispatcher predicted the scope before
+  # reading the code, and on 2026-08-26 that prediction bounced a worker's own
+  # brand-new changelog.d fragment. Copied, and printed so the lander reads it.
+  if [ -s "$tmp/advisory" ]; then
+    echo "handoff: note — file(s) outside the advisory --files, and claimed by"
+    echo "  nobody. Copied; read these diffs on purpose:"
+    sed 's/^/    /' "$tmp/advisory"
+    echo "  advisory --files: $scope"
+    echo
+  fi
+
+  if [ -s "$tmp/outscope" ]; then
+    refused=1
+    echo "handoff: file(s) the worker changed are OUTSIDE the scope dispatch recorded:" >&2
+    sed 's/^/    /' "$tmp/outscope" >&2
+    echo "  recorded scope: $scope" >&2
+    echo "  This dispatch note records no denylist, so the scope is enforced as an" >&2
+    echo "  allowlist — the pre-2026-08-27 behaviour, unchanged." >&2
+    echo "  A file outside the declared scope may belong to another agent running" >&2
+    echo "  this round (dispatch rule 3). Read the diff and copy it by hand if you" >&2
+    echo "  mean it — and check whether the other agent touched it too." >&2
+    echo >&2
+  fi
+
+  if [ "$refused" -eq 1 ]; then
+    echo "handoff: --lift copied what was clean and refused the rest. Nothing recorded." >&2
+    exit 1
+  fi
+  echo "handoff: --lift done. Nothing recorded — verify in THIS tree, then:"
+  echo "    scripts/handoff $id --from $from --verified \"what YOU re-ran\""
+  exit 0
+fi
+
+[ -n "$id" ] && [ -n "$changed" ] && [ -n "$verified" ] || usage
+
+# --verified must be a first-person claim, not a relay of the agent's report.
+case "$(printf '%s' "$verified" | tr '[:upper:]' '[:lower:]')" in
+  *"agent report"*|*"agent says"*|*"agent said"*|*"agent claims"*|*"per the agent"*|\
+  *"as reported"*|*"it reports"*|*"they report"*|*"subagent report"*|*"trust"*)
+    echo "handoff: REFUSED — --verified relays the agent instead of stating what YOU ran:" >&2
+    echo "    $verified" >&2
+    echo "  Dispatch rule 5 is that the landing session re-runs the claim. Write the" >&2
+    echo "  command you ran and what it printed, or re-run it now if you have not." >&2
+    exit 1 ;;
+esac
+
+# THE RECORD-STEP INTERROGATION GATE — the one that cannot be walked around.
+# --lift can be replaced by `cp`, but nothing can replace this note: the
+# commit-msg hook refuses a commit naming a dispatched id until it exists. So an
+# agent dispatched under the interrogation contract cannot reach a commit
+# without someone having put the questions to it, or having said in writing why
+# nobody could.
+istate=$(interrogation_state)
+case "$istate" in
+  missing)
+    if ! record_skipped_interrogation; then
+      echo "handoff: REFUSED — $id was dispatched with an interrogation required and" >&2
+      echo "  none is recorded. Nothing has been written." >&2
+      echo "  A HANDOFF.md is a monologue by the party with the least incentive to" >&2
+      echo "  report a gap. Both recorded half-changes were reported as successes." >&2
+      echo "  Ask the agent while it is still resumable:" >&2
+      echo "      scripts/handoff $id --interrogate" >&2
+      echo "      scripts/handoff $id --record-interrogation --answer \"...\"" >&2
+      echo "  Or say why nobody could, and it lands as a claim:" >&2
+      echo "      --no-interrogation \"<why>\"" >&2
+      exit 1
+    fi ;;
+  not-required)
+    # The agent was never told it would be questioned, so it is not held to it.
+    echo "handoff: note — the dispatch record for $id predates the interrogation"
+    echo "  step, so nothing was asked of this agent. Nothing is refused over it." ;;
+esac
+
+if [ -z "$found" ] && [ -z "$next_note" ] && [ "$clean" -ne 1 ]; then
+  echo "handoff: REFUSED — no --found and no --next." >&2
+  echo "  These are the two fields worth salvaging and the two that get dropped." >&2
+  echo "  If the agent genuinely surfaced nothing beyond its diff, say so with" >&2
+  echo "  --clean so it reads as a claim rather than an omission." >&2
+  exit 1
+fi
+
+# THE STALE-COPY GATE. Whether or not --lift did the copying, this is the last
+# moment before the commit. For every file the worker changed that main has
+# ALSO moved since the worker branched, this tree should not hold the worker's
+# bytes verbatim — a real merge, or a regeneration, contains what landed too.
+# Byte-identical means those commits were copied away.
+if [ -n "$from" ]; then
+  scan_worktree
+  stale=""
+  if [ -s "$tmp/drifted" ]; then
+    while read -r p; do
+      [ -n "$p" ] || continue
+      if [ -e "$root/$p" ] && cmp -s "$wt/$p" "$root/$p"; then stale="$stale $p"; fi
+    done < "$tmp/drifted"
+  fi
+  if [ -n "$stale" ] && [ -z "$drift_reviewed" ]; then
+    echo "handoff: REFUSED — this tree holds the worker's version of file(s) that" >&2
+    echo "  main moved after the worker branched, byte for byte:" >&2
+    for p in $stale; do
+      echo "    $p" >&2
+      cat "$tmp/log.$(echo "$p" | tr / _)" >&2
+    done
+    echo "  Those commits are not in what you are about to commit. Redo the copy as" >&2
+    echo "  a merge — or, for a generated file, land the source and run \`npm run gen\`" >&2
+    echo "  here — then rerun this." >&2
+    echo "  If you already read both diffs and the worker's version IS the right" >&2
+    echo "  result, or you already committed these files (which is what this is" >&2
+    echo "  seeing), say so and it goes on the record:" >&2
+    echo "      --drift-reviewed \"<why the worker's version is right>\"" >&2
+    exit 1
+  fi
+  if [ -s "$tmp/drifted" ] && [ -z "$stale" ]; then
+    echo "handoff: note — main moved these while the worker held them, and this tree"
+    echo "  does NOT hold the worker's copy of them (merged, regenerated or skipped):"
+    sed 's/^/    /' "$tmp/drifted"
+    echo
+  fi
+fi
+
+if [ -z "$scope" ]; then
+  echo "handoff: no DISPATCH note found for $id — recording anyway (hand-done work?)."
+fi
+
+note="HANDOFF $id — changed: $changed"
+[ -n "$found" ]     && note="$note | found-not-fixed: $found"
+[ -n "$assumed" ]   && note="$note | assumed: $assumed"
+[ -n "$next_note" ] && note="$note | next-agent: $next_note"
+[ "$clean" -eq 1 ] && [ -z "$found" ] && [ -z "$next_note" ] && note="$note | found-not-fixed: none claimed (--clean)"
+note="$note | verified: $verified"
+[ -n "$drift_reviewed" ] && note="$note | drift-reviewed: $drift_reviewed"
+# So the log says, per landing, whether anyone questioned the agent.
+[ "$istate" = "recorded" ] && note="$note | interrogation: recorded"
+[ -n "$no_interrogation" ] && note="$note | interrogation: skipped"
+[ -n "$scope" ] && note="$note | scope released: $scope"
+
+if [ "$dry" -eq 1 ]; then
+  echo "handoff: --dry-run, nothing written. Would record on $id:"
+  echo "  $note"
+  exit 0
+fi
+
+"$root/scripts/tracker" remember "$note" --issue "$id" >/dev/null
+
+echo "handoff: recorded on $id."
+[ -n "$scope" ] && echo "  scope released: $scope"
+echo "  The commit-msg guard for $id is now satisfied."

@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Audit the ORCHESTRATOR's folds, after they land.
+
+WHY THIS EXISTS. Every other check in the factory points at the workers. The
+verifier sweeps their finished output before anything is folded; the workers
+prove their own guards. Nothing looks at the code the ORCHESTRATOR writes, and
+it does write some: a conflict resolved by hand at merge time is new code,
+covered by no worker's test and seen by no verifier.
+
+Not hypothetical. On 2026-08-22 a `select_option` patch stopped applying
+because a `type-target.ts` guard had landed underneath it. The naive
+resolution left the feature UNREACHABLE — six tests caught it — and the fix
+(exempting HTMLSelectElement from that guard) was invented during the merge.
+It was mutated and proved, but only because the orchestrator chose to. Nothing
+required it, and nothing would have noticed.
+
+TWO JOBS, both mechanical. No model, no judgement.
+
+  1. THE ORCHESTRATOR DELTA. Re-apply each worker's patch to the base it was
+     written against, then diff that tree against what actually landed. What
+     comes out is precisely what the orchestrator wrote at merge time.
+
+  2. HEAD IS GREEN, ON A CLEAN TREE. The orchestrator's checkout carries other
+     sessions' uncommitted work, so a green run there is not a green HEAD --
+     which is how a broken guide corpus survived two days of being dismissed
+     as a local artefact. This runs the suites in a throwaway worktree at
+     committed HEAD.
+
+Owner ruling 2026-08-22 (build-0822-factory): a script, not a fifth agent role
+("agreed"), run ONCE PER SPRINT after the folds and before the report ("no,
+once per sprint is fine").
+
+  scripts/post-fold-audit --since <ref>
+  scripts/post-fold-audit --since <ref> --patch a.patch --base <sha>
+  scripts/post-fold-audit --clean-tree-only
+  scripts/post-fold-audit --quick          # skips e2e; does NOT close a sprint
+
+Writes a stamp naming the commit it verified. `cycle.py new` refuses to
+register a BUILD-REPORT whose stamp is older than the newest commit, so a
+sprint cannot be closed on a tree nobody checked at HEAD.
+
+Exit 0 clean | 1 findings | 2 misuse.
+"""
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STAMP = os.path.join(
+    os.environ.get("JANUS_DRAIN_HOME", os.path.expanduser("~/.janus-unattended")),
+    "clean-tree-stamp.json")
+
+SUITES = [
+    ("typecheck", ["npm", "run", "typecheck"], None),
+    ("unit", ["npm", "test"], None),
+    ("e2e", ["npm", "run", "e2e"], "slow"),
+    ("e2e:bridge", ["npm", "run", "e2e:bridge"], "slow"),
+    ("go build", ["go", "build", "./..."], "go"),
+    ("go test", ["go", "test", "./..."], "go"),
+]
+
+
+def sh(args, cwd, timeout=2400):
+    p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def git(args, cwd=ROOT):
+    return sh(["git"] + args, cwd)
+
+
+def worktree(at, label):
+    """A throwaway worktree at `at`, with node_modules symlinked.
+
+    The symlink is not a convenience. Without it node walks UP out of the
+    worktree and resolves packages from a SIBLING worktree -- you run someone
+    else's code and report the result as your own.
+    """
+    d = tempfile.mkdtemp(prefix="janus-%s-" % label)
+    path = os.path.join(d, "tree")
+    rc, out = git(["worktree", "add", "--detach", path, at])
+    if rc != 0:
+        shutil.rmtree(d, ignore_errors=True)
+        return None, out
+    src = os.path.join(ROOT, "node_modules")
+    if os.path.isdir(src):
+        try:
+            os.symlink(src, os.path.join(path, "node_modules"))
+        except OSError:
+            pass
+    return path, ""
+
+
+def drop(path):
+    if not path:
+        return
+    git(["worktree", "remove", "--force", path])
+    shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+
+
+def orchestrator_delta(patch, base, findings):
+    """What the orchestrator wrote at merge time, and nothing else."""
+    name = os.path.basename(patch)
+    rc, out = sh(["git", "apply", "--numstat", patch], ROOT)
+    if rc != 0:
+        findings.append("%s: unreadable as a patch -- %s" % (name, out.strip()[:160]))
+        return
+    files = [l.split("\t")[-1] for l in out.splitlines() if "\t" in l]
+    if not files:
+        findings.append("%s: patch touches no files" % name)
+        return
+
+    path, err = worktree(base, "delta")
+    if not path:
+        findings.append("%s: no worktree at %s -- %s" % (name, base, err.strip()[:160]))
+        return
+    try:
+        rc, out = sh(["git", "apply", "--binary", "-3", patch], path)
+        if rc != 0:
+            # Not applying to its OWN base means the base is wrong, which makes
+            # any delta below meaningless. Say so; do not guess.
+            findings.append("%s: does not apply to --base %s; delta NOT computed -- %s"
+                            % (name, base, out.strip()[:160]))
+            return
+        print("\n=== ORCHESTRATOR DELTA - %s (base %s)" % (name, base[:9]))
+        changed = []
+        for f in files:
+            a, b = os.path.join(path, f), os.path.join(ROOT, f)
+            if not os.path.exists(b):
+                changed.append((f, "deleted after fold"))
+                continue
+            if not os.path.exists(a):
+                continue
+            rc3, d = sh(["git", "diff", "--no-index", "--numstat", a, b], ROOT)
+            if d.strip():
+                n = d.split("\t")[:2]
+                changed.append((f, "+%s/-%s" % (n[0], n[1]) if len(n) == 2 else "differs"))
+        if not changed:
+            print("  none - what landed is byte-identical to what the worker wrote")
+        else:
+            for f, how in changed:
+                print("  %s  %s" % (f, how))
+            findings.append(
+                "%s: %d file(s) differ from the worker's patch. That is "
+                "orchestrator-written code -- confirm each hunk is covered by a "
+                "test you mutated yourself." % (name, len(changed)))
+    finally:
+        drop(path)
+
+
+def clean_tree(quick, findings):
+    rc, head = git(["rev-parse", "HEAD"])
+    head = head.strip()
+    path, err = worktree(head, "cleantree")
+    if not path:
+        findings.append("cannot create clean worktree -- %s" % err.strip()[:160])
+        return None, {}
+    results = {}
+    try:
+        print("\n=== CLEAN TREE AT HEAD %s" % head[:9])
+        for label, cmd, tag in SUITES:
+            if quick and tag == "slow":
+                results[label] = "skipped (--quick)"
+                print("  %-12s skipped (--quick)" % label)
+                continue
+            cwd = os.path.join(path, "janus-bridge") if tag == "go" else path
+            t0 = time.time()
+            try:
+                rc, out = sh(cmd, cwd)
+            except subprocess.TimeoutExpired:
+                results[label] = "TIMEOUT"
+                findings.append("clean tree: %s timed out" % label)
+                print("  %-12s TIMEOUT" % label)
+                continue
+            secs = int(time.time() - t0)
+            # The SUMMARY line, not the last line. npm's last line is often a
+            # node_modules path, which reads as a pass whether 1849 tests ran or
+            # zero did -- and a hollow green is the exact thing this script
+            # exists to catch.
+            summary = ""
+            for l in out.splitlines():
+                t = l.strip()
+                if (t.startswith("Tests ") or t.startswith("ok ")
+                        or " passed" in t or t.startswith("--- FAIL")):
+                    summary = t
+            if rc == 0:
+                results[label] = "ok (%ds) %s" % (secs, summary[:60])
+                print("  %-12s ok  %ds   %s" % (label, secs, summary[:78]))
+            else:
+                results[label] = "FAILED (%ds)" % secs
+                findings.append("clean tree: %s FAILED at HEAD -- your own "
+                                "checkout may be masking it" % label)
+                print("  %-12s FAILED  %ds" % (label, secs))
+                for l in out.splitlines():
+                    if l.startswith("FAIL") or "--- FAIL" in l or "error TS" in l:
+                        print("      %s" % l[:118])
+    finally:
+        drop(path)
+    return head, results
+
+
+def write_stamp(head, results, quick):
+    try:
+        os.makedirs(os.path.dirname(STAMP), exist_ok=True)
+        with open(STAMP, "w", encoding="utf-8") as f:
+            json.dump({"commit": head,
+                       "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                       "partial": bool(quick),
+                       "suites": results}, f, indent=1)
+        print("\nstamp: %s -> %s" % (STAMP, head[:9]))
+    except OSError as e:
+        print("stamp NOT written (%s) - cycle.py will read the sprint as unchecked" % e)
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("--since", help="ref the sprint's folds start after")
+    ap.add_argument("--patch", action="append", default=[], metavar="FILE")
+    ap.add_argument("--base", help="commit each --patch was written against")
+    ap.add_argument("--clean-tree-only", action="store_true")
+    ap.add_argument("--quick", action="store_true",
+                    help="skip e2e; a partial stamp does NOT close a sprint")
+    a = ap.parse_args()
+
+    if os.path.realpath(os.getcwd()) != os.path.realpath(ROOT):
+        print("post-fold-audit: run from %s" % ROOT, file=sys.stderr)
+        return 2
+    if a.patch and not a.base:
+        print("post-fold-audit: --patch needs --base", file=sys.stderr)
+        return 2
+
+    findings = []
+    if not a.clean_tree_only:
+        for p in a.patch:
+            orchestrator_delta(p, a.base, findings)
+        if not a.patch:
+            print("no --patch given: the orchestrator-delta half was SKIPPED, not passed")
+    head, results = clean_tree(a.quick, findings)
+    if head:
+        write_stamp(head, results, a.quick)
+
+    print("\n=== FINDINGS")
+    if findings:
+        for f in findings:
+            print("  - %s" % f)
+    else:
+        print("  none")
+    if a.quick:
+        print("  (--quick: e2e was not run; this stamp does not close a sprint)")
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

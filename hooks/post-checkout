@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# Repo post-checkout hook — VERSION-CONTROLLED, like its commit-msg and
+# pre-commit siblings, and installed by the same `npm run hooks:install`.
+# install-hooks.sh iterates every file in scripts/git-hooks/, so this one was
+# picked up the moment it landed; the installer needed no change to find it.
+# (It did gain a check that the resolved hook dir is one `git worktree add`
+# actually consults — see the note at the bottom of install-hooks.sh.)
+#
+# WHAT IT DOES. When `git worktree add` creates a NEW worktree, symlink
+# node_modules and planning-docs into it from the main checkout, and give it a
+# PRIVATE SCRATCHPAD reachable as `.scratch`.
+#
+# WHY. A worktree gets the tracked tree and nothing else. node_modules is
+# untracked; planning-docs is gitignored AND a nested git repo. So a fresh
+# agent worktree has neither, and both gaps were closed by a sentence pasted
+# into every dispatch brief — a mechanism this repo has measured at 96% when
+# pasted and 7-8% when not, i.e. it works, but the missing 4% is silent.
+# The node_modules half is the more dangerous one: node walks UP from the
+# worktree and can resolve playwright out of a SIBLING agent's worktree, which
+# is how one agent ran someone else's code and reported it green
+# (i-a-worktree-s-empty-node-modules). scripts/preflight-tree.mjs now refuses
+# instead of guessing, and a symlink is exactly what it asks for.
+#
+# HOW IT KNOWS IT IS A NEW WORKTREE, and not the ordinary checkout this hook
+# also fires on. All three must hold. Verified by probing a real repo on
+# 2026-08-27 rather than taken from the docs:
+#
+#   $3 = 1                  a branch checkout, not `git checkout -- <path>`
+#                           (a file checkout passes 0)
+#   $1 = the null sha       only a brand-new worktree — and `git clone` — has
+#                           no previous HEAD. A checkout inside an ALREADY
+#                           EXISTING worktree passes a real sha here, which is
+#                           the case this test alone excludes.
+#   git-dir != common-dir   we are in a LINKED worktree. This is what excludes
+#                           `git clone`, which also passes the null sha, and
+#                           the main checkout, where the two are equal.
+#
+# THE MAIN CHECKOUT IS RESOLVED, NEVER HARDCODED. `git rev-parse
+# --git-common-dir` is the main .git even when called from a worktree, so its
+# parent is the tree holding the real node_modules. A literal path would be
+# wrong on every other machine and wrong inside the sibling browser-wrap-bridge
+# checkout, which is a real second checkout on this one.
+#
+# WRITE ACCESS THROUGH THE planning-docs LINK IS DELIBERATE, NOT AN OVERSIGHT.
+# A symlink is read-write, so an agent can mutate issues.json — and the main
+# session writes it constantly, since dispatch and handoff both append to the
+# notes log on every dispatch and every landing. We link anyway, because the
+# lost-update race that argues against it is ALREADY CLOSED one layer down:
+# issues.py wraps every load-modify-save in an exclusive fcntl.flock on
+# .issues.lock, writes through a per-pid tmp file and an atomic os.replace, and
+# appends the notes log as whole JSONL lines under that same lock. flock keys
+# on the INODE, and a symlinked planning-docs resolves to the same inode as the
+# main checkout's (verified: identical inode number through both paths), so a
+# worktree writer and a main-session writer serialize against each other
+# exactly as two main-checkout writers already do.
+#
+# SO, WHEN TWO WRITERS RACE: they serialize. The second blocks in flock until
+# the first releases, then re-reads and applies on top of the first's result.
+# os.replace is atomic, so no reader ever sees a torn file, and the per-pid tmp
+# name means two writers cannot collide on the temp path. Nothing is lost. That
+# lock exists precisely because the race was measured live before it landed —
+# 8/10 concurrent claims either crashed on a shared ".tmp" name or vanished.
+#
+# WHAT THAT DOES NOT COVER, said out loud rather than left implied:
+#   1. The lock only binds processes that go through issues.py. An editor, a
+#      shell redirect or a python one-liner writing issues.json bypasses it.
+#      A read-only tracker wrapper would not have closed that hole either,
+#      which is why we did not add one — it would be a second mechanism for a
+#      job the flock already does, and "two mechanisms for one job is how a
+#      stale one survives" is the reason this hook exists at all.
+#   2. flock serializes WRITES, not INTENT. Two agents that each legitimately
+#      `set status=` on one issue both succeed and the later one wins. That is
+#      a dispatcher coordination question, not a data race, and no file lock
+#      can adjudicate it.
+#   3. render() bumps renderSeq and saves without taking the lock itself; it is
+#      safe only because every caller already holds it. That coupling lives in
+#      the nested planning-docs repo and is not this repo's to change.
+#
+# THE THIRD LINK IS A SCRATCHPAD, AND IT IS THE SAME BUG ONE LAYER DOWN.
+# (i-concurrent-agents-share-one-scratchpad-and.) N agents get N worktrees so
+# they cannot clobber each other's edits — and then every one of them writes
+# its throwaway files into ONE session scratchpad, because that is the only
+# scratch path any of them is handed. On 2026-08-26 a worker reported a sibling
+# overwriting its mutator script mid-run. Nothing was corrupted that time
+# because the results were already captured; that is luck, not isolation.
+#
+# The scratchpad is where the files whose correctness is hardest to re-check
+# from the repo afterwards live: mutation scripts, probe harnesses, captured
+# suite output. A mutation harness whose mutator is silently replaced mid-run
+# prints a full, confident, WRONG table — every row a real number, none of them
+# about the code the agent thinks it mutated.
+#
+# So: <main_tree>/.claude/scratch/<worktree-name>/, linked in as `.scratch`.
+# The key is the worktree's own directory name, which for a dispatched agent IS
+# `agent-<id>` — the same id that names the worktree — so the mapping is
+# greppable rather than derived.
+#
+# WHY THE REAL DIRECTORY LIVES OUTSIDE THE WORKTREE. A scratchpad inside the
+# worktree would be private and cleaned up for free, which is most of what is
+# wanted — but the worktree is REMOVED once its work is landed, and the scratch
+# evidence dies with it. That is an argument about where the evidence goes, not
+# where the working files go, and one directory serves both: it is private
+# while the agent runs and it is still there when the lander wants to see what
+# the agent actually ran. Nothing prunes it; it is small, and a directory that
+# deletes evidence on a schedule is worse than one that grows.
+#
+# WHAT THIS DOES NOT ENFORCE, said plainly. Nothing makes an agent WRITE there.
+# The path exists and is announced; an agent that keeps using the shared
+# session scratchpad is not stopped by anything here. The mechanical half of
+# this issue is in scripts/mutate.mjs, which fingerprints its mutator and
+# REFUSES when it changes mid-run — that one does not depend on any agent
+# honouring a convention.
+#
+# IT MUST NEVER BLOCK THE WORKTREE. Deliberately no `set -e`: every failure
+# warns on stderr and the hook still exits 0. A worktree with no node_modules
+# is a bad day; a `git worktree add` that fails outright is a worse one.
+
+set -u
+
+warn() {
+  echo "post-checkout: $*" >&2
+}
+
+# Always succeed, whatever happened above this line.
+trap 'exit 0' EXIT
+
+prev="${1:-}"
+flag="${3:-0}"
+
+# --- is this a brand-new worktree? -----------------------------------------
+
+# A file checkout (`git checkout -- path`) passes 0 here.
+[ "$flag" = "1" ] || exit 0
+
+# The null sha, and only the null sha: 40 (or 64) zeros. Anything containing a
+# non-zero character is a real previous HEAD, i.e. a checkout inside a worktree
+# that already exists and already has its links.
+[ -n "$prev" ] || exit 0
+case "$prev" in
+  *[!0]*) exit 0 ;;
+esac
+
+abspath_dir() {
+  # Absolute path of a directory, without --path-format=absolute (git 2.31+)
+  # so this works on older git too.
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *)  ( cd "$1" 2>/dev/null && pwd ) ;;
+  esac
+}
+
+git_dir="$(git rev-parse --git-dir 2>/dev/null)" || exit 0
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || exit 0
+git_dir="$(abspath_dir "$git_dir")"
+common_dir="$(abspath_dir "$common_dir")"
+[ -n "$git_dir" ] && [ -n "$common_dir" ] || exit 0
+
+# Equal in the main checkout and in a fresh `git clone`; different only in a
+# linked worktree. This is the test that keeps a clone from linking onto itself.
+[ "$git_dir" != "$common_dir" ] || exit 0
+
+here="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+main_tree="$(dirname "$common_dir")"
+[ -n "$here" ] && [ -n "$main_tree" ] || exit 0
+# Never link a tree to itself. STRICTLY REDUNDANT given the git-dir test above
+# — the only way here == main_tree is a plain main checkout, which that test has
+# already excluded — and deliberately kept anyway as a one-line failsafe against
+# a future edit loosening it. Said plainly because NO TEST ISOLATES THIS LINE:
+# delete it and every test still passes. It is not load-bearing; do not add
+# behaviour behind it.
+[ "$here" != "$main_tree" ] || exit 0
+
+# --- link, but never clobber -----------------------------------------------
+
+# link_one <name-in-this-worktree> [target-path]
+# The target defaults to the SAME name in the main checkout, which is what
+# node_modules and planning-docs want. The scratchpad passes its own target
+# because the two names differ on purpose: `.scratch` here, a per-worktree
+# directory under the main checkout's .claude/scratch/ there.
+link_one() {
+  name="$1"
+  target="${2:-$main_tree/$name}"
+  dest="$here/$name"
+
+  if [ ! -e "$target" ]; then
+    warn "$name does not exist in the main checkout ($main_tree) — not linked."
+    return 0
+  fi
+
+  # -L before -e: a symlink pointing at nothing is still a symlink, and -e is
+  # false for it.
+  if [ -L "$dest" ]; then
+    current="$(readlink "$dest" 2>/dev/null || true)"
+    if [ "$current" = "$target" ]; then
+      return 0
+    fi
+    warn "$name is already a symlink to '$current', not '$target' — left alone."
+    return 0
+  fi
+
+  if [ -e "$dest" ]; then
+    warn "$name already exists here and is not a symlink — left alone. This"
+    warn "  worktree will use its own copy, not the main checkout's."
+    return 0
+  fi
+
+  if ln -s "$target" "$dest" 2>/dev/null; then
+    linked="${linked:+$linked, }$name"
+  else
+    warn "could not link $name -> $target. Link it by hand if a suite refuses."
+  fi
+  return 0
+}
+
+linked=""
+link_one node_modules
+link_one planning-docs
+
+# --- the private scratchpad -------------------------------------------------
+# Created, not just linked: unlike the other two there is nothing in the main
+# checkout to point at until this hook makes it. Everything below is
+# best-effort and silent on the happy path, so a re-run of the hook over an
+# already-linked worktree prints nothing.
+
+scratch_name="$(basename "$here")"
+scratch_root="$main_tree/.claude/scratch"
+scratch_target="$scratch_root/$scratch_name"
+
+if [ ! -d "$scratch_target" ] && ! mkdir -p "$scratch_target" 2>/dev/null; then
+  warn "could not create $scratch_target — this worktree has no private scratchpad."
+fi
+
+if [ -d "$scratch_target" ]; then
+  scratch_readme="$scratch_target/README"
+  if [ ! -e "$scratch_readme" ]; then
+    {
+      echo "Private scratchpad for one git worktree."
+      echo
+      echo "worktree: $here"
+      echo "created:  $(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
+      echo
+      echo "Reachable from that worktree as .scratch — put mutators, probe"
+      echo "harnesses and captured suite output here, NOT in the session"
+      echo "scratchpad, which every concurrent agent shares. A sibling agent"
+      echo "overwrote a worker's mutator there mid-run on 2026-08-26"
+      echo "(i-concurrent-agents-share-one-scratchpad-and)."
+      echo
+      echo "This directory OUTLIVES the worktree: it is under the main"
+      echo "checkout, so it is still readable after the work is landed and the"
+      echo "worktree removed. Nothing prunes it."
+    } >"$scratch_readme" 2>/dev/null || warn "could not write $scratch_readme"
+  else
+    # Two worktrees resolving to one scratchpad name is the very thing this
+    # directory exists to prevent, so it is said out loud rather than merged.
+    scratch_owner="$(sed -n 's/^worktree: //p' "$scratch_readme" 2>/dev/null | head -1)"
+    if [ -n "$scratch_owner" ] && [ "$scratch_owner" != "$here" ]; then
+      warn ".scratch target $scratch_target was created for $scratch_owner,"
+      warn "  not $here — two worktrees share one scratchpad name. Files written"
+      warn "  through either link land in the same directory."
+    fi
+  fi
+  link_one .scratch "$scratch_target"
+fi
+
+if [ -n "$linked" ]; then
+  warn "linked $linked from $main_tree"
+  case "$linked" in
+    *planning-docs*)
+      warn "  planning-docs is SHARED AND WRITABLE: scripts/tracker works here,"
+      warn "  and a mutating subcommand changes the real tracker. Writes"
+      warn "  serialize with the main session (issues.py holds an flock), so"
+      warn "  nothing is lost — but there is no sandbox to undo them in."
+      ;;
+  esac
+  case "$linked" in
+    *.scratch*)
+      warn "  .scratch is PRIVATE TO THIS WORKTREE and outlives it:"
+      warn "  $scratch_target"
+      warn "  Write mutators and captured output there, not in the session"
+      warn "  scratchpad every concurrent agent shares."
+      ;;
+  esac
+fi
+
+exit 0

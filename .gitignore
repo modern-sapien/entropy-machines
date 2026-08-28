@@ -1,0 +1,4 @@
+.entropy/
+node_modules/
+__pycache__/
+HANDOFF-*.md

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Repo pre-commit hook — VERSION-CONTROLLED, unlike the copy in .git/hooks.
+#
+# `npm run hooks:install` drops a three-line shim into the resolved hooks
+# directory that execs THIS file via `git rev-parse --show-toplevel`. So the
+# installed artefact never goes stale, each worktree runs its own checked-in
+# copy, and reviewing the hook means reviewing this file.
+#
+# Keep it fast. It runs on every commit; anything slower than a `git diff`
+# belongs in CI.
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+exec "$ROOT/scripts/changelog-guard.sh" --staged
