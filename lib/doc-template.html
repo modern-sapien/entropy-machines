@@ -5,18 +5,28 @@
   and live-reloads the open tab when an agent writes a reply.
 
   CONTRACT — bin/serve and the agents both depend on these:
-    * every question lives in  <div class="response" data-resp="UNIQUE-KEY">
-      containing a <label>, a <div class="discuss"> and one <textarea>.
+    * every question lives in a div with class `response` and a unique,
+      stable `data-resp` attribute, containing a label, a div with class
+      `discuss`, and one textarea.
     * data-resp keys are unique per doc and STABLE — they are the identity an
       agent uses to read and write a specific answer. Renaming one orphans it.
-    * <script type="application/json" id="responses-data">{}</script> near the
-      end of <body> is where saved answers are mirrored.
-    * pages are <section class="page" id="pN"> with a matching
-      <a data-page="pN"> in <nav>.
+    * a script element of type application/json with id `responses-data`,
+      near the end of the body, is where saved answers are mirrored.
+    * pages are section elements with class `page` and id `p0`, `p1`, ...,
+      each with a matching nav anchor carrying the same id in `data-page`.
 
   A QUESTION WITHOUT A .response BOX IS INVISIBLE. Only a data-resp is saved,
   counted, or reported as outstanding — a question written as plain prose
   renders with nowhere to answer it and the doc reports itself as answered.
+
+
+  NOTE: this comment deliberately describes the markup in prose instead of
+  showing it. It used to contain literal examples, and every regex-based tool
+  that reads these docs -- the answer counter, the session-start nag, ad-hoc
+  checks -- matched the DOCUMENTATION as though it were a real question. Each
+  doc then reported one phantom unanswered question that nobody could answer,
+  so "fully answered" was unreachable. The readers strip comments now too, but
+  the fix that matters is not putting a live example in a comment.
 
   Visual standard (VS Code hc-black / hc-light):
     1. Separate with BORDERS, never background tints.

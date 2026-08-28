@@ -168,8 +168,39 @@ def load_profiles():
 
 
 def harness_path_for(project):
-    rel = os.path.relpath(ENTROPY_HOME, project)
-    return rel.replace(os.sep, "/")
+    """How the injected block should refer to the harness.
+
+    RELATIVE ONLY WHEN THE HARNESS IS INSIDE THE PROJECT. That is the vendored
+    layout, where a relative path is correct, portable, and safe to commit --
+    it means the same thing on every machine that clones the repo.
+
+    Anywhere else (a sibling clone, a shared checkout elsewhere on disk) an
+    unconditional relpath produced things like
+    `../../../../../../../Users/someone/code/entropy-machines/doctrine/`: it
+    leaks the author's home directory into a file the user COMMITS, and it
+    breaks for every other clone of that repo. An absolute path is no more
+    portable, but it is honest about being machine-local instead of looking
+    like a repo-relative path that should work."""
+    home = os.path.realpath(ENTROPY_HOME)
+    proj = os.path.realpath(project)
+    if home == proj or home.startswith(proj + os.sep):
+        return os.path.relpath(home, proj).replace(os.sep, "/")
+    return home.replace(os.sep, "/")
+
+
+def docs_dir_for(project):
+    """entropy.json's docs.dir, defaulting to entropy-docs -- the same default
+    bin/init writes to and bin/serve reads from. Never raises: this runs on
+    every session start and must not be able to break one."""
+    try:
+        with open(os.path.join(project, "entropy.json"), encoding="utf-8") as f:
+            cfg = json.load(f)
+        d = (cfg.get("docs") or {}).get("dir")
+        if isinstance(d, str) and d.strip():
+            return d.strip().strip("/")
+    except Exception:
+        pass
+    return "entropy-docs"
 
 
 def render(profile_name, project):
@@ -704,8 +735,8 @@ def cmd_prime():
     unanswered = _scan_unanswered_docs(project)
     if unanswered:
         total_q = sum(n for _, n in unanswered)
-        print("entropy-machines: %d unanswered question(s) across %d doc(s) (best-effort scan of planning/*.html):"
-              % (total_q, len(unanswered)))
+        print("entropy-machines: %d unanswered question(s) across %d doc(s) in %s/:"
+              % (total_q, len(unanswered), docs_dir_for(project)))
         for path, n in unanswered:
             print("  %s -- %d unanswered" % (os.path.relpath(path, project), n))
     return 0
@@ -714,12 +745,19 @@ def cmd_prime():
 def _scan_unanswered_docs(project):
     """Best-effort: dialogue docs in this harness's own convention mark each
     question with <div class="response" data-resp="KEY"> and record answers
-    in a <script id="responses-data"> JSON blob (see planning/serve.py,
+    in a <script id="responses-data"> JSON blob (see bin/serve,
     lib/doc-template.html). Returns [(path, unanswered_count), ...] for docs
     with at least one unanswered question. Never raises -- any doc this
     can't parse is silently skipped, since this runs on every session start
     and must not be able to break one."""
-    planning_dir = os.path.join(project, "planning")
+    # THE CONFIGURED DOCS DIRECTORY, not "planning/". planning/ is the
+    # entropy-machines repo's own gitignored scratch; scanning it here meant
+    # this check looked in a directory that does not exist in a consuming
+    # project, so it silently reported nothing on every session start -- the
+    # one signal that is supposed to tell an agent the owner has questions
+    # waiting. bin/init installs the orientation PRD into docs.dir and
+    # bin/serve serves it from there; this must agree with both.
+    planning_dir = os.path.join(project, docs_dir_for(project))
     if not os.path.isdir(planning_dir):
         return []
     out = []
@@ -732,6 +770,13 @@ def _scan_unanswered_docs(project):
         try:
             with open(path, encoding="utf-8") as f:
                 content = f.read()
+            # Strip HTML comments first. lib/doc-template.html documents the
+            # contract in its own header comment, and that documentation
+            # contains a literal data-resp example -- counting it made every
+            # doc built from the template report one phantom question that no
+            # reader could ever answer, so a fully-answered doc would keep
+            # nagging at every session start. bin/serve had the same bug.
+            content = re.sub(r"<!--[\s\S]*?-->", "", content)
             keys = set(resp_re.findall(content))
             if not keys:
                 continue
