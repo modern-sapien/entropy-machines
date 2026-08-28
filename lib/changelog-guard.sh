@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# changelog-guard — a commit that touches src/ or janus-bridge/ must add a
-# changelog.d/ fragment.
+# changelog-guard — a commit that touches a watched path must add a fragment
+# under `changelog.fragmentDir`. What counts as "watched" is entropy.json's
+# `changelog.watchedPathPatterns`; the default is `["**"]`, i.e. every path,
+# until a project narrows it.
 #
 # One implementation, two callers, so the local hook and CI cannot drift:
 #
-#   scripts/changelog-guard.sh --staged            # pre-commit: the index
-#   scripts/changelog-guard.sh --range A..B        # CI: every non-merge commit
-#   scripts/changelog-guard.sh --commit <sha>      # one commit
+#   lib/changelog-guard.sh --staged            # pre-commit: the index
+#   lib/changelog-guard.sh --range A..B         # CI: every non-merge commit
+#   lib/changelog-guard.sh --commit <sha>       # one commit
 #
-# The rule .claude/CLAUDE.md has always stated ("an entry for every commit")
-# was enforced by nothing until now. It is still not enforced by the hook
-# alone — hooks live in .git/ and are not version-controlled, so anyone who
-# never runs `npm run hooks:install` has no hook at all. That is the same
-# failure as the subagent-isolation setting that was configured to a value
-# which did not exist and silently did nothing for a day. CI is the gate that
-# is actually in the repo; the hook is the fast local echo of it.
+# A rule enforced only by a hook is enforced by nothing: hooks live in
+# .git/ and are not version-controlled, so anyone who never runs the hook
+# installer has no hook at all. That is the general shape of a setting that
+# is silently ignored rather than refused — this repo's own hook installer
+# (lib/install-hooks.sh) verifies its own install for exactly that reason.
+# CI is the gate that actually lives in the repo; the hook is the fast local
+# echo of it.
 #
 # Escape hatch, for a genuinely entry-free commit (a revert, a mechanical
 # rename). It takes two forms because the two callers see different things:
@@ -24,29 +26,37 @@
 #
 # The env var satisfies the hook; the `[skip changelog]` marker is what
 # survives into history and satisfies CI. Use both, or the commit passes
-# locally and fails on push — which is exactly how the escape hatch was
-# broken when this script was first written.
+# locally and fails on push.
 #
 # `git commit --no-verify` is NOT an escape hatch. It skips the hook and
 # leaves nothing behind, so CI fails and there is no record of the intent.
+#
+# The whole feature is optional: `changelog.enabled: false` in entropy.json
+# turns this script into a no-op. A consuming project may not want a
+# fragment-per-commit changelog at all.
 
 set -euo pipefail
 
-WATCHED_RE='^(src/|janus-bridge/)'
-FRAGMENT_RE='^changelog\.d/[^_].*\.md$'
-SKIP_MARKER='[skip changelog]'
+ROOT="$(git rev-parse --show-toplevel)"
+CONFIG_PY="$ROOT/lib/config.py"
 
-if [ "${SKIP_CHANGELOG:-}" = "1" ]; then
-  echo "changelog-guard: SKIP_CHANGELOG=1 — skipped."
-  echo "changelog-guard: put '${SKIP_MARKER}' in the commit message too, or CI will fail this commit."
+ENABLED="$(python3 "$CONFIG_PY" get changelog.enabled)"
+if [ "$ENABLED" != "true" ]; then
+  echo "changelog-guard: changelog.enabled is false in entropy.json — skipped."
   exit 0
 fi
 
+FRAGMENT_DIR="$(python3 "$CONFIG_PY" get changelog.fragmentDir)"
+NEW_FRAGMENT_CMD="$(python3 "$CONFIG_PY" get changelog.newFragmentCmd)"
+WATCHED_RE="$(python3 "$CONFIG_PY" glob-re changelog.watchedPathPatterns)"
+FRAGMENT_RE="$(python3 "$CONFIG_PY" changelog-fragment-re)"
+SKIP_MARKER='[skip changelog]'
+
 fail() {
   cat >&2 <<EOF
-changelog-guard: $1 touches src/ or janus-bridge/ but adds no changelog.d/ fragment.
+changelog-guard: $1 touches a watched path (entropy.json changelog.watchedPathPatterns) but adds no fragment under ${FRAGMENT_DIR}/.
 
-  npm run changelog:new -- "type(scope): what changed" [issue-id]
+  ${NEW_FRAGMENT_CMD} "type(scope): what changed" [issue-id]
 
 then fill in the body and stage it. One fragment per commit — that is the
 whole point: your fragment is a file nobody else writes, so it cannot
@@ -58,6 +68,12 @@ Both parts matter: the env var clears the hook, the marker clears CI.
 EOF
   exit 1
 }
+
+if [ "${SKIP_CHANGELOG:-}" = "1" ]; then
+  echo "changelog-guard: SKIP_CHANGELOG=1 — skipped."
+  echo "changelog-guard: put '${SKIP_MARKER}' in the commit message too, or CI will fail this commit."
+  exit 0
+fi
 
 # A commit whose message carries the marker is exempt in CI, the same way the
 # env var exempts it locally.

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Post-flight record for a dispatched agent's work — the exit half of
-# scripts/dispatch (i-scripts-handoff-exit-record).
+# bin/dispatch.
 #
-#   scripts/handoff i-foo \
+#   bin/handoff i-foo \
 #     --changed  "what actually landed" \
 #     --verified "how I re-checked it MYSELF" \
 #     [--found   "seen, not fixed, out of scope"]...   (repeatable) \
@@ -10,37 +10,37 @@
 #     [--next    "what the next agent needs to know"] \
 #     [--clean]  (required when there is no --found and no --next)
 #
-#   scripts/handoff i-foo --from .claude/worktrees/agent-abc --verified "..."
+#   bin/handoff i-foo --from .claude/worktrees/agent-abc --verified "..."
 #
-#   scripts/handoff i-foo --from .claude/worktrees/agent-abc --lift
+#   bin/handoff i-foo --from .claude/worktrees/agent-abc --lift
 #     Copy the worker's edits into THIS checkout, refusing every file that
 #     moved on main since the worker branched, and every file another issue
 #     was holding when this agent was dispatched — except a held path that
 #     does not exist here at all, which is a new file and cannot be a clobber
 #     (reported, not refused). Records nothing.
 #
-#   scripts/handoff i-foo --interrogate [--ask "one question of your own"]
+#   bin/handoff i-foo --interrogate [--ask "one question of your own"]
 #     Print the adversarial question set. Send it to the STILL-RUNNING agent.
 #
-#   scripts/handoff i-foo --record-interrogation --answer "..." (one per question)
+#   bin/handoff i-foo --record-interrogation --answer "..." (one per question)
 #     Record what it answered. Required before the record step will run.
 #
 # The --from form lifts the agent's own four lines out of <worktree>/HANDOFF.md
 # so the lander edits instead of retyping. --verified is never lifted.
 #
-# WHY THIS EXISTS. scripts/dispatch records the brief going IN. Nothing
+# WHY THIS EXISTS. bin/dispatch records the brief going IN. Nothing
 # recorded what came OUT. A landed agent leaves a diff and a changelog
 # fragment, and both describe the change — neither describes the dead end it
 # ruled out, the coupling it tripped over, the thing it saw two files away and
 # left alone, or the assumption its work rests on. That knowledge existed in
 # exactly one place (a worktree that gets deleted) and was reconstructed from
-# scratch by the next agent to touch the same code. Concretely: the auspex
-# roster question, the side-panel AUTORUN deferral, and the run_controller
-# bool-wrapper gap were each rediscovered by a later session after an earlier
-# one had already established them.
+# scratch by the next agent to touch the same code. It has happened repeatedly:
+# an open question, a deliberate deferral and a known gap in a generated
+# wrapper were each rediscovered by a later session after an earlier one had
+# already established them and left no record.
 #
 # WHO RUNS IT. The LANDING session, not the agent. Agents leave edits
-# uncommitted and never commit (.claude/CLAUDE.md, dispatch rule 2), so the
+# uncommitted and never commit (see agents/isolated-worker.md rule 1), so the
 # session that reads the diff and commits is the one holding the knowledge
 # worth recording — and it is the one that verified the work independently,
 # which the agent cannot do for itself. An agent MAY leave a HANDOFF.md in its
@@ -60,7 +60,7 @@
 # both and this refuses unless you pass --clean, which turns "nothing to report"
 # from an absence into a claim someone made.
 #
-# WHY --lift EXISTS (i-copying-a-worker-s-files-out-of). Landing meant copying
+# WHY --lift EXISTS. Landing meant copying
 # the worker's files out of its worktree by hand — `cp <worktree>/<f> <f>` —
 # and nothing compared <f> against what had landed on main since the worker
 # branched. A stale copy silently reverts landed work, and twice it nearly did:
@@ -68,9 +68,9 @@
 #   2026-08-22  copying a worker's run-host.ts reverted select_option out of
 #               the CDP host; cli-tool-reachability went red 2/2. The rule in
 #               force at the time covered GENERATED files only; this was source.
-#   2026-08-23  the navigate worker regenerated controller.mjs inside its own
-#               tree, which predated cb0f84d — a fix landed twenty minutes
-#               earlier. Copying its bundle would have reverted that fix. Caught
+#   A worker regenerated a committed bundle inside its own tree, from a base
+#               that predated a fix landed twenty minutes earlier. Copying its
+#               bundle would have reverted that fix. Caught
 #               only because the lander ran `git log <base>..HEAD -- <file>` by
 #               hand, from memory.
 #
@@ -84,7 +84,7 @@
 # anyway is advice, not a mechanism. The cost is real: this writes into the
 # shared main checkout, which another session may be live in. It is bounded on
 # purpose — it writes only paths the worker changed AND that fall inside the
-# file scope scripts/dispatch recorded, it never deletes anything, it never
+# file scope bin/dispatch recorded, it never deletes anything, it never
 # touches a file main has moved, and it prints every path it wrote.
 #
 # WHY A DRIFTED GENERATED FILE IS A DIFFERENT REFUSAL FROM A DRIFTED SOURCE
@@ -93,16 +93,17 @@
 # file is never merged and never copied: the source lands, `npm run gen` runs
 # HERE, and the lander confirms the regenerated bundle still carries what landed
 # earlier. A source file needs a real merge or a re-dispatch from current HEAD.
-# The generated set is DERIVED from package.json's `gen` script — the chain of
-# generators is read, and each generator's own output path is read out of it —
-# because a hard-coded list rots silently and the file it forgets is the one
-# that gets copied. Nothing in this repo enumerates the outputs (CI runs
-# `npm run gen` and diffs, which needs no list), so derivation is the only
-# non-rotting source available. If a generator stops yielding a path, that is
-# printed as a ROT warning and its output degrades to the SOURCE message —
+# The generated set is DECLARED, in entropy.json's `generate.outputs`. An
+# earlier version derived it by reading the project's generator sources and
+# regexing their output paths out — which rots the moment a project writes its
+# generators differently, and rots SILENTLY: an empty derived set is
+# indistinguishable from "no generated file was touched", which is the exact
+# case this check exists to catch. A declared list can also go stale, but it
+# goes stale loudly — `generate.cmd` set with no `outputs` prints a ROT
+# warning, and the output degrades to the SOURCE message —
 # still a refusal, never a copy.
 #
-# WHY --lift HAS NO OVERRIDE. scripts/dispatch refuses a wrong cwd and a dirty
+# WHY --lift HAS NO OVERRIDE. bin/dispatch refuses a wrong cwd and a dirty
 # scope with no escape hatch "because there is no correct dispatch from a wrong
 # cwd or over your own uncommitted edits". A blind copy over a moved file is in
 # that class: there is no correct one. What IS legitimate is a lander who has
@@ -120,7 +121,7 @@
 # into the note — an override that lands on the record as a claim, which is the
 # same shape as --clean.
 #
-# WHY THE AGENT IS INTERROGATED FIRST (i-an-agent-that-stops-is-interrogated-before-the).
+# WHY THE AGENT IS INTERROGATED FIRST.
 # Everything above is a monologue: the worker writes HANDOFF.md, the lander
 # reads it, and nobody ever puts a question to the one party still holding the
 # full context. The agent is resumable when it stops — the questions go to it
@@ -129,10 +130,10 @@
 #
 # THE QUESTIONS ARE ADVERSARIAL, NOT A COMPLETION CHECK, and that is the whole
 # design. Both recorded half-change incidents had the agent report SUCCESS on
-# broken work: i-commune-s-failed-controller-turn shipped a Go writer emitting
-# an event kind it could not declare in src/shared/types.ts, and
-# i-dist-version-stamp shipped a janusVersion wire field with no producer. Both
-# halves individually green, both agents said they were done. "Are you
+# broken work: one shipped a writer emitting an event kind it could not declare
+# in the shared type module; another shipped a version field on the wire with
+# nothing producing it. Both halves individually green, both agents said they
+# were done. "Are you
 # complete?" returns yes in exactly the cases that matter, so it launders the
 # failure rather than catching it. Every question below asks for something that
 # cannot be answered with "no", and at least one answer must be substantive —
@@ -144,7 +145,7 @@
 # fixed set is a set dispatch can show the agent up front, so it gathers the
 # answers as it works instead of reconstructing them after the fact.
 #
-# THE GATE ENFORCES THE CONTRACT THE AGENT WAS ACTUALLY GIVEN. scripts/dispatch
+# THE GATE ENFORCES THE CONTRACT THE AGENT WAS ACTUALLY GIVEN. bin/dispatch
 # writes `— interrogation: required` into the DISPATCH note and pastes the
 # questions into the brief, so a note that carries the field is an agent that
 # was TOLD it would be questioned. A note without it (every note written before
@@ -162,13 +163,13 @@
 set -e
 
 usage() {
-  echo "usage: scripts/handoff <issue-id> --changed \"...\" --verified \"...\"" >&2
+  echo "usage: bin/handoff <issue-id> --changed \"...\" --verified \"...\"" >&2
   echo "         [--found \"...\"]... [--assumed \"...\"]... [--next \"...\"] [--clean]" >&2
   echo "         [--drift-reviewed \"why the worker's version is right\"]" >&2
-  echo "   or: scripts/handoff <issue-id> --from <agent-worktree> --verified \"...\"" >&2
-  echo "   or: scripts/handoff <issue-id> --from <agent-worktree> --lift  (copy, record nothing)" >&2
-  echo "   or: scripts/handoff <issue-id> --interrogate [--ask \"...\"]  (print the questions)" >&2
-  echo "   or: scripts/handoff <issue-id> --record-interrogation --answer \"...\" (one per question)" >&2
+  echo "   or: bin/handoff <issue-id> --from <agent-worktree> --verified \"...\"" >&2
+  echo "   or: bin/handoff <issue-id> --from <agent-worktree> --lift  (copy, record nothing)" >&2
+  echo "   or: bin/handoff <issue-id> --interrogate [--ask \"...\"]  (print the questions)" >&2
+  echo "   or: bin/handoff <issue-id> --record-interrogation --answer \"...\" (one per question)" >&2
   exit 2
 }
 
@@ -195,7 +196,7 @@ while [ $# -gt 0 ]; do
     --drift-reviewed) drift_reviewed="$2"; shift 2 ;;
     # Print the question set for the still-running agent, and stop.
     --interrogate) interrogate=1; shift ;;
-    # The questions and nothing else, so scripts/dispatch can show the agent the
+    # The questions and nothing else, so bin/dispatch can show the agent the
     # exact set it will be held to without keeping a second copy of it.
     --questions) interrogate=2; shift ;;
     # Record what it answered.
@@ -227,7 +228,7 @@ done
 root=$(cd "$(dirname "$0")/.." && pwd)
 
 # The dispatch note carries two lists and they do opposite jobs
-# (i-dispatch-declares-what-is-claimed-by-others-not):
+#:
 #
 #   scope:    the ADVISORY --files the dispatcher predicted. Recorded for the
 #             audit trail and echoed back on the record so it closes the same
@@ -248,7 +249,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # unknown, and then the ADVISORY list is enforced as an allowlist, i.e. the old
 # behaviour verbatim. There is no state in which nothing is checked.
 notes=""
-[ -n "$id" ] && notes=$("$root/scripts/tracker" notes --issue "$id" 2>/dev/null || true)
+[ -n "$id" ] && notes=$("$root/bin/tracker" notes --issue "$id" 2>/dev/null || true)
 scope=$(printf '%s\n' "$notes" \
   | sed -n 's/.*DISPATCH .* — scope: \(.*\) — brief: .*/\1/p' | tail -1 || true)
 deny=$(printf '%s\n' "$notes" \
@@ -271,7 +272,7 @@ tmp=""
 cleanup() { [ -n "$tmp" ] && rm -rf "$tmp"; return 0; }
 trap cleanup EXIT
 
-# A file is inside the scope scripts/dispatch recorded. Same annotation
+# A file is inside the scope bin/dispatch recorded. Same annotation
 # stripping as dispatch's clash check ("path/(own)", "path/*.md", "dir/") so
 # both ends read one scope line the same way. No recorded scope (hand-done
 # work) means no scope check.
@@ -298,7 +299,7 @@ is_claimed() {
   return 1
 }
 
-# THE BRAND-NEW-FILE EXEMPTION (i-a-directory-level-scope-claim-refuses-a-brand).
+# THE BRAND-NEW-FILE EXEMPTION.
 #
 # A path that does not exist in THIS checkout at the moment of the lift cannot
 # be a clobber of another agent's concurrent edits, whatever the denylist says:
@@ -388,14 +389,14 @@ is_null_answer() {
 #                  UNREADABLE tracker lands here too, and that is a fail-open:
 #                  the whole record step already degrades that way ("no DISPATCH
 #                  note found … recording anyway"), and a gate that refuses
-#                  every landing while planning-docs/ is unreachable would just
+#                  every landing while the tracker is unreachable would just
 #                  be routed around with --no-interrogation on every run.
 #   not-required   the DISPATCH note predates this gate, so the agent was never
 #                  told it would be questioned. Reported, never refused.
 #   recorded       an INTERROGATION note follows the LAST DISPATCH for this id.
 #                  Ordering is load-bearing: a re-dispatch reopens the question.
 #   missing        the agent was told, and nobody asked.
-# The verb is anchored to the note prefix exactly as scripts/dispatch anchors
+# The verb is anchored to the note prefix exactly as bin/dispatch anchors
 # its own, so a note that quotes the log format is not read as an entry in it.
 #
 # THE NOTES ARRIVE IN THE ENVIRONMENT, NOT ON STDIN. `python3 - <<'EOF'` reads
@@ -442,7 +443,7 @@ record_skipped_interrogation() {
     echo "handoff: --dry-run — would record: interrogation SKIPPED — $no_interrogation"
     return 0
   fi
-  "$root/scripts/tracker" remember \
+  "$root/bin/tracker" remember \
     "INTERROGATION $id — SKIPPED by the lander — why: $(flatten_answer "$no_interrogation")" \
     --issue "$id" >/dev/null 2>&1 || true
   echo "handoff: interrogation SKIPPED — recorded on $id as a claim, not an absence:"
@@ -471,7 +472,7 @@ if [ "$interrogate" -eq 1 ]; then
   total=0
   for _k in $INTERROGATION_KEYS; do total=$((total + 1)); done
   [ -n "$ask" ] && total=$((total + 1))
-  printf '    scripts/handoff %s --record-interrogation \\\n' "$id"
+  printf '    bin/handoff %s --record-interrogation \\\n' "$id"
   [ -n "$ask" ] && printf '      --ask "%s" \\\n' "$ask"
   n=1
   while [ "$n" -le "$total" ]; do
@@ -543,7 +544,7 @@ if [ "$record_interrogation" -eq 1 ]; then
     echo "  $note"
     exit 0
   fi
-  "$root/scripts/tracker" remember "$note" --issue "$id" >/dev/null
+  "$root/bin/tracker" remember "$note" --issue "$id" >/dev/null
   echo "handoff: interrogation recorded on $id ($nq answer(s))."
   echo "  --lift and the record step will now run for this id."
   exit 0
@@ -552,53 +553,43 @@ fi
 # Derived, not listed — see the header. Prints repo-relative paths, plus
 # "!ROT <text>" lines when a generator stops being readable.
 gen_set() {
+  # DECLARED, NOT SCRAPED. This used to read the project's generator SOURCE and
+  # regex out its output paths. That worked for exactly one project's
+  # conventions and silently produced nothing for any other — and "produced
+  # nothing" here reads identically to "no generated files were touched",
+  # which is the failure mode this check exists to catch.
+  #
+  # So the list is declared in entropy.json as `generate.outputs`. If a project
+  # declares none, this prints one !ROT line and the caller degrades loudly
+  # rather than quietly passing.
   python3 - "$root" <<'PYGEN'
-import json, os, re, sys
-root = sys.argv[1]
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], 'lib'))
 try:
-    gen = json.load(open(os.path.join(root, 'package.json')))['scripts'].get('gen', '')
-except Exception:
-    print('!ROT package.json has no readable scripts.gen'); raise SystemExit(0)
-gens = re.findall(r'scripts/[A-Za-z0-9._-]+', gen)
-if not gens:
-    print('!ROT package.json scripts.gen names no scripts/ generator'); raise SystemExit(0)
-# `const outFile = join(...)` / `const OUTPUT_PATH = resolve(...)`. Only names
-# starting out/OUT, so an entryPoints/readFileSync INPUT is never mistaken for
-# an output — calling a source file generated would send the lander to
-# `npm run gen` for a file no generator writes, which is the 2026-08-22 shape.
-ASSIGN = re.compile(r'\b(?:const|let|var)\s+(out\w*|OUT\w*)\s*=\s*(?:join|resolve)\(([^)]*)\)', re.I | re.S)
-for g in gens:
-    p = os.path.join(root, g)
-    try:
-        t = open(p, encoding='utf-8').read()
-    except OSError:
-        print('!ROT %s is named by scripts.gen but is not in this checkout' % g); continue
-    found, dirs = set(), []
-    for m in re.finditer(r'OUT="\$ROOT/([^"]+)"', t):          # the sh generator
-        found.add(m.group(1))
-    for _name, args in ASSIGN.findall(t):
-        segs = [s for s in re.findall(r"'([^']*)'", args) if s not in ('..', '.')]
-        if not segs:
-            continue
-        rel = '/'.join(segs)
-        if '.' in segs[-1]:
-            found.add(rel)
-        else:
-            dirs.append(rel)                                   # an out DIRECTORY
-    for d in dirs:                                             # + its bundle list
-        for m in re.finditer(r"\bout:\s*'([^']+)'", t):
-            found.add(d + '/' + m.group(1))
-    if not found:
-        print('!ROT %s: no output path could be read out of it' % g); continue
-    for f in sorted(found):
-        print(f)
+    from config import load_config
+    cfg = load_config(sys.argv[1])
+except Exception as e:
+    print('!ROT entropy.json could not be read (%s)' % e)
+    raise SystemExit(0)
+
+gen = cfg.get('generate') or {}
+outputs = gen.get('outputs') or []
+if not gen.get('cmd'):
+    # No generate step at all is a legitimate project shape, not a fault.
+    raise SystemExit(0)
+if not outputs:
+    print('!ROT generate.cmd is set but generate.outputs is empty — '
+          'this check cannot tell a stale generated file from an edited one')
+    raise SystemExit(0)
+for f in sorted(outputs):
+    print(f)
 PYGEN
 }
 
 # --- worktree drift scan ----------------------------------------------------
 #
 # Everything here resolves refs with `git -C "$root"` and never against the
-# ambient cwd. planning-docs/ is a separate nested repo that does not exist
+# ambient cwd. The tracker's store may be a separate nested repo that does not exist
 # inside a worktree at all, and a session parked in it took out three dispatches
 # on 2026-08-17; a ref resolved against "whatever repo the cwd is in" is that
 # same bug wearing a different hat.
@@ -611,7 +602,7 @@ scan_worktree() {
     exit 1
   fi
   # Same repository, established through the object store rather than the path.
-  # A worktree of the nested planning-docs repo has its own .git and would
+  # A worktree of a nested repo has its own .git and would
   # otherwise be scanned against refs that mean nothing here.
   a=$(cd "$root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)
   b=$(cd "$wt" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || b=""
@@ -773,9 +764,9 @@ if [ "$lift" -eq 1 ]; then
       echo "handoff: REFUSED — $id was dispatched with an interrogation required and" >&2
       echo "  none is recorded. Nothing has been copied." >&2
       echo "  The agent is resumable and holds context nobody else does. Ask it:" >&2
-      echo "      scripts/handoff $id --interrogate" >&2
+      echo "      bin/handoff $id --interrogate" >&2
       echo "  then record what it said:" >&2
-      echo "      scripts/handoff $id --record-interrogation --answer \"...\"" >&2
+      echo "      bin/handoff $id --record-interrogation --answer \"...\"" >&2
       echo "  If you cannot reach it — the session is gone, the agent crashed —" >&2
       echo "  say so and it goes on the record as a claim rather than an absence:" >&2
       echo "      --no-interrogation \"<why nobody could ask it>\"" >&2
@@ -792,7 +783,7 @@ if [ "$lift" -eq 1 ]; then
     printf '%s\n' "$rot" | sed 's/^!ROT /    /' >&2
     echo "  A generated file missing from that list is reported below as a SOURCE" >&2
     echo "  file: still refused, but with the wrong remedy. Fix the derivation in" >&2
-    echo "  scripts/handoff (gen_set) before trusting a SOURCE verdict." >&2
+    echo "  bin/handoff (gen_set) before trusting a SOURCE verdict." >&2
     echo >&2
   fi
 
@@ -841,7 +832,7 @@ if [ "$lift" -eq 1 ]; then
     echo "      git diff -- <file>   # confirm the fresh bundle still carries what" >&2
     echo "                           # landed above, not only the worker's change" >&2
     echo "  Do not copy the worker's bundle and do not force it: that is the" >&2
-    echo "  2026-08-23 near-miss exactly (a controller.mjs built before cb0f84d)." >&2
+    echo "  recorded near-miss exactly: a bundle built before a fix landed." >&2
     echo >&2
   fi
 
@@ -945,7 +936,7 @@ if [ "$lift" -eq 1 ]; then
     exit 1
   fi
   echo "handoff: --lift done. Nothing recorded — verify in THIS tree, then:"
-  echo "    scripts/handoff $id --from $from --verified \"what YOU re-ran\""
+  echo "    bin/handoff $id --from $from --verified \"what YOU re-ran\""
   exit 0
 fi
 
@@ -977,8 +968,8 @@ case "$istate" in
       echo "  A HANDOFF.md is a monologue by the party with the least incentive to" >&2
       echo "  report a gap. Both recorded half-changes were reported as successes." >&2
       echo "  Ask the agent while it is still resumable:" >&2
-      echo "      scripts/handoff $id --interrogate" >&2
-      echo "      scripts/handoff $id --record-interrogation --answer \"...\"" >&2
+      echo "      bin/handoff $id --interrogate" >&2
+      echo "      bin/handoff $id --record-interrogation --answer \"...\"" >&2
       echo "  Or say why nobody could, and it lands as a claim:" >&2
       echo "      --no-interrogation \"<why>\"" >&2
       exit 1
@@ -1057,7 +1048,7 @@ if [ "$dry" -eq 1 ]; then
   exit 0
 fi
 
-"$root/scripts/tracker" remember "$note" --issue "$id" >/dev/null
+"$root/bin/tracker" remember "$note" --issue "$id" >/dev/null
 
 echo "handoff: recorded on $id."
 [ -n "$scope" ] && echo "  scope released: $scope"

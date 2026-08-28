@@ -7,12 +7,13 @@ prove their own guards. Nothing looks at the code the ORCHESTRATOR writes, and
 it does write some: a conflict resolved by hand at merge time is new code,
 covered by no worker's test and seen by no verifier.
 
-Not hypothetical. On 2026-08-22 a `select_option` patch stopped applying
-because a `type-target.ts` guard had landed underneath it. The naive
-resolution left the feature UNREACHABLE — six tests caught it — and the fix
-(exempting HTMLSelectElement from that guard) was invented during the merge.
-It was mutated and proved, but only because the orchestrator chose to. Nothing
-required it, and nothing would have noticed.
+Not hypothetical. A patch adding one feature once stopped applying because a
+guard written for a different feature had landed underneath it in the merge.
+The naive conflict resolution left the new feature UNREACHABLE — its own
+tests caught it, eventually — and the actual fix (narrowing the other guard)
+was invented by hand during the merge. It was mutated and proved, but only
+because the orchestrator chose to. Nothing required it, and nothing would
+have noticed if it hadn't.
 
 TWO JOBS, both mechanical. No model, no judgement.
 
@@ -22,22 +23,24 @@ TWO JOBS, both mechanical. No model, no judgement.
 
   2. HEAD IS GREEN, ON A CLEAN TREE. The orchestrator's checkout carries other
      sessions' uncommitted work, so a green run there is not a green HEAD --
-     which is how a broken guide corpus survived two days of being dismissed
-     as a local artefact. This runs the suites in a throwaway worktree at
+     which is how a real regression once survived being repeatedly dismissed
+     as a local artefact before someone finally traced it back to HEAD. This
+     runs the suites (entropy.json's `suites[]`) in a throwaway worktree at
      committed HEAD.
 
-Owner ruling 2026-08-22 (build-0822-factory): a script, not a fifth agent role
-("agreed"), run ONCE PER SPRINT after the folds and before the report ("no,
-once per sprint is fine").
+Run as a script, not as a fifth agent role: once per sprint, after that
+sprint's folds land and before its report closes it out.
 
-  scripts/post-fold-audit --since <ref>
-  scripts/post-fold-audit --since <ref> --patch a.patch --base <sha>
-  scripts/post-fold-audit --clean-tree-only
-  scripts/post-fold-audit --quick          # skips e2e; does NOT close a sprint
+  bin/post-fold-audit --since <ref>
+  bin/post-fold-audit --since <ref> --patch a.patch --base <sha>
+  bin/post-fold-audit --clean-tree-only
+  bin/post-fold-audit --skip <tag>         # skip every suite carrying <tag>
+  bin/post-fold-audit --quick              # shorthand for --skip slow
 
-Writes a stamp naming the commit it verified. `cycle.py new` refuses to
-register a BUILD-REPORT whose stamp is older than the newest commit, so a
-sprint cannot be closed on a tree nobody checked at HEAD.
+Writes a stamp naming the commit it verified, under `unattended.stateHome`.
+Whatever closes a sprint on top of this tooling can refuse to do so when that
+stamp is older than the newest commit — a sprint should not close on a tree
+nobody actually checked at HEAD.
 
 Exit 0 clean | 1 findings | 2 misuse.
 """
@@ -51,18 +54,31 @@ import tempfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "lib"))
+from config import load_config  # noqa: E402  (path must be set up first)
+
+CONFIG = load_config(cwd=ROOT)
 STAMP = os.path.join(
-    os.environ.get("JANUS_DRAIN_HOME", os.path.expanduser("~/.janus-unattended")),
+    os.path.expanduser(CONFIG["unattended"]["stateHome"]),
     "clean-tree-stamp.json")
 
-SUITES = [
-    ("typecheck", ["npm", "run", "typecheck"], None),
-    ("unit", ["npm", "test"], None),
-    ("e2e", ["npm", "run", "e2e"], "slow"),
-    ("e2e:bridge", ["npm", "run", "e2e:bridge"], "slow"),
-    ("go build", ["go", "build", "./..."], "go"),
-    ("go test", ["go", "test", "./..."], "go"),
-]
+
+def build_suites(cfg):
+    """`suites[]` from entropy.json, as (label, cmd, tag, cwd) tuples.
+
+    No suite is assumed. A project with nothing configured gets an empty
+    list here and a loud "no suites configured" print in clean_tree() rather
+    than a silent no-op — an audit that quietly checks zero suites and exits
+    0 is worse than one that refuses to look useful.
+
+    `cwd` is not in docs/CONFIG.md yet: each suite entry may carry its own
+    `"cwd"` (relative to the worktree root, default `"."`), for a project
+    whose toolchain lives in a subdirectory rather than at the repo root.
+    """
+    suites = []
+    for s in cfg.get("suites", []):
+        suites.append((s["name"], s["cmd"], s.get("tag"), s.get("cwd", ".")))
+    return suites
 
 
 def sh(args, cwd, timeout=2400):
@@ -81,7 +97,7 @@ def worktree(at, label):
     worktree and resolves packages from a SIBLING worktree -- you run someone
     else's code and report the result as your own.
     """
-    d = tempfile.mkdtemp(prefix="janus-%s-" % label)
+    d = tempfile.mkdtemp(prefix="post-fold-audit-%s-" % label)
     path = os.path.join(d, "tree")
     rc, out = git(["worktree", "add", "--detach", path, at])
     if rc != 0:
@@ -153,7 +169,12 @@ def orchestrator_delta(patch, base, findings):
         drop(path)
 
 
-def clean_tree(quick, findings):
+def clean_tree(skip_tags, findings):
+    suites = build_suites(CONFIG)
+    if not suites:
+        findings.append("no suites configured -- entropy.json's suites[] is empty; "
+                        "nothing was run at HEAD")
+        return None, {}
     rc, head = git(["rev-parse", "HEAD"])
     head = head.strip()
     path, err = worktree(head, "cleantree")
@@ -163,12 +184,12 @@ def clean_tree(quick, findings):
     results = {}
     try:
         print("\n=== CLEAN TREE AT HEAD %s" % head[:9])
-        for label, cmd, tag in SUITES:
-            if quick and tag == "slow":
-                results[label] = "skipped (--quick)"
-                print("  %-12s skipped (--quick)" % label)
+        for label, cmd, tag, cwd_rel in suites:
+            if tag and tag in skip_tags:
+                results[label] = "skipped (--skip %s)" % tag
+                print("  %-12s skipped (--skip %s)" % (label, tag))
                 continue
-            cwd = os.path.join(path, "janus-bridge") if tag == "go" else path
+            cwd = os.path.join(path, cwd_rel)
             t0 = time.time()
             try:
                 rc, out = sh(cmd, cwd)
@@ -204,17 +225,18 @@ def clean_tree(quick, findings):
     return head, results
 
 
-def write_stamp(head, results, quick):
+def write_stamp(head, results, partial):
     try:
         os.makedirs(os.path.dirname(STAMP), exist_ok=True)
         with open(STAMP, "w", encoding="utf-8") as f:
             json.dump({"commit": head,
                        "at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                       "partial": bool(quick),
+                       "partial": bool(partial),
                        "suites": results}, f, indent=1)
         print("\nstamp: %s -> %s" % (STAMP, head[:9]))
     except OSError as e:
-        print("stamp NOT written (%s) - cycle.py will read the sprint as unchecked" % e)
+        print("stamp NOT written (%s) - whatever reads this stamp will see the sprint "
+             "as unchecked" % e)
 
 
 def main():
@@ -223,8 +245,11 @@ def main():
     ap.add_argument("--patch", action="append", default=[], metavar="FILE")
     ap.add_argument("--base", help="commit each --patch was written against")
     ap.add_argument("--clean-tree-only", action="store_true")
+    ap.add_argument("--skip", action="append", default=[], metavar="TAG",
+                    help="skip every suite carrying this entropy.json suites[] tag "
+                         "(repeatable); a partial stamp does NOT close a sprint")
     ap.add_argument("--quick", action="store_true",
-                    help="skip e2e; a partial stamp does NOT close a sprint")
+                    help="shorthand for --skip slow")
     a = ap.parse_args()
 
     if os.path.realpath(os.getcwd()) != os.path.realpath(ROOT):
@@ -234,15 +259,19 @@ def main():
         print("post-fold-audit: --patch needs --base", file=sys.stderr)
         return 2
 
+    skip_tags = set(a.skip)
+    if a.quick:
+        skip_tags.add("slow")
+
     findings = []
     if not a.clean_tree_only:
         for p in a.patch:
             orchestrator_delta(p, a.base, findings)
         if not a.patch:
             print("no --patch given: the orchestrator-delta half was SKIPPED, not passed")
-    head, results = clean_tree(a.quick, findings)
+    head, results = clean_tree(skip_tags, findings)
     if head:
-        write_stamp(head, results, a.quick)
+        write_stamp(head, results, bool(skip_tags))
 
     print("\n=== FINDINGS")
     if findings:
@@ -250,8 +279,8 @@ def main():
             print("  - %s" % f)
     else:
         print("  none")
-    if a.quick:
-        print("  (--quick: e2e was not run; this stamp does not close a sprint)")
+    if skip_tags:
+        print("  (--skip %s: this stamp does not close a sprint)" % ",".join(sorted(skip_tags)))
     return 1 if findings else 0
 
 

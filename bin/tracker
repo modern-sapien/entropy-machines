@@ -1,52 +1,118 @@
 #!/bin/sh
-# Run the production-plan tracker WITHOUT changing the caller's cwd.
+# Adapter dispatcher for the issue tracker. Every caller in this harness goes
+# through this file instead of a backend directly — see
+# docs/TRACKER-ADAPTER.md for the six-command contract every backend
+# implements, and docs/CONFIG.md for entropy.json.
 #
-#   scripts/tracker orient
-#   scripts/tracker show i-foo
-#   scripts/tracker set i-foo status=done
-#   scripts/tracker remember "..."
+#   bin/tracker show i-foo
+#   bin/tracker notes --issue i-foo
+#   bin/tracker remember --issue i-foo "..."
+#   bin/tracker claim i-foo
+#   bin/tracker ready
+#   bin/tracker set i-foo status=done
 #
-# WHY THIS EXISTS — it is not ergonomics, it is a correctness guard.
+# `tracker.backend` in entropy.json picks the implementation: "file" runs the
+# built-in lib/tracker-file over a flat JSON file, "command" shells out to an
+# external tracker binary. This file reads that config once and never again —
+# a backend never re-reads entropy.json itself (docs/CONFIG.md rule 3).
 #
-# `issues.py` resolves issues.json relative to the process cwd, so every
-# invocation used to be written `cd planning-docs/feature-guidance/production-plan
-# && python3 issues.py ...`. The Bash tool's cwd PERSISTS between calls, so that
-# `cd` silently relocated the session into the nested `planning-docs` repo and
-# left it there.
+# WHY THE WHOLE DISPATCH RUNS IN A SUBSHELL — this is not ergonomics, it is a
+# correctness guard inherited unchanged from the tool this one replaced. That
+# tool's entire job was to `cd` into a hardcoded nested tracker directory
+# before running its backend, because the backend resolved its storage
+# relative to the process's cwd. A caller whose shell keeps its working
+# directory between commands — an agent harness with a persistent shell is
+# exactly this shape — had that `cd` leak into every later command in the
+# same session, silently, and a worktree or a dispatch created after the leak
+# was rooted in the wrong repository. It happened three times before the fix,
+# twice in one day, taking out two dispatched agents at once.
 #
-# That matters because a dispatched agent's git worktree is created in whatever
-# repo the dispatching session's cwd belongs to. With the session parked in
-# planning-docs, agents get a worktree of the DOCS repo: no janus-bridge/, no
-# package.json, no changelog.d/, nothing in their file scope. The task cannot be
-# done and the agent burns its budget discovering that.
-#
-# This has now happened three times (2026-08-05, and twice on 2026-08-06 — the
-# second time taking out two agents at once, one of which had already been
-# stopped mid-flight). It is documented in agent memory as "Dispatch cwd decides
-# the worktree's repo", and being documented did not stop it, which is the whole
-# argument for a mechanical measure over a reminder.
-#
-# The subshell is the entire fix: `( cd ... && ... )` changes the CHILD's cwd and
-# leaves the caller's alone. Use this wrapper and the session can never drift out
-# of the repo root.
-# INSIDE A DISPATCHED AGENT'S WORKTREE THIS DEPENDS ON THE HOOKS. planning-docs/
-# is gitignored and a nested repo, so `git worktree add` does not check it out.
-# scripts/git-hooks/post-checkout symlinks it in at worktree creation, which
-# makes this wrapper work there — against the SHARED issues.json, read-write.
-# But hooks are per-clone: if nobody ran `npm run hooks:install`, the symlink is
-# absent and this exits 2 (an agent hit the bare `cd: no such file or directory`
-# on 2026-08-07, before the hook existed). An agent should work from its brief
-# either way; the guard below tells it which case it is in.
+# This file no longer needs to `cd` anywhere itself — the file backend takes
+# its storage path as configuration, not as an ambient cwd — but the guard is
+# kept anyway and generalized: a `command` backend is arbitrary external code,
+# and nothing stops it from changing directory or leaving other state behind.
+# Everything below runs inside `( ... )`, so nothing the resolved backend does
+# to the working directory survives past this script returning. Do not let
+# the final backend invocation become a bare top-level `exec`; that removes
+# the one property this file exists to guarantee.
 set -e
+
+usage() {
+  cat >&2 <<'EOF'
+usage: bin/tracker show <id>
+       bin/tracker notes [--issue <id>]
+       bin/tracker remember --issue <id> <text>
+       bin/tracker claim <id>
+       bin/tracker ready
+       bin/tracker set <id> <key>=<value> [<key>=<value> ...]
+EOF
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+
 root=$(cd "$(dirname "$0")/.." && pwd)
-dir="$root/planning-docs/feature-guidance/production-plan"
-if [ ! -d "$dir" ]; then
-  echo "scripts/tracker: $dir does not exist." >&2
-  echo "  planning-docs/ is gitignored and a NESTED REPO, so a worktree does not" >&2
-  echo "  get it. post-checkout normally symlinks it in — its absence here means" >&2
-  echo "  the hooks were never installed in this clone (npm run hooks:install)." >&2
-  echo "  If you are a dispatched agent: work from your brief and report the gap" >&2
-  echo "  rather than trying to reach the tracker." >&2
+config="$root/entropy.json"
+
+if [ ! -f "$config" ]; then
+  echo "tracker: REFUSED — no entropy.json at $root." >&2
+  echo "  Every hardcoded assumption the harness makes about its host project" >&2
+  echo "  lives there. See docs/CONFIG.md." >&2
   exit 2
 fi
-( cd "$dir" && TRACKER_WRAPPED=1 exec python3 issues.py "$@" )
+
+# One read of entropy.json, here, once. Prints four tab-separated fields:
+#   backend            "file" or "command" (defaults to "file")
+#   file backend path  tracker.file.path, defaulted
+#   command bin        tracker.command.bin
+#   command args       tracker.command.args, space-joined (an argument that
+#                       itself contains a space is not representable this
+#                       way — the same limitation any space-joined shell
+#                       config carries; a backend needing one should read its
+#                       own richer config, not rely on this passthrough)
+info=$(python3 - "$config" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    cfg = json.load(f)
+t = cfg.get("tracker") or {}
+backend = t.get("backend") or "file"
+file_path = ((t.get("file") or {}).get("path")) or ".entropy/issues.json"
+command = t.get("command") or {}
+cmd_bin = command.get("bin") or ""
+cmd_args = " ".join(command.get("args") or [])
+print("\t".join([backend, file_path, cmd_bin, cmd_args]))
+PY
+) || {
+  echo "tracker: REFUSED — could not read tracker config out of $config." >&2
+  exit 2
+}
+
+backend=$(printf '%s' "$info" | cut -f1)
+file_path=$(printf '%s' "$info" | cut -f2)
+cmd_bin=$(printf '%s' "$info" | cut -f3)
+cmd_args=$(printf '%s' "$info" | cut -f4)
+
+case "$backend" in
+  file)
+    impl="$root/lib/tracker-file"
+    if [ ! -x "$impl" ]; then
+      echo "tracker: REFUSED — tracker.backend is \"file\" but $impl is missing" >&2
+      echo "  or not executable." >&2
+      exit 2
+    fi
+    ( cd "$root" && ENTROPY_ROOT="$root" ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
+    ;;
+  command)
+    if [ -z "$cmd_bin" ]; then
+      echo "tracker: REFUSED — tracker.backend is \"command\" but tracker.command.bin" >&2
+      echo "  is empty in $config." >&2
+      exit 2
+    fi
+    ( cd "$root" && exec "$cmd_bin" $cmd_args "$@" )
+    ;;
+  *)
+    echo "tracker: REFUSED — unknown tracker.backend \"$backend\" in $config" >&2
+    echo "  (want \"file\" or \"command\")." >&2
+    exit 2
+    ;;
+esac

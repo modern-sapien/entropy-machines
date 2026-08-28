@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template. `bin/drain install` substitutes __RUNNER__ / __STATE__ / __LABEL__
+  and writes the result to ~/Library/LaunchAgents/<unattended.label>.plist.
+
+  HOURLY, not pinned to a boundary. There is generally no API for an agent
+  CLI's own rate-limit window, so predicting the reset means guessing, and a
+  job pinned to one fixed time sits idle through a window that opened hours
+  earlier. An hourly probe that exits in milliseconds when disarmed, dirty,
+  or walled costs effectively nothing and catches every window within an
+  hour of it opening.
+
+  The job is INERT until `bin/drain on` — StartCalendarInterval fires,
+  drain-run.sh reads the armed flag, and exits 2. Keeping the on/off switch
+  out of the plist is deliberate: arming must not require a launchctl reload.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>__RUNNER__</string>
+  </array>
+
+  <!-- Top of every hour. Minute 7 rather than 0: every scheduled job on the
+       planet fires at :00, and nothing here needs the boundary. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Minute</key>
+    <integer>7</integer>
+  </dict>
+
+  <!-- launchd coalesces missed fires while asleep into ONE catch-up run, which
+       is what we want: waking to six queued fires would run six sessions. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__STATE__/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__STATE__/launchd.err.log</string>
+
+  <!-- A login shell's PATH is not inherited by launchd. Whatever agent CLI,
+       runtime, and VCS tools this project's suites need all have to be
+       reachable from here — adjust if your toolchain does not live under
+       Homebrew or /usr/local. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

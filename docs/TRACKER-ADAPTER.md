@@ -41,9 +41,8 @@ tracker has them, good; the harness will not read them.
 
 ## Two states a general tracker usually lacks
 
-The built-in `file` backend implements both. A `command` backend that cannot
-express them will degrade — `ready` will over-report, and the orchestrator
-has to catch it by eye.
+A `command` backend that cannot express these will degrade: `ready` will
+over-report, and the orchestrator has to catch it by eye.
 
 - **held** — decided not to do now, WITH a reason. Distinct from closed: a
   held issue is a decision, not a completion, and `ready` must not return it.
@@ -51,3 +50,17 @@ has to catch it by eye.
   decision, an owner ruling). Distinct from blocked-by, which points at
   another issue. `ready` must not return a gated issue, and must fail closed
   when the gate handle is unknown.
+
+**Neither is a `status` value.** `status` holds only `notstarted`, `progress`
+or `done`. Held-ness is the presence of a `heldWhy` field; gated-ness is the
+presence of a `gate` field. This is deliberate. Modelling them as statuses
+makes the reason optional — a bare `status: held` is expressible, and a held
+issue whose reason nobody recorded is indistinguishable from one somebody
+forgot. Carrying the reason in the field that defines the state makes the
+reasonless version unrepresentable.
+
+It also keeps the two orthogonal to progress: an issue can be half-implemented
+AND held, which a single status enum forces you to lose.
+
+The built-in `file` backend enforces this — `set <id> status=held` is refused
+with a message naming the right field.

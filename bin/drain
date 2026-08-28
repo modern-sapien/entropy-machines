@@ -1,63 +1,71 @@
 #!/bin/sh
-# Arm, disarm, inspect, or hand-fire the unattended drainer.
+# Arm, disarm, inspect, install, or hand-fire the unattended drainer.
 #
-#   scripts/drain on          # arm it — the next launchd fire does work
-#   scripts/drain off         # disarm — fires still happen and exit immediately
-#   scripts/drain status      # armed? last fire? last 429? what is eligible?
-#   scripts/drain now         # run one fire in the foreground, right now
+#   bin/drain on          # arm it — the next scheduled fire does work
+#   bin/drain off         # disarm — fires still happen and exit immediately
+#   bin/drain status      # armed? scheduled? last fire? last quota wall? eligible?
+#   bin/drain now         # run one fire in the foreground, right now
+#   bin/drain at HH:MM    # one detached one-shot fire, today or tomorrow
+#   bin/drain cancel      # cancel a pending one-shot
+#   bin/drain install     # install the scheduled job (launchd or systemd)
 #
-# WHY A FLAG FILE RATHER THAN launchctl load/unload.
+# WHY A FLAG FILE RATHER THAN LOADING/UNLOADING THE SCHEDULER.
 #
-# `launchctl unload` is a stateful operation on a plist that also has to survive
-# reboots and login cycles, and getting it wrong leaves the job either
-# permanently dead or permanently running with no obvious tell. A flag file is
-# a boolean the runner reads at the top of every fire: `off` takes effect on the
-# next fire with nothing to reload, `on` needs no privileges, and `status` can
-# answer honestly by reading one path. The launchd job stays loaded either way.
-#
-# The owner asked for exactly this on UNATTENDED-OPS (2026-08-09): "Anyway I can
-# switch on the probe or this auto scheduler myself?"
+# Unloading a scheduled job is a stateful operation on the job definition that
+# also has to survive reboots and login cycles, and getting it wrong leaves the
+# job either permanently dead or permanently running with no obvious tell. A
+# flag file is a boolean the runner reads at the top of every fire: `off` takes
+# effect on the next fire with nothing to reload, `on` needs no privileges, and
+# `status` can answer honestly by reading one path. The scheduled job stays
+# installed either way.
 set -e
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-state="${JANUS_DRAIN_HOME:-$HOME/.janus-unattended}"
+os=$(uname)
+
+# ---- config -----------------------------------------------------------------
+# cfg <dotted.path> <default>
+# One value out of entropy.json at the project root. A missing file, a missing
+# key, or a value that is not a plain scalar all fall back to <default> — this
+# harness has to keep running before a project has written every key, per
+# docs/CONFIG.md rule 2 (a working default, or a refusal naming the key; the
+# refusal is this script's job for the keys that truly have none, e.g. an
+# unsupported scheduler below).
+cfg() {
+  python3 - "$root/entropy.json" "$1" "$2" <<'PY'
+import json, sys
+path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    print(default); sys.exit(0)
+cur = data
+for part in key.split('.'):
+    if isinstance(cur, dict) and part in cur:
+        cur = cur[part]
+    else:
+        print(default); sys.exit(0)
+print(default if cur is None else (cur if isinstance(cur, str) else json.dumps(cur)))
+PY
+}
+
+state_default=$(cfg '.unattended.stateHome' '~/.entropy')
+case "$state_default" in
+  "~"*) state_default="$HOME${state_default#\~}" ;;
+esac
+state="${ENTROPY_DRAIN_HOME:-$state_default}"
+label=$(cfg '.unattended.label' 'com.entropy.drain')
 flag="$state/armed"
 log="$state/last-run.json"
 
 mkdir -p "$state"
 
-# The last 429 this machine saw, from Claude Code's own session logs. There is
-# no API for the rate-limit window (checked 2026-08-09: stats-cache.json has no
-# window field and is months stale; /usage is not exposed to the CLI), but a 429
-# IS recorded, with a timestamp. That is enough to skip a fire that would only
-# hit the wall again.
-last_429() {
-  python3 - <<'PY' 2>/dev/null || true
-import glob, json, os
-newest = None
-for f in glob.glob(os.path.expanduser("~/.claude/projects/**/*.jsonl"), recursive=True):
-    try:
-        if os.path.getmtime(f) < __import__("time").time() - 6 * 3600:
-            continue
-        for line in open(f, errors="ignore"):
-            if '"error":"rate_limit"' in line:
-                try:
-                    ts = json.loads(line).get("timestamp")
-                except Exception:
-                    continue
-                if ts and (newest is None or ts > newest):
-                    newest = ts
-    except OSError:
-        continue
-print(newest or "")
-PY
-}
-
 case "${1:-status}" in
   on)
     date -u +%Y-%m-%dT%H:%M:%SZ > "$flag"
     echo "drain: ARMED (since $(cat "$flag"))"
-    echo "  the next launchd fire will pick up work; 'scripts/drain off' stops it."
+    echo "  the next scheduled fire will pick up work; 'bin/drain off' stops it."
     ;;
 
   off)
@@ -68,22 +76,35 @@ case "${1:-status}" in
 
   status)
     # Two independent switches, and confusing them is the likely support
-    # question: the job can be loaded but disarmed (fires, does nothing), or
+    # question: the job can be installed but disarmed (fires, does nothing), or
     # armed but never installed (nothing ever fires). Report both.
-    if launchctl list 2>/dev/null | grep -q com.janus.drain; then
+    scheduled=no
+    case "$os" in
+      Darwin)
+        if command -v launchctl >/dev/null 2>&1 && launchctl list 2>/dev/null | grep -q "$label"; then
+          scheduled=yes
+        fi
+        ;;
+      Linux)
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user is-enabled "$label.timer" >/dev/null 2>&1; then
+          scheduled=yes
+        fi
+        ;;
+    esac
+    if [ "$scheduled" = yes ]; then
       echo "scheduled:  yes (hourly, at :07)"
     else
-      echo "scheduled:  no — run 'scripts/drain install'"
+      echo "scheduled:  no — run 'bin/drain install'"
     fi
     if [ -f "$state/once.pid" ] && kill -0 "$(cat "$state/once.pid")" 2>/dev/null; then
       echo "one-shot:   $(cat "$state/once.at" 2>/dev/null) (pid $(cat "$state/once.pid"))"
     else
-      echo "one-shot:   none — 'scripts/drain at HH:MM' to set one"
+      echo "one-shot:   none — 'bin/drain at HH:MM' to set one"
     fi
     if [ -f "$flag" ]; then
       echo "armed:      yes (since $(cat "$flag"))"
     else
-      echo "armed:      no — run 'scripts/drain on'"
+      echo "armed:      no — run 'bin/drain on'"
     fi
     if [ -f "$log" ]; then
       # Heredoc + env var rather than `python3 -c '...'`: the inline form needs
@@ -101,72 +122,92 @@ PY
     else
       echo "last fire:  never"
     fi
-    l=$(last_429)
+    # The quota probe lives in bin/drain-run.sh (--probe-quota) so there is
+    # exactly one implementation; see that file for what it assumes.
+    lookback=$(cfg '.unattended.agent.quotaProbe.lookbackSeconds' '3600')
+    l=$("$root/bin/drain-run.sh" --probe-quota 2>/dev/null || true)
     if [ -n "$l" ]; then
-      echo "last 429:   $l"
+      echo "quota wall: $l"
     else
-      echo "last 429:   none in the last 6h"
+      echo "quota wall: none seen in the last $((lookback / 60))m (or no probe configured)"
     fi
-    # What it would actually take, so `status` answers "is there anything to do"
-    # and not merely "is the switch up".
-    if [ -x "$root/scripts/tracker" ]; then
-      n=$("$root/scripts/tracker" ready --autonomous 2>/dev/null | grep -c '^  ' || true)
+    # What it would actually take, so `status` answers "is there anything to
+    # do" and not merely "is the switch up".
+    if [ -x "$root/bin/tracker" ]; then
+      n=$("$root/bin/tracker" ready 2>/dev/null | grep -c . || true)
       echo "eligible:   ${n:-0} issue(s) an unattended run may take"
     fi
     ;;
 
   now)
     echo "drain: firing once in the foreground (ignores the armed flag)"
-    exec "$root/scripts/drain-run.sh" --foreground
+    exec "$root/bin/drain-run.sh" --foreground
     ;;
 
   at)
-    # One fire at a time you name. This is the answer to "I can just read the
-    # reset out of /usage" — you can, and a rolling window means that reading
-    # is only true for today, which is exactly what a ONE-SHOT is for. The
-    # hourly probe chases a moving window; this hits a boundary you already
-    # know. They do not conflict and neither needs the other.
+    # One fire at a time you name — the answer to "can I just read a reset time
+    # off the agent's own usage panel and resume then". You can, and a rolling
+    # window means that reading is only true for today, which is exactly what a
+    # ONE-SHOT is for. The hourly probe chases a moving window; this hits a
+    # boundary you already know. They do not conflict and neither needs the
+    # other.
     when="$2"
     case "$when" in
       [0-9][0-9]:[0-9][0-9]) ;;
-      *) echo "usage: scripts/drain at HH:MM   (24-hour, local)" >&2; exit 2 ;;
+      *) echo "usage: bin/drain at HH:MM   (24-hour, local)" >&2; exit 2 ;;
     esac
     hh=${when%:*}; mm=${when#*:}
-    # Strip a leading zero before arithmetic — 08 and 09 are invalid octal and
-    # would make plutil reject the plist with a baffling error.
+    # Strip a leading zero before arithmetic — 08 and 09 are invalid octal.
     hh=$((10#$hh)); mm=$((10#$mm))
     if [ "$hh" -gt 23 ] || [ "$mm" -gt 59 ]; then
-      echo "scripts/drain at: $when is not a real time" >&2; exit 2
+      echo "bin/drain at: $when is not a real time" >&2; exit 2
     fi
-    # A DETACHED SLEEP, not a LaunchAgent. This repo lives under ~/Desktop,
-    # which macOS TCC protects: a launchd agent running /bin/sh is denied
-    # ("Operation not permitted") before the script's first line, verified
-    # 2026-08-09 with a probe that could read /tmp and not ~/Desktop. A process
-    # spawned from your terminal inherits the terminal's TCC grant and reads
-    # the repo fine, so this is the form that works with no permission changes.
+    # A DETACHED SLEEP, not a scheduled job. On macOS specifically, a repo
+    # under a TCC-protected folder (see `install` below) cannot be reached by
+    # a LaunchAgent at all, but a process spawned from your terminal inherits
+    # the terminal's TCC grant and reads the repo fine — so this is the form
+    # that works everywhere, no permission changes, no scheduler install.
     #
-    # The trade: it does not survive a reboot, and if the Mac sleeps through
-    # the target the timer resumes on wake and fires late rather than on time.
-    # For "resume at the reset I just read out of /usage", that is the right
-    # shape anyway — you are naming a moment tonight, not a standing schedule.
+    # The trade: it does not survive a reboot, and if the machine sleeps
+    # through the target the timer resumes on wake and fires late rather than
+    # on time. For "resume at the reset I just read off my own usage panel",
+    # that is the right shape anyway — you are naming a moment tonight, not a
+    # standing schedule.
+    #
+    # Portable date math: BSD date (macOS) and GNU date (Linux) parse and
+    # format dates with incompatible flags (`-j -f` vs `-d`), and neither can
+    # be assumed present in the other's form. Routing through python3's
+    # stdlib `datetime` sidesteps both dialects entirely — it behaves
+    # identically on every platform this harness targets, unlike `date` itself.
     now_s=$(date +%s)
-    tgt_s=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(date +%Y-%m-%d) $(printf '%02d:%02d:00' "$hh" "$mm")" +%s 2>/dev/null)
-    [ -z "$tgt_s" ] && { echo "scripts/drain at: could not parse $when" >&2; exit 2; }
+    tgt_s=$(python3 - "$hh" "$mm" <<'PY'
+import datetime, sys
+hh, mm = int(sys.argv[1]), int(sys.argv[2])
+tgt = datetime.datetime.now().replace(hour=hh, minute=mm, second=0, microsecond=0)
+print(int(tgt.timestamp()))
+PY
+)
+    [ -z "$tgt_s" ] && { echo "bin/drain at: could not compute a target time" >&2; exit 2; }
     if [ "$tgt_s" -le "$now_s" ]; then
       tgt_s=$((tgt_s + 86400))   # already past today → mean tomorrow
     fi
     wait_s=$((tgt_s - now_s))
+    tgt_str=$(python3 - "$tgt_s" <<'PY'
+import datetime, sys
+print(datetime.datetime.fromtimestamp(int(sys.argv[1])).strftime('%Y-%m-%d %H:%M'))
+PY
+)
     # Replace any pending one-shot rather than stacking two fires.
     if [ -f "$state/once.pid" ] && kill -0 "$(cat "$state/once.pid")" 2>/dev/null; then
       kill "$(cat "$state/once.pid")" 2>/dev/null || true
     fi
-    nohup sh -c "sleep $wait_s; exec '$root/scripts/drain-run.sh' --foreground" \
+    nohup sh -c "sleep $wait_s; exec '$root/bin/drain-run.sh' --foreground" \
       > "$state/once.log" 2>&1 &
     echo $! > "$state/once.pid"
-    printf '%s\n' "$(date -r "$tgt_s" '+%Y-%m-%d %H:%M')" > "$state/once.at"
-    echo "drain: one fire at $(cat "$state/once.at") — in $((wait_s / 60)) min (pid $(cat "$state/once.pid"))"
+    printf '%s\n' "$tgt_str" > "$state/once.at"
+    echo "drain: one fire at $tgt_str — in $((wait_s / 60)) min (pid $(cat "$state/once.pid"))"
     echo "  runs whether or not 'drain on' is set; log: $state/once.log"
-    echo "  cancel with: scripts/drain cancel"
+    echo "  cancel with: bin/drain cancel"
     echo "  NOTE: a detached timer, so it does not survive a reboot."
     ;;
 
@@ -178,49 +219,115 @@ PY
       echo "drain: no one-shot pending"
     fi
     rm -f "$state/once.pid" "$state/once.at"
-    launchctl bootout "gui/$(id -u)/com.janus.drain.once" 2>/dev/null || true
-    rm -f "$HOME/Library/LaunchAgents/com.janus.drain.once.plist"
+    if [ "$os" = "Darwin" ] && command -v launchctl >/dev/null 2>&1; then
+      launchctl bootout "gui/$(id -u)/$label.once" 2>/dev/null || true
+      rm -f "$HOME/Library/LaunchAgents/$label.once.plist"
+    fi
     ;;
 
   install)
-    # TCC refuses a LaunchAgent access to ~/Desktop, ~/Documents and
-    # ~/Downloads. Installing a job that is denied before its first line is
-    # worse than installing none, because `launchctl list` shows it loaded and
-    # everything looks armed. Check the actual repo location and say so.
-    case "$root" in
-      "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
-        echo "scripts/drain install: refusing — this repo is in a TCC-protected folder." >&2
-        echo "  $root" >&2
-        echo "  A LaunchAgent is denied here before it runs a line (verified:" >&2
-        echo "  launchd can read /tmp and not ~/Desktop). Three ways forward:" >&2
-        echo "    1. scripts/drain at HH:MM   — a detached timer, works today," >&2
-        echo "                                  no permissions, no reboot survival" >&2
-        echo "    2. move the repo out of ~/Desktop (e.g. ~/code/janus)" >&2
-        echo "    3. System Settings → Privacy & Security → Full Disk Access," >&2
-        echo "       add /bin/sh — broad, since it grants every shell script" >&2
-        echo "  Override once you have done 2 or 3: JANUS_DRAIN_FORCE=1" >&2
-        [ -z "$JANUS_DRAIN_FORCE" ] && exit 3
-        echo "  JANUS_DRAIN_FORCE set — installing anyway." >&2
+    # Which scheduler: explicit config wins, otherwise pick the one this OS
+    # actually has. Three independent things used to make this macOS-only —
+    # the scheduler itself (launchd has no Linux equivalent), a folder-access
+    # workaround that is a macOS-only concept (see below), and BSD-only date
+    # syntax (fixed above, in `at`). This branch is the scheduler half.
+    scheduler=$(cfg '.unattended.scheduler' '')
+    if [ -z "$scheduler" ]; then
+      case "$os" in
+        Darwin) scheduler=launchd ;;
+        Linux)  scheduler=systemd ;;
+        *)
+          echo "bin/drain install: no known scheduler for '$os'." >&2
+          echo "  set unattended.scheduler in entropy.json if you have one that fits," >&2
+          echo "  or drive fires yourself (cron, a CI schedule, ...) and just call" >&2
+          echo "  bin/drain-run.sh on your own timer — 'bin/drain on/off' still works" >&2
+          echo "  as the arm/disarm switch regardless of what triggers the fire." >&2
+          exit 3
+          ;;
+      esac
+    fi
+
+    runner="$root/bin/drain-run.sh"
+
+    case "$scheduler" in
+      launchd)
+        if [ "$os" != "Darwin" ]; then
+          echo "bin/drain install: unattended.scheduler is 'launchd' but this machine" >&2
+          echo "  reports '$os', not Darwin. launchd only exists on macOS." >&2
+          exit 3
+        fi
+        # TCC (Transparency, Consent and Control) — a macOS-only OS security
+        # subsystem — refuses a LaunchAgent filesystem access to ~/Desktop,
+        # ~/Documents and ~/Downloads. Installing a job that is denied before
+        # its first line is worse than installing none, because `launchctl
+        # list` shows it loaded and everything looks armed. Check the actual
+        # repo location and say so. This entire check is a macOS concept and
+        # does not apply on Linux.
+        case "$root" in
+          "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
+            echo "bin/drain install: refusing — this repo is in a TCC-protected folder." >&2
+            echo "  $root" >&2
+            echo "  A LaunchAgent is denied here before it runs a line. Three ways forward:" >&2
+            echo "    1. bin/drain at HH:MM      — a detached timer, works today," >&2
+            echo "                                 no permissions, no reboot survival" >&2
+            echo "    2. move the repo out of that folder (e.g. ~/code/<project>)" >&2
+            echo "    3. System Settings -> Privacy & Security -> Full Disk Access," >&2
+            echo "       add /bin/sh — broad, since it grants every shell script" >&2
+            echo "  Override once you have done 2 or 3: ENTROPY_DRAIN_FORCE=1" >&2
+            [ -z "$ENTROPY_DRAIN_FORCE" ] && exit 3
+            echo "  ENTROPY_DRAIN_FORCE set — installing anyway." >&2
+            ;;
+        esac
+        plist="$HOME/Library/LaunchAgents/$label.plist"
+        mkdir -p "$HOME/Library/LaunchAgents"
+        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g; s|__LABEL__|$label|g" \
+          "$root/lib/entropy-drain.plist.in" > "$plist"
+        launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$plist"
+        echo "drain: launchd job installed and loaded (hourly probe)"
+        echo "  it is INERT until you run 'bin/drain on'."
+        echo "  to remove: launchctl bootout gui/$(id -u)/$label && rm $plist"
+        echo
+        echo "  One step left, and it needs sudo so it is yours to run — without it"
+        echo "  the job cannot fire while the machine is asleep:"
+        echo "    sudo pmset repeat wakeorpoweron MTWRFSU 02:00:00"
+        ;;
+
+      systemd)
+        if ! command -v systemctl >/dev/null 2>&1; then
+          echo "bin/drain install: unattended.scheduler is 'systemd' but no systemctl" >&2
+          echo "  was found on this machine." >&2
+          exit 3
+        fi
+        unitdir="$HOME/.config/systemd/user"
+        mkdir -p "$unitdir"
+        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
+          "$root/lib/entropy-drain.service.in" > "$unitdir/$label.service"
+        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
+          "$root/lib/entropy-drain.timer.in" > "$unitdir/$label.timer"
+        systemctl --user daemon-reload
+        systemctl --user enable --now "$label.timer"
+        echo "drain: systemd timer installed and enabled (hourly probe)"
+        echo "  it is INERT until you run 'bin/drain on'."
+        echo "  to remove: systemctl --user disable --now $label.timer && rm $unitdir/$label.{service,timer}"
+        echo
+        echo "  For it to fire while the machine is suspended, enable a wake timer at"
+        echo "  the OS/firmware level (e.g. rtcwake) — there is no systemd equivalent" >&2
+        echo "  of this line, the closest analog behaves differently and is not" >&2
+        echo "  installed automatically here."
+        ;;
+
+      *)
+        echo "bin/drain install: unknown scheduler '$scheduler' (unattended.scheduler" >&2
+        echo "  in entropy.json) — supported: launchd, systemd." >&2
+        exit 2
         ;;
     esac
-    plist="$HOME/Library/LaunchAgents/com.janus.drain.plist"
-    mkdir -p "$HOME/Library/LaunchAgents"
-    sed "s|__RUNNER__|$root/scripts/drain-run.sh|g; s|__STATE__|$state|g" \
-      "$root/scripts/com.janus.drain.plist.in" > "$plist"
-    launchctl bootout "gui/$(id -u)/com.janus.drain" 2>/dev/null || true
-    launchctl bootstrap "gui/$(id -u)" "$plist"
-    echo "drain: launchd job installed and loaded (hourly probe)"
-    echo "  it is INERT until you run 'scripts/drain on'."
-    echo "  to remove: launchctl bootout gui/$(id -u)/com.janus.drain && rm $plist"
-    echo
-    echo "  One step left, and it needs sudo so it is yours to run — without it"
-    echo "  the job cannot fire while the Mac is asleep:"
-    echo "    sudo pmset repeat wakeorpoweron MTWRFSU 02:00:00"
     ;;
 
   *)
-    echo "usage: scripts/drain [status|now|at HH:MM|cancel|on|off|install]" >&2
-    echo "  at HH:MM   one fire at a time you name (read it out of /usage)" >&2
+    echo "usage: bin/drain [status|now|at HH:MM|cancel|on|off|install]" >&2
+    echo "  at HH:MM   one fire at a time you name" >&2
     echo "  on/off     the hourly probe, for windows you have not read" >&2
     exit 2
     ;;

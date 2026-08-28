@@ -1,0 +1,22 @@
+{
+  "project": {
+    "name": "example",
+    "protectedPaths": []
+  },
+  "tracker": {
+    "backend": "file",
+    "file": { "path": ".entropy/issues.json" }
+  },
+  "suites": [
+    { "name": "unit", "cmd": ["sh", "tests/run.sh"] }
+  ],
+  "generate": { "cmd": [], "outputs": [] },
+  "changelog": { "enabled": false },
+  "guards": {
+    "testPathPatterns": ["tests/**"],
+    "nonCodePatterns": ["**/*.md"],
+    "buildFailureMarkers": []
+  },
+  "worktree": { "linkPaths": [] },
+  "unattended": { "enabled": false }
+}

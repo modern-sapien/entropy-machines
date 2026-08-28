@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""tracker-file — the built-in flat-file tracker backend.
+
+Implements the six operations docs/TRACKER-ADAPTER.md requires of any
+backend, over one JSON file. Selected by `tracker.backend: "file"` in
+entropy.json; never invoked directly — go through `bin/tracker`, which reads
+that config once and passes this script what it needs as environment:
+
+  ENTROPY_ROOT          repo root (relative paths below resolve against it)
+  ENTROPY_TRACKER_PATH  where the JSON file lives, relative to ENTROPY_ROOT
+                         (default .entropy/issues.json)
+  ENTROPY_ACTOR         who is calling, for claim/remember attribution
+                         (default "unknown")
+
+  tracker-file show <id>
+  tracker-file notes [--issue <id>]
+  tracker-file remember --issue <id> <text>
+  tracker-file claim <id>
+  tracker-file ready
+  tracker-file set <id> <key>=<value> [<key>=<value> ...]
+
+ON-DISK SHAPE:
+
+    {
+      "issues": {
+        "<id>": {
+          "status": "notstarted" | "progress" | "done",
+          "blockedBy": ["<id>", ...],
+          "heldWhy": "<reason>", "heldAt": "<ts>",       # present iff held
+          "gate": "<handle>", "gatedAt": "<ts>",         # present iff gated
+          "claimedBy": "<actor>", "claimedAt": "<ts>",   # present iff claimed
+          "title": "...", "effort": "..."
+        }
+      },
+      "notes": [ {...one note record, see lib/notes.py...}, ... ]
+    }
+
+HELD AND GATED ARE NOT STATUS VALUES. `status` only ever holds notstarted,
+progress or done. Held-ness is the PRESENCE of `heldWhy`; gated-ness is the
+presence of `gate`. That is deliberate, not a shortcut: the adapter contract
+requires held to carry a reason and requires gating to fail closed on an
+unknown handle. Tying both to a boolean-shaped field, rather than a fourth
+and fifth status string, makes the first requirement structural — there is
+no way to become held without supplying `heldWhy` in the same `set` call,
+because held-ness has no existence apart from that field — and makes the
+second trivially true: this backend has no registry of gate handles and
+resolves none of them, so ANY non-empty `gate` excludes an issue from
+`ready`. There is no such thing as a gate this backend recognizes as
+cleared; clearing one is `set <id> gate=` (empty value), a decision made
+by whoever is allowed to say the open question is answered, not a lookup.
+
+ATOMICITY. Every write takes an exclusive lock on `<path>.lock` (fcntl,
+POSIX — the whole harness already assumes a POSIX shell, so this adds no new
+platform requirement) before reading, so a load-modify-save under
+concurrent writers serializes rather than racing; the save itself writes to
+a temp file in the same directory and `os.replace`s it into place, so a
+reader — which takes no lock at all, deliberately, since replace is atomic —
+never observes a torn file, only the version before or after a given write.
+"""
+from __future__ import annotations
+
+import contextlib
+import fcntl
+import json
+import os
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import notes as notes_mod  # noqa: E402  (path must be set up first)
+
+ALLOWED_STATUS = {"notstarted", "progress", "done"}
+ALLOWED_KEYS = {"status", "heldWhy", "gate", "blockedBy", "title", "effort"}
+
+PATH = None  # resolved in main()
+
+
+def _usage(msg=None):
+    if msg:
+        print(f"tracker-file: {msg}", file=sys.stderr)
+    print(__doc__, file=sys.stderr)
+    sys.exit(2)
+
+
+def _new_issue() -> dict:
+    return {"status": "notstarted", "blockedBy": []}
+
+
+def _load(path) -> dict:
+    if not os.path.exists(path):
+        return {"issues": {}, "notes": []}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    data.setdefault("issues", {})
+    data.setdefault("notes", [])
+    return data
+
+
+def _save_atomic(path, data) -> None:
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".tracker-file-", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+@contextlib.contextmanager
+def locked(path):
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    with open(path + ".lock", "a+") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+
+def _actor() -> str:
+    return os.environ.get("ENTROPY_ACTOR") or "unknown"
+
+
+# --------------------------------------------------------------------------
+# commands
+# --------------------------------------------------------------------------
+
+def cmd_show(args):
+    if len(args) != 1:
+        _usage("show <id>")
+    iid = args[0]
+    issue = _load(PATH)["issues"].get(iid)
+    if issue is None:
+        print(f"tracker-file: no such issue: {iid}", file=sys.stderr)
+        sys.exit(3)
+    out = dict(issue)
+    out["id"] = iid
+    print(json.dumps(out, indent=2, sort_keys=True))
+
+
+def cmd_notes(args):
+    issue = None
+    it = iter(args)
+    for a in it:
+        if a == "--issue":
+            issue = next(it, None)
+        else:
+            _usage("notes [--issue <id>]")
+    for rec in _load(PATH)["notes"]:
+        if issue and rec.get("issue") != issue:
+            continue
+        print(notes_mod.format_record(rec))
+
+
+def cmd_remember(args):
+    issue = None
+    text_parts = []
+    it = iter(args)
+    for a in it:
+        if a == "--issue":
+            issue = next(it, None)
+        else:
+            text_parts.append(a)
+    if not issue or not text_parts:
+        _usage("remember --issue <id> <text>")
+    text = text_parts[0] if len(text_parts) == 1 else " ".join(text_parts)
+
+    payload = notes_mod.decode_payload(text)
+    actor = os.environ.get("ENTROPY_ACTOR") or payload.get("actor") or "unknown"
+    record = notes_mod.build_record(
+        ts=notes_mod.now_iso(), verb=payload["verb"], issue=issue,
+        fields=payload["fields"], actor=actor,
+    )
+    with locked(PATH):
+        data = _load(PATH)
+        data["notes"].append(record)
+        _save_atomic(PATH, data)
+    print(notes_mod.format_record(record))
+
+
+def cmd_claim(args):
+    if len(args) != 1:
+        _usage("claim <id>")
+    iid = args[0]
+    actor = _actor()
+    with locked(PATH):
+        data = _load(PATH)
+        issue = data["issues"].get(iid)
+        if issue is None:
+            print(f"tracker-file: no such issue: {iid}", file=sys.stderr)
+            sys.exit(3)
+
+        status = issue.get("status", "notstarted")
+        if status == "progress":
+            holder = issue.get("claimedBy")
+            if holder and holder != actor:
+                print(
+                    f"tracker-file: REFUSED — {iid} is already claimed by "
+                    f"{holder} (since {issue.get('claimedAt', '?')}).",
+                    file=sys.stderr,
+                )
+                sys.exit(4)
+            print(json.dumps({"id": iid, "status": status, "claimedBy": holder}, sort_keys=True))
+            return
+
+        if status != "notstarted":
+            print(f"tracker-file: note — {iid} is '{status}', not claiming it.", file=sys.stderr)
+            print(json.dumps({"id": iid, "status": status, "claimed": False}, sort_keys=True))
+            return
+
+        issue["status"] = "progress"
+        issue["claimedBy"] = actor
+        issue["claimedAt"] = notes_mod.now_iso()
+        _save_atomic(PATH, data)
+        print(json.dumps({"id": iid, "status": "progress", "claimedBy": actor}, sort_keys=True))
+
+
+def cmd_ready(args):
+    if args:
+        _usage("ready")
+    data = _load(PATH)
+    issues = data["issues"]
+    for iid, issue in sorted(issues.items()):
+        if issue.get("status", "notstarted") != "notstarted":
+            continue
+        if issue.get("heldWhy"):
+            continue
+        if issue.get("gate"):
+            continue
+        blocked = False
+        for dep in issue.get("blockedBy") or []:
+            dep_issue = issues.get(dep)
+            if dep_issue is None or dep_issue.get("status") != "done":
+                blocked = True
+                break
+        if blocked:
+            continue
+        out = dict(issue)
+        out["id"] = iid
+        print(json.dumps(out, sort_keys=True))
+
+
+def cmd_set(args):
+    if len(args) < 2:
+        _usage("set <id> <key>=<value> [<key>=<value> ...]")
+    iid, kvs = args[0], args[1:]
+    pairs = []
+    for kv in kvs:
+        if "=" not in kv:
+            _usage("set <id> <key>=<value> [<key>=<value> ...]")
+        k, v = kv.split("=", 1)
+        if k not in ALLOWED_KEYS:
+            print(
+                f"tracker-file: REFUSED — unknown field '{k}'. Known: "
+                f"{', '.join(sorted(ALLOWED_KEYS))}.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if k == "status" and v not in ALLOWED_STATUS:
+            print(
+                f"tracker-file: REFUSED — unknown status '{v}'. Known: "
+                f"{', '.join(sorted(ALLOWED_STATUS))}.",
+                file=sys.stderr,
+            )
+            print(
+                "  held and gated are not status values — set heldWhy=<reason> or "
+                "gate=<handle> instead; both stand apart from status.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        pairs.append((k, v))
+
+    with locked(PATH):
+        data = _load(PATH)
+        issue = data["issues"].setdefault(iid, _new_issue())
+        for k, v in pairs:
+            if k == "status":
+                issue["status"] = v
+            elif k == "heldWhy":
+                if v.strip():
+                    issue["heldWhy"] = v
+                    issue["heldAt"] = notes_mod.now_iso()
+                else:
+                    issue.pop("heldWhy", None)
+                    issue.pop("heldAt", None)
+            elif k == "gate":
+                if v.strip():
+                    issue["gate"] = v
+                    issue["gatedAt"] = notes_mod.now_iso()
+                else:
+                    issue.pop("gate", None)
+                    issue.pop("gatedAt", None)
+            elif k == "blockedBy":
+                issue["blockedBy"] = notes_mod.normalize_scope(v)
+            else:  # title, effort — plain scalars
+                issue[k] = v
+        _save_atomic(PATH, data)
+        out = dict(issue)
+        out["id"] = iid
+        print(json.dumps(out, sort_keys=True))
+
+
+_COMMANDS = {
+    "show": cmd_show,
+    "notes": cmd_notes,
+    "remember": cmd_remember,
+    "claim": cmd_claim,
+    "ready": cmd_ready,
+    "set": cmd_set,
+}
+
+
+def main():
+    global PATH
+    root = os.environ.get("ENTROPY_ROOT") or os.getcwd()
+    rel = os.environ.get("ENTROPY_TRACKER_PATH") or ".entropy/issues.json"
+    PATH = rel if os.path.isabs(rel) else os.path.join(root, rel)
+
+    if len(sys.argv) < 2 or sys.argv[1] not in _COMMANDS:
+        _usage()
+    _COMMANDS[sys.argv[1]](sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

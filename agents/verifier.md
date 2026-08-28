@@ -49,16 +49,16 @@ CLAUDE.md" — which was false and shaped how every brief in this project was wr
    an edit of yours in its tree would corrupt its diff.
 3. **Do not `npm run build`** — it rewrites `docs/CHANGELOG.md` and
    `docs/.qa-checkpoint`.
-4. **`node_modules` and `planning-docs` are linked in for you** by
-   `scripts/git-hooks/post-checkout` at worktree creation. Hooks are per-clone,
+4. **The paths in `worktree.linkPaths` are linked in for you** by
+   `hooks/post-checkout` at worktree creation. Hooks are per-clone,
    so if nobody ran `npm run hooks:install` here they are absent — symlink
    `node_modules` from the main checkout before running anything, or node
    resolves out of a SIBLING worktree and you will verify someone else's code
    and report it as this sprint's. A suite refusing with "this tree cannot
    resolve its own dependencies" is the guard telling you exactly this.
-5. **`planning-docs/` is reachable, but it is not your source of truth.** The
+5. **A linked path is reachable, but it is not your source of truth.** The
    same hook symlinks it in, so it is readable AND writable from your worktree
-   and `scripts/tracker` works there against the SHARED `issues.json`. Do not
+   and `bin/tracker` works there against the SHARED tracker store. Do not
    write to it. Work from your brief; if the brief is missing something, say so
    in your report rather than going looking.
 
@@ -71,19 +71,27 @@ that is itself the report.
 given. Note any that conflict, and with which. Two workers editing one function
 is the single most expensive thing for the orchestrator to discover late.
 
-**2. Does it build?** `npm run typecheck`. `go build ./...` from
-`janus-bridge/` if any Go file moved.
+**2. Does it build?** Run the suites in `entropy.json` that carry no `tag` —
+those are the fast, always-run ones. If the project has a separate build for a
+subdirectory, it is configured there too; nothing about the toolchain is
+assumed here.
 
-**3. Are the generated files honest?** If any source that feeds a bundle
-changed, run `npm run gen` and check that NOTHING moves. A generated file that
+**3. Are the generated files honest?** If any source that feeds a generated
+artefact changed, run `generate.cmd` from `entropy.json` and check that NOTHING
+moves. A generated file that
 differs after regeneration means the committed bundle does not match the
 committed source, and whatever is landed will be wrong on the next `gen`.
 
-**4. Do the suites pass?** `npm test` always. `npm run e2e` if anything under
-`src/` moved. `npm run e2e:bridge` if anything the daemon or CLI reads moved —
-it is a SEPARATE project and `npm run e2e` does not run it. `go test ./...` for
-Go changes. **Run the Go tests without `-short`**: the browser-backed ones skip
-under it, and a skipped test proves nothing.
+**4. Do the suites pass?** Every suite in `entropy.json`, including the ones
+tagged slow. Two traps, both of which have shipped a false green:
+
+- **A suite that is not run by the others.** If the config declares a suite as
+  its own entry, something else does not cover it. Assuming one suite runs
+  another is how a format change reaches a release past a green run and a
+  code review.
+- **A skipped test proves nothing.** If your runner has a short or fast mode
+  that skips the slow cases, do not use it. Read the summary line for skips,
+  not just for failures.
 
 **5. Is each change testable and tested?** For each patch: is there a test that
 would fail if the change were reverted? You are not proving that by mutation on

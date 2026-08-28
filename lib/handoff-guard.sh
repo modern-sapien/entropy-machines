@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # handoff-guard — a commit that lands a DISPATCHED issue must carry a handoff
-# record for it (i-scripts-handoff-exit-record).
+# record for it.
 #
-#   scripts/handoff-guard.sh --message .git/COMMIT_EDITMSG   # commit-msg hook
-#   scripts/handoff-guard.sh --commit <sha>                  # audit one commit
-#   scripts/handoff-guard.sh --range A..B                    # audit a range
+#   lib/handoff-guard.sh --message .git/COMMIT_EDITMSG   # commit-msg hook
+#   lib/handoff-guard.sh --commit <sha>                  # audit one commit
+#   lib/handoff-guard.sh --range A..B                    # audit a range
 #
 # LOCAL-ONLY BY DESIGN, AND THAT IS NOT THE WEAK CASE HERE. changelog-guard.sh
 # is mirrored by a CI job because the rule it enforces has to hold for anything
 # that reaches the remote. This one does not: agents are dispatched, landed and
-# verified locally (owner, 2026-08-09), so the machine doing the landing is
+# verified locally by design, so the machine doing the landing is
 # always the machine with the hook, and a handoff that never left a laptop has
 # still done its whole job — the next session reads it out of the same log.
 #
 # A CI job would also be impossible if we wanted one. The record lives in the
-# tracker's memory.jsonl under planning-docs/, which is gitignored in its
+# tracker's note log, which is commonly gitignored in its
 # entirety (.gitignore:37), so a runner checks out a tree with no log, reads
 # nothing, and passes everything. Do not "fix" that by moving the record
 # somewhere tracked: the log is where agents and sessions already read, and
@@ -23,7 +23,7 @@
 #
 # The real local failure mode is not CI's absence — it is a checkout that never
 # ran `npm run hooks:install` and therefore has no gate while looking exactly
-# like one that does. scripts/dispatch refuses to brief an agent from such a
+# like one that does. bin/dispatch refuses to brief an agent from such a
 # checkout, which puts the check immediately before the only activity this gate
 # protects. --range and --commit audit history by hand.
 #
@@ -32,18 +32,27 @@
 # can live in pre-commit because it only reads the index; this cannot.
 #
 # WHAT IT GATES, AND WHAT IT DELIBERATELY DOES NOT. It fires only for an id
-# that scripts/dispatch actually recorded a DISPATCH note for. A commit naming
+# that bin/dispatch actually recorded a DISPATCH note for. A commit naming
 # an issue you did yourself, by hand, passes untouched — there was no agent, so
 # there is nothing to salvage from a worktree. This keeps the gate off the
 # large majority of commits and pointed at the one case that loses knowledge.
 #
-# GRANDFATHERING, WHICH IS THE POINT OF THE CUTOFF. Four agents were in flight
-# when this landed, briefed under the old protocol and unable to know about the
-# new one. Refusing their landings would strand two other sessions' work for a
-# rule written after they started. So a dispatch recorded BEFORE the cutoff
-# warns and passes; one recorded after refuses. The exemption expires by
-# itself as those dispatches land — there is no flag for anyone to remember to
-# flip, and no window where the rule is off for new work.
+# GRANDFATHERING, WHICH IS OFF BY DEFAULT AND EXISTS FOR ADOPTERS. When this
+# gate first landed in its home repo, several agents were already in flight,
+# briefed under the old protocol and unable to know about the new one.
+# Refusing their landings would have stranded other sessions' work for a rule
+# written after they started.
+#
+# The fix generalises, so it is kept as an option rather than a baked-in date:
+# set `guards.handoffCutoff` (an ISO-8601 timestamp) in entropy.json and a
+# dispatch recorded BEFORE it warns and passes, while one recorded after
+# refuses. The exemption then expires BY ITSELF as those dispatches land —
+# there is no flag anyone must remember to flip, and no window in which the
+# rule is off for new work. That self-expiry is the part worth copying.
+#
+# A FRESH INSTALL WANTS NO CUTOFF AT ALL, and that is the default: with the
+# key absent every dispatch is judged by the rule. Only set it if you are
+# turning this gate on in a repo that already has agents mid-flight.
 #
 # ESCAPE HATCH, in the two forms the callers need (commit-msg has the message
 # but CI has only history):
@@ -55,20 +64,20 @@
 #
 # ===========================================================================
 # THE SECOND CHECK — an ID-LESS COMMIT INTO AN OPEN DISPATCH'S SCOPE
-# (i-a-scripts-only-commit-with-no-id-in-its-message)
+#
 # ===========================================================================
 #
 # THE HOLE. Everything above keys on an issue id, recovered from the message or
 # from a changelog.d fragment's `issue:` line. changelog-guard.sh only requires
-# a fragment for `^(src/|janus-bridge/)`. So a commit that touches only
-# scripts/ and tests/, names no id and adds no fragment has NO id to recover,
+# a fragment for the project's own code paths. So a commit that touches only
+# tooling and tests, names no id and adds no fragment has NO id to recover,
 # and this guard has nothing to refuse — the whole protocol is off. Every
 # commit in the 2026-08-26/27 harness sprint was that shape, which is where
 # dispatch discipline matters most.
 #
 # THE RULE, AND WHY IT IS THIS NARROW. When a commit names NO id at all and
 # touches a path that a dispatch is HOLDING at that moment (a DISPATCH note
-# with no later HANDOFF, inside the same 24h claim window scripts/dispatch
+# with no later HANDOFF, inside the same 24h claim window bin/dispatch
 # uses), it is refused. Naming the id is enough to satisfy it — and that hands
 # the commit to the id-keyed check above, which then wants the handoff record.
 #
@@ -81,20 +90,19 @@
 #     id-less only, directory claims bind (SHIPPED)            1 / 100
 #
 # 20 of those 100 commits name no id at all, so the shipped rule is quiet on 19
-# of the 20 it is even eligible to look at. The one it refuses
-# (6862c96, `docs(process): a report has a spine`) is the target shape, not a
-# false positive: its fragment's `issue:` line is EMPTY and it writes
-# src/background/service-worker.ts while i-the-extension-records-no-action was
-# holding it, undispatched-looking and unlanded. Reproduce the row with
-# `scripts/handoff-guard.sh --range HEAD~100..HEAD`.
+# of the 20 it is even eligible to look at. The one it refuses is the target
+# shape, not a false positive: its fragment's `issue:` line is EMPTY and it
+# writes a file another dispatch was holding, undispatched-looking and
+# unlanded. Reproduce the table over your own history with
+# `lib/handoff-guard.sh --range HEAD~100..HEAD`.
 #
 # The stronger rule's refusals are not evasions. A scope line is a prediction
-# (`--files` is advisory, per scripts/dispatch), and it routinely lists hub or
+# (`--files` is advisory, per bin/dispatch), and it routinely lists hub or
 # generated files — src/shared/types.ts, internal/controller/controller.mjs,
-# cmd/janus/run.go, src/run-controller/controller.ts — that every other landing
+# the entry point and a generated controller — that every other landing
 # also touches. Refusing 10-20% of ordinary landings is how a gate becomes
 # noise: "a job that cries wolf gets ignored, which is worse than no job"
-# (scripts/fail-first.mjs). A commit that names an id is already inside the
+# (lib/fail-first.mjs). A commit that names an id is already inside the
 # protocol and the check above engages on it; a commit that names none is the
 # one case where nothing engages at all.
 #
@@ -102,10 +110,10 @@
 # and quietly carries a file held by agent B still passes this check. It does
 # not pass unexamined — A's own handoff record is demanded above — but B's work
 # can ride along under A's id. Closing that is the 10/100 rule, and the
-# measurement says the cost is not payable. `scripts/handoff --lift` is the
+# measurement says the cost is not payable. `bin/handoff --lift` is the
 # other end of that case: it refuses to lift a file outside the agent's scope.
 #
-# NEVER CLAIMABLE, mirroring scripts/dispatch's NEVER_CLAIMED: changelog.d/,
+# NEVER CLAIMABLE, mirroring bin/dispatch's NEVER_CLAIMED: changelog.d/,
 # because every agent writes its own fragment there BY DESIGN, and
 # docs/CHANGELOG.md, which is collated output no one hand-edits (CLAUDE.md) and
 # which was the single false positive in the 100-commit measurement — a
@@ -122,7 +130,15 @@
 
 set -euo pipefail
 
-CUTOFF="2026-08-09T11:39:45"
+# Empty unless the project opts in — see the grandfathering note above.
+CUTOFF="$(
+  cd "$(git rev-parse --show-toplevel)" 2>/dev/null &&
+  python3 lib/config.py get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
+)"
+# `if`, not `[ ... ] && ...` — under `set -e` a failing test as the last
+# command of a compound exits the script, which would make this gate pass
+# everything in silence. That is the exact failure this file exists to prevent.
+if [ "$CUTOFF" = "null" ]; then CUTOFF=""; fi
 SKIP_MARKER='[skip handoff]'
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -132,9 +148,14 @@ ROOT="$(git rev-parse --show-toplevel)"
 # reading. SKIP_HANDOFF is the supported escape hatch; do not set this one in
 # CI. (Until 2026-08-27 this comment said "the self-test below", and there was
 # no self-test below and never had been.)
-MEMORY="${HANDOFF_MEMORY:-$ROOT/planning-docs/feature-guidance/production-plan/memory.jsonl}"
+# Where the note log lives is the tracker backend's business, so ask it rather
+# than hardcoding a path. Falls back to the built-in backend's default.
+MEMORY="${HANDOFF_MEMORY:-$ROOT/$(
+  cd "$ROOT" 2>/dev/null &&
+  python3 lib/config.py get tracker.file.path 2>/dev/null | tr -d '"' || true
+)}"
 
-# planning-docs/ is a NESTED REPO and is absent from dispatched agents'
+# The tracker's store may be a NESTED REPO, absent from dispatched agents'
 # worktrees. No memory file means no way to know what was dispatched, so the
 # guard has nothing to say — it must pass rather than block a commit it cannot
 # reason about.
@@ -159,7 +180,7 @@ esac
 # with no diagnostic, in the one place the whole protocol is mechanical. That is
 # not a bypass anyone has to intend; it is a typo-grade omission, and a gate you
 # disable by forgetting is a gate that protects only the people who did not need
-# it. Every commit touching src/ or janus-bridge/ must already carry a fragment
+# it. Every commit touching the project's code paths must already carry a fragment
 # (changelog-guard.sh), and a fragment declares `issue:` — so the id is
 # recoverable from the commit's own contents. Both sources are unioned.
 # $2 is a rev to read the fragments FROM; empty means the working tree (the
@@ -232,12 +253,12 @@ stale = handed is not None          # handed off, then re-dispatched
 why = ("the handoff on record predates the latest dispatch"
        if stale else "no handoff was recorded")
 
-if dispatched < cutoff:
+if cutoff and dispatched < cutoff:
     print(f"handoff-guard: WARNING on {label} — {iid} was dispatched at "
           f"{dispatched} and {why}.")
-    print(f"  Dispatched before the guard landed ({cutoff}), so this is not "
-          f"blocked. Record it anyway once the work is verified:")
-    print(f'    scripts/handoff {iid} --changed "..." --verified "..." '
+    print(f"  Dispatched before this project's handoff cutoff ({cutoff}), so "
+          f"not blocked. Record it anyway once the work is verified:")
+    print(f'    bin/handoff {iid} --changed "..." --verified "..." '
           f'[--found "..."] [--next "..."] [--clean]')
     sys.exit(0)
 
@@ -245,7 +266,7 @@ print(f"handoff-guard: REFUSED on {label} — {iid} was dispatched at "
       f"{dispatched} and {why}.", file=sys.stderr)
 print("  An agent's dead ends, out-of-scope findings and assumptions live only "
       "in a worktree that is about to be deleted.", file=sys.stderr)
-print(f'    scripts/handoff {iid} --changed "..." --verified "..." '
+print(f'    bin/handoff {iid} --changed "..." --verified "..." '
       f'[--found "..."] [--next "..."] [--clean]', file=sys.stderr)
 print(f"  Genuinely nothing to hand off: pass --clean. Not agent work at all: "
       f"SKIP_HANDOFF=1 and '{'[skip handoff]'}' in the message.", file=sys.stderr)
@@ -305,7 +326,7 @@ if not paths:
 # notes in the live log whose text contains "DISPATCH" on 2026-08-27, only 106
 # ARE one; the other 29 mention it inside a HANDOFF's free text. A handoff note
 # that quoted this very format was read as a dispatch once and left two issues
-# holding their files after they were handed off (see scripts/dispatch). Here
+# holding their files after they were handed off (see bin/dispatch). Here
 # the subject is the JSON `text` field, so `^` is exact rather than a prefix
 # guess, and both verbs come from ONE match so their order cannot matter.
 VERB = re.compile(r"^(DISPATCH|HANDOFF)\s+(\S+)\s+—")
@@ -354,7 +375,7 @@ for ts, m, text in events:
 hits = []
 for iid, (ts, scope) in live.items():
     if now - ts >= datetime.timedelta(hours=hours):
-        continue            # the claim expired, same window scripts/dispatch uses
+        continue            # the claim expired, same window bin/dispatch uses
     held = [strip(p) for p in re.split(r"[\s,]+", scope) if strip(p)]
     held = [p for p in held if not exempt(p) and p not in ("(none)", "(unavailable)")]
     for f in paths:
@@ -372,7 +393,7 @@ for iid, f, ts in sorted(hits):
           file=sys.stderr)
 print("  Landing that agent's work: name the id in the message, then record "
       "the handoff:", file=sys.stderr)
-print('    scripts/handoff <id> --changed "..." --verified "..." '
+print('    bin/handoff <id> --changed "..." --verified "..." '
       '[--found "..."] [--next "..."] [--clean]', file=sys.stderr)
 print("  Unrelated work that happens to sit in an open scope: SKIP_HANDOFF=1 "
       "and '[skip handoff]' in the message.", file=sys.stderr)
@@ -406,8 +427,8 @@ case "$mode" in
     # format-LOCAL, and the difference is not cosmetic. `%cd --date=format:`
     # renders in the timezone RECORDED IN THE COMMIT, which for a commit made
     # elsewhere (or with GIT_COMMITTER_DATE given as ...Z) is not this machine's.
-    # memory.jsonl timestamps are local and naive — `date '+%Y-%m-%dT%H:%M:%S'`
-    # via scripts/tracker — so comparing the two demands both be local. Caught by
+    # Note-log timestamps are local and naive — `date '+%Y-%m-%dT%H:%M:%S'`
+    # via bin/tracker — so comparing the two demands both be local. Caught by
     # the backdated-commit test, which was three hours in the FUTURE.
     check_scope "$msg" "$label" "$touched" \
       "$(git log -1 --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%S' "$arg")" "$frags"

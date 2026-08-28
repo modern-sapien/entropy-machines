@@ -3,10 +3,10 @@
 How work moves through this repo: the cycle, the roles, and the rules that
 exist because something went wrong once.
 
-Owner-defined, 2026-08-22. This directory is the home for workflow
-documentation. Product and design docs live in `planning-docs/` (gitignored,
-local-only); this is committed, because it governs how anyone — human or agent
-— is supposed to operate here.
+This directory is the home for workflow documentation. A project can keep its
+own local, gitignored docs directory for product and design material
+alongside it; this directory is committed, because it governs how anyone —
+human or agent — is supposed to operate here.
 
 - **[WORKFLOW.md](WORKFLOW.md)** — the cycle, stage by stage, with what must be
   true to leave each stage.
@@ -57,8 +57,8 @@ test is actually pinned to.
 because other workstreams may need to land first and an eager merge creates
 exactly the collision the worktrees exist to prevent.
 
-**The clean tree is the source of truth.** The landing session's checkout is
+**The clean tree is the source of truth.** The orchestrator's checkout is
 usually dirty with other sessions' work. A worker's worktree branches from
-committed HEAD, so it is clean. When an agent reports a failure the landing
-session cannot reproduce, **the agent is right** — see the corpus incident in
+committed HEAD, so it is clean. When a worker reports a failure the
+orchestrator cannot reproduce, **the worker is right** — see the incident in
 [WORKFLOW.md](WORKFLOW.md#the-clean-tree-is-the-truth).

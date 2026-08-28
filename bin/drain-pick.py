@@ -1,87 +1,124 @@
 #!/usr/bin/env python3
 """Choose the issues one unattended fire will take. Prints ids, space-separated.
 
-    scripts/drain-pick.py [<repo-root>]
+    bin/drain-pick.py [<repo-root>]
 
-Its own file rather than a heredoc inside drain-run.sh, for two reasons. The
-heredoc version was broken on arrival — `tracker ready | python3 - <<'PY'` has
-the pipe and the heredoc both claiming stdin, so python read the TRACKER OUTPUT
-as its source and died on an IndentationError. And a selection rule with a cap
-in it is worth testing directly (test_drain_pick.py), which a heredoc cannot be.
+Its own file rather than a heredoc inside drain-run.sh, for two reasons. A
+heredoc piped from `tracker ready` would have the pipe and the heredoc both
+claiming stdin, which is a real way to have python read the TRACKER OUTPUT as
+its own source and die on a syntax error. And a selection rule with a cap in
+it is worth testing directly, which a heredoc cannot be.
 
-THE RULE. The owner's original framing was "4 small, 3 medium, 2 large only"
-(UNATTENDED-OPS, 2026-08-09), then: "mixing is fine, but you need to create a
-scoring system."
+THE RULE. A cap phrased as separate small/medium/large limits ("N small, M
+medium, P large only") does not compose — it has nothing to say about a fire
+that wants two smalls and one medium. Recasting the caps as unit costs that
+share one budget makes mixing fall out for free instead of needing a new rule
+per combination.
 
-So the three caps become the DEFINITION of one fire's budget rather than three
-separate rules. Costs are chosen so all three are exactly equal:
+Costs and the budget are project config (`unattended.sizeCosts`,
+`unattended.budget` in entropy.json) with defaults chosen so a few small caps
+land on the same number:
 
     S = 3    M = 4    L = 6    budget = 12
 
-    4 × S = 12      3 × M = 12      2 × L = 12
+    4 x S = 12      3 x M = 12      2 x L = 12
 
-Every pure-class fire is therefore identical to what the caps used to allow,
-and mixing now falls out of the same number: L + M + S is 13, over budget, so
-it takes L + M; L + S + S is 12, so it takes all three.
+Every pure-class fire is therefore identical to what flat per-size caps of
+4/3/2 would allow, and mixing now falls out of the same number: L + M + S is
+13, over budget, so it takes L + M; L + S + S is 12, so it takes all three.
 
-Selection walks the ranked list and takes anything that still fits, skipping
-what does not and continuing. Skipping rather than stopping matters: one large
-issue at rank three should not strand a fire with 6 unspent points when there
-are smaller items below it. Rank is never reordered — a cheaper issue is only
-ever reached after every dearer one above it was considered.
+Selection walks the ranked list — the order `bin/tracker ready` printed it
+in — and takes anything that still fits, skipping what does not and
+continuing. Skipping rather than stopping matters: one large issue at rank
+three should not strand a fire with 6 unspent points when there are smaller
+items below it. Rank is never reordered — a cheaper issue is only ever
+reached after every dearer one above it was considered.
 
-The count is bounded without a separate rule: the cheapest issue costs 3, so
-no fire can take more than 4 items.
+ENTROPY_DRAIN_BUDGET overrides the configured budget for a bigger or smaller
+fire without touching the per-size costs.
 
-JANUS_DRAIN_BUDGET overrides the 12 for a bigger or smaller night without
-touching the costs — set it to 6 to halve a fire, 24 to double it.
-
-Eligibility is `tracker ready --autonomous` and nothing else — so an issue
-cannot be picked while blocked, held, gated on an open decision, or tagged
-hand-only.
+Eligibility is exactly what `bin/tracker ready` prints (docs/TRACKER-ADAPTER.md)
+and nothing else — so an issue cannot be picked while blocked, held, or gated
+on an open decision. There is no separate "autonomous" flag in the adapter
+contract: an issue a human decided an unattended run should not touch is
+`held`, via `bin/tracker set <id> heldWhy=...` (see bin/drain-prompt.md), and
+`ready` already excludes it.
 """
+import json
 import os
-import re
 import subprocess
 import sys
 
-COST = {"S": 3, "M": 4, "L": 6}
-BUDGET = int(os.environ.get("JANUS_DRAIN_BUDGET", "12"))
+DEFAULT_COST = {"S": 3, "M": 4, "L": 6}
+DEFAULT_BUDGET = 12
 
-# The ready listing is columnar: two spaces, an optional priority band, an
-# optional "unblocks N", then id, [workstream], effort.
-#
-# Every element before the id is enumerated rather than skipped with `.*?`.
-# The permissive version matched the CONTINUATION lines too — priority notes
-# and decision-doc flags are printed indented under their issue, so a note whose
-# prose happened to mention an id parsed as a second work item. An unattended
-# run would then take an issue nobody selected. Caught by test_drain_pick.
-ROW = re.compile(
-    r"^ {2}\s*(?:demo|broken|backlog)?\s*(?:unblocks \d+)?\s+"
-    r"(i-[a-z0-9-]+)\s+\[(\w+)\s*\]\s+([SML])(?:\s|$)")
+
+def load_cost_model(root):
+    """(costs, budget) out of entropy.json's `unattended` block.
+
+    Not read through lib/config.py — that loader does not define these two
+    keys yet (see its DEFAULTS dict), and this script only needs two scalars,
+    not the full merge/validate pipeline. A missing file, a missing key, or a
+    malformed value all fall back to the defaults above rather than raising —
+    same posture as bin/drain's and bin/drain-run.sh's own `cfg()` helper.
+    """
+    try:
+        with open(os.path.join(root, "entropy.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    unattended = data.get("unattended") or {}
+    costs = unattended.get("sizeCosts")
+    if not isinstance(costs, dict) or not costs:
+        costs = DEFAULT_COST
+    budget = unattended.get("budget")
+    if not isinstance(budget, (int, float)):
+        budget = DEFAULT_BUDGET
+    return costs, budget
 
 
 def parse(text):
-    """[(id, effort)] in listed order — which is ranked order, not file order."""
+    """[(id, effort)] in listed order — `bin/tracker ready`'s JSONL, one
+    issue record per line (docs/TRACKER-ADAPTER.md).
+
+    A line that fails to parse, or parses but carries no "id", is skipped
+    rather than aborting the whole pick — one malformed record from a
+    `command` backend should not zero out an otherwise-eligible fire.
+    `effort` is optional in the adapter contract; a record without one is
+    handled by the caller's fail-closed default, same as an unrecognised
+    value.
+    """
     out = []
     for line in text.splitlines():
-        m = ROW.match(line)
-        if m:
-            out.append((m.group(1), m.group(3)))
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        iid = rec.get("id")
+        if not iid:
+            continue
+        out.append((iid, rec.get("effort")))
     return out
 
 
-def pick(rows, budget=None):
+def pick(rows, costs, budget):
     """Walk the ranked list, take whatever still fits, return the ids.
 
-    An unknown effort letter costs the most a fire can hold. Fail-closed: a
-    typo'd or newly-invented size must not become the cheapest thing on the
-    list and let an unattended run take an unbounded amount of it.
+    An unrecognised or missing effort costs the most a fire can hold.
+    Fail-closed: a typo'd or newly-invented size (or an issue nobody sized at
+    all) must not become the cheapest thing on the list and let an
+    unattended run take an unbounded amount of it.
     """
-    left = BUDGET if budget is None else budget
+    left = budget
     taken = []
+    fallback = max(costs.values()) if costs else budget
     for iid, effort in rows:
-        c = COST.get(effort, max(COST.values()))
+        c = costs.get(effort, fallback)
         if c <= left:
             taken.append(iid)
             left -= c
@@ -91,10 +128,18 @@ def pick(rows, budget=None):
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else \
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    costs, budget = load_cost_model(root)
+    override = os.environ.get("ENTROPY_DRAIN_BUDGET")
+    if override:
+        try:
+            budget = float(override)
+        except ValueError:
+            print(f"drain-pick: ENTROPY_DRAIN_BUDGET={override!r} is not a "
+                  f"number, ignoring", file=sys.stderr)
     try:
-        r = subprocess.run([os.path.join(root, "scripts", "tracker"),
-                            "ready", "--autonomous"],
-                           capture_output=True, text=True, timeout=60)
+        r = subprocess.run(
+            [os.path.join(root, "bin", "tracker"), "ready"],
+            capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"drain-pick: cannot reach the tracker: {exc}", file=sys.stderr)
         return 1
@@ -102,7 +147,7 @@ def main():
         print(f"drain-pick: tracker exited {r.returncode}: {r.stderr.strip()}",
               file=sys.stderr)
         return 1
-    print(" ".join(pick(parse(r.stdout))))
+    print(" ".join(pick(parse(r.stdout), costs, budget)))
     return 0
 
 

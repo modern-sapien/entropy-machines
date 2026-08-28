@@ -1,0 +1,27 @@
+# Template. `bin/drain install` substitutes __RUNNER__ / __STATE__ and writes
+# the result to ~/.config/systemd/user/<unattended.label>.service. The label
+# itself becomes the unit's filename (systemctl identifies a unit by its
+# file, not by an internal field), which is why nothing inside this file
+# needs to name it.
+#
+# Oneshot: this unit does the actual work, triggered by the paired
+# entropy-drain.timer.in, which decides when. Mirrors the launchd plist in
+# lib/entropy-drain.plist.in — same runner, same INERT-until-armed design:
+# this fires on schedule regardless, and drain-run.sh reads the armed flag
+# at the top of every fire and exits immediately when it is off. Arming is a
+# flag file (`bin/drain on`), never a systemd unit edit or reload.
+[Unit]
+Description=Unattended work drain (see bin/drain)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh __RUNNER__
+StandardOutput=append:__STATE__/systemd.out.log
+StandardError=append:__STATE__/systemd.err.log
+
+# A user service's PATH is not guaranteed to match your login shell's —
+# whatever agent CLI, runtime, and VCS tools this project's suites need all
+# have to be reachable from here. This is a generic non-Homebrew default;
+# widen it (or run `systemctl --user import-environment PATH` at login
+# instead) if your toolchain lives somewhere else.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
