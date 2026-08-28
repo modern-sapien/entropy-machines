@@ -1,0 +1,1167 @@
+<!doctype html>
+<!-- ===================== entropy-machines dialogue doc =====================
+  A PRD/plan/report the owner ANSWERS. bin/serve renders it, rewires the save
+  button to POST /__save so answers are written back into THIS file on disk,
+  and live-reloads the open tab when an agent writes a reply.
+
+  CONTRACT — bin/serve and the agents both depend on these:
+    * every question lives in  <div class="response" data-resp="UNIQUE-KEY">
+      containing a <label>, a <div class="discuss"> and one <textarea>.
+    * data-resp keys are unique per doc and STABLE — they are the identity an
+      agent uses to read and write a specific answer. Renaming one orphans it.
+    * <script type="application/json" id="responses-data">{}</script> near the
+      end of <body> is where saved answers are mirrored.
+    * pages are <section class="page" id="pN"> with a matching
+      <a data-page="pN"> in <nav>.
+
+  A QUESTION WITHOUT A .response BOX IS INVISIBLE. Only a data-resp is saved,
+  counted, or reported as outstanding — a question written as plain prose
+  renders with nowhere to answer it and the doc reports itself as answered.
+
+  Visual standard (VS Code hc-black / hc-light):
+    1. Separate with BORDERS, never background tints.
+    2. Focus/hover is the focus hue as a ring, never a fill.
+    3. State is never encoded in opacity — weight, case or colour+word.
+    4. Four type steps only (14/17/21/30); mono gets its own step.
+========================================================================= -->
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRD-001 — Orient the factory to this repo</title>
+<style>
+  /* High-contrast stylesheet. Palette is VS Code's hc-black / hc-light from
+     src/vs/platform/theme/common/colors/baseColors.ts — not hand-picked, so it
+     carries their AAA work rather than an invented scheme.
+
+     Three rules this file exists to hold:
+       1. Separate with BORDERS, never background tints. Backgrounds stay pure
+          #000 / #FFF. No grey panel layers, no tinted cards, no filled badges.
+       2. Focus / active / hover is the focus hue as an inset ring, never a
+          background change. :focus-visible is global and never suppressed.
+       3. State is never encoded in opacity. No faded "done", no opacity:.6 for
+          secondary text — weight, uppercase, or an underline instead. */
+
+  :root{
+    --bg:#FFFFFF; --fg:#292929;
+    --border:#0F4A85;        /* contrastBorder  */
+    --focus:#006BBD;         /* focusBorder     */
+    --link:#0F4A85;
+    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
+
+    /* Four steps. Nothing below 14px, no half-pixels, no em ratios that compute
+       to fractions. Monospace gets its OWN step rather than a .9em of body,
+       because mono reads larger than sans at equal px.
+
+       REVISED 2026-08-06 after the first doc shipped and read as flat. The old
+       scale was 12/14/16/20: body BELOW the browser's 16px default, and h2 only
+       1.14x body, so a page of prose + inline code came out as one grey size
+       with noise in it. The steps are now ~1.25x apart with a bigger jump to
+       the title, which is what makes a heading read as a heading. */
+    --fs-sm:14px;    /* meta, ids, mono, chips, eyebrow labels, badges */
+    --fs-base:17px;  /* body, list rows, controls */
+    --fs-head:21px;  /* section headings */
+    --fs-title:30px; /* page / panel title */
+
+    /* Prose measure. Tables and code want the full column; running text does
+       not — 17px across a 1040px main is ~105 characters, well past the point
+       where the eye loses the next line. */
+    --measure:70ch;
+
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --radius:0;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#000000; --fg:#FFFFFF;
+      --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
+      --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
+    }
+  }
+  /* The toggle stamps data-theme on the root; it must win over the media query
+     in BOTH directions, so each theme is restated rather than only the dark one. */
+  :root[data-theme="light"]{
+    --bg:#FFFFFF; --fg:#292929; --border:#0F4A85; --focus:#006BBD; --link:#0F4A85;
+    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
+  }
+  :root[data-theme="dark"]{
+    --bg:#000000; --fg:#FFFFFF; --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
+    --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
+  }
+
+  *{box-sizing:border-box}
+  html{font-size:16px;}
+  body{font-family:var(--font); font-size:var(--fs-base); line-height:1.65;
+    color:var(--fg); background:var(--bg); margin:0; display:flex; min-height:100vh;}
+
+  /* Rule 2, globally. Never suppressed anywhere below. */
+  :focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+
+  code{font-family:var(--mono); font-size:var(--fs-sm); background:none;
+    border:1px solid var(--border); padding:0 .25em;}
+  pre{background:none; border:1px solid var(--border); padding:12px 14px; overflow-x:auto;
+    font-family:var(--mono); font-size:var(--fs-sm); line-height:1.55;}
+  pre code{border:none; padding:0;}
+
+  nav{width:296px; flex:none; border-right:1px solid var(--border); background:var(--bg);
+    padding:22px 14px; position:sticky; top:0; height:100vh; overflow-y:auto;}
+  nav .brand{display:flex; align-items:center; gap:8px; font-weight:700;
+    font-size:var(--fs-base); margin-bottom:16px; padding:0 6px;}
+  nav .brand .logo{width:18px; height:18px; border:1px solid var(--border); background:none;}
+  nav a{display:block; padding:6px 10px; color:var(--fg); text-decoration:none;
+    font-size:var(--fs-base); margin-bottom:2px; border:1px solid transparent;}
+  nav a:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  /* Current page: a border and weight, not a fill. */
+  nav a.cur{border-color:var(--border); font-weight:700;}
+  nav .grp{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--fg); margin:16px 6px 6px;}
+  nav .foot{font-size:var(--fs-sm); color:var(--fg); margin-top:20px; padding:0 6px;}
+
+  /* serve.py injects #__navmark-css late in <body>, so it wins on source order
+     at equal specificity. These selectors carry one extra type each to beat it.
+     Its defaults are off-standard three ways: .72rem (11.52px, a fifth size),
+     a hardcoded #fdf6e3 fill, and pill radii — a filled badge is a background
+     tint, which rule 1 forbids. It also references --good/--warn-deep/--muted/
+     --code-bg, which this palette does not define, so its colours fall back to
+     inherit. Do not delete its block from the file: it is re-injected on serve. */
+  nav a span.navmark{font-size:var(--fs-sm); font-weight:700; line-height:1.4;
+    background:none; border-radius:0; padding:0 .35em; margin-left:.4em;
+    border:1px solid currentColor; color:var(--caution);}
+  nav a span.navmark.done{color:var(--positive); border-color:var(--positive);}
+  nav a span.navmark.todo{color:var(--caution); border-color:var(--caution); background:none;}
+  nav div.navsummary{font-size:var(--fs-sm); font-weight:700; color:var(--fg);
+    background:none; border:1px solid var(--border); border-radius:0;
+    margin:12px 6px 4px; padding:5px 9px;}
+  nav div.navsummary .all-done{color:var(--positive);}
+
+  main{flex:1; min-width:0; padding:38px 42px 120px; max-width:1060px;}
+  .page{display:none;} .page.cur{display:block;}
+
+  h1{font-size:var(--fs-title); font-weight:700; letter-spacing:-.015em;
+    line-height:1.2; margin:2px 0 8px;}
+  h2{font-size:var(--fs-head); font-weight:700; line-height:1.3; margin:34px 0 8px;}
+  /* Same step as h2, distinguished by case rather than a fifth size. */
+  h3{font-size:var(--fs-head); font-weight:700; text-transform:uppercase;
+    letter-spacing:.03em; line-height:1.3; margin:24px 0 6px;}
+  h1 code,h2 code,h3 code{font-size:var(--fs-head);}
+  .sub{font-size:var(--fs-base); margin:0 0 20px;}
+  p{margin:11px 0;}
+  main a{color:var(--link); text-decoration:underline;}
+
+  /* Measure. Tables, code and the response boxes keep the full column; running
+     text is capped so the eye finds the next line. Applied to the block, not
+     to `main`, so a wide table is never squeezed to prose width. */
+  .page > p, .page > ul, .page > ol, .page > .sub, .callout, blockquote{
+    max-width:var(--measure);}
+
+  /* Rule 1: every variant is the same pure background plus a border. The kind
+     is carried by the tag's colour and the left border, not by a wash. */
+  .callout{padding:12px 16px; margin:16px 0; border:1px solid var(--border); background:none;}
+  .callout.key{border-left:3px solid var(--accent);}
+  .callout.good{border-left:3px solid var(--positive);}
+  .callout.warn{border-left:3px solid var(--caution);}
+  .callout.bad{border-left:3px solid var(--negative);}
+  .callout .tag{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; display:block; margin-bottom:4px;}
+  .callout.key .tag{color:var(--accent);} .callout.good .tag{color:var(--positive);}
+  .callout.warn .tag{color:var(--caution);} .callout.bad .tag{color:var(--negative);}
+
+  .tbl-wrap{overflow-x:auto; margin:18px 0;}
+  table{border-collapse:collapse; width:100%; font-size:var(--fs-base);}
+  th,td{padding:10px 12px; text-align:left; border:1px solid var(--border); vertical-align:top;}
+  thead th{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.04em; color:var(--fg); white-space:nowrap;}
+  td code{font-size:var(--fs-sm);}
+
+  ul,ol{margin:10px 0; padding-left:24px;} li{margin:7px 0;}
+  .foot{font-size:var(--fs-sm);}
+
+  .rec{border:1px solid var(--border); border-left:3px solid var(--positive);
+    padding:8px 13px; margin:13px 0;}
+  .rec .lbl{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--positive); display:block; margin-bottom:3px;}
+
+  /* Chips are outlined, never filled — a filled badge is a background tint. */
+  .pill{display:inline-block; font-size:var(--fs-sm); font-weight:700; padding:1px 8px;
+    border:1px solid var(--border); background:none; color:var(--fg); vertical-align:middle;}
+  .pill.dec{color:var(--caution); border-color:var(--caution);}
+  .pill.red{color:var(--negative); border-color:var(--negative);}
+  .pill.grn{color:var(--positive); border-color:var(--positive);}
+
+  blockquote{border-left:3px solid var(--border); margin:10px 0; padding-left:13px;
+    font-size:var(--fs-base);}
+
+  .sev{font-weight:700;}
+  .sev.r{color:var(--negative);} .sev.o{color:var(--caution);} .sev.y{color:var(--caution);}
+  .verdict{font-weight:700; white-space:nowrap;}
+  .verdict.clean{color:var(--positive);} .verdict.tangled{color:var(--caution);}
+  .verdict.bound{color:var(--negative);}
+
+  /* ---- response boxes: page-level ----
+     min-height:52px and overflow:hidden are load-bearing for the skill's
+     auto-grow (it measures scrollHeight); do not "tidy" them away. */
+  .response{margin:16px 0 6px; border:1px solid var(--border);
+    border-left:3px solid var(--caution); background:none; padding:9px 13px;}
+  .response label{display:block; font-size:var(--fs-sm); font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--caution); margin-bottom:5px;}
+  .response .discuss{margin:0 0 10px; padding:9px 12px; border:1px solid var(--border);
+    border-left:2px solid var(--accent); background:none;
+    font-size:var(--fs-base); line-height:1.55; color:var(--fg);}
+  .response .discuss code{font-size:var(--fs-sm);}
+  .response textarea{width:100%; min-height:52px; resize:vertical; font-family:var(--font);
+    font-size:var(--fs-base); color:var(--fg); background:var(--bg);
+    border:1px solid var(--border); padding:7px 10px; line-height:1.5; overflow:hidden;}
+  .response textarea:focus{outline:none; box-shadow:inset 0 0 0 2px var(--focus);}
+  /* Answered state: colour + weight on the label, never a fade or a fill. */
+  .response.filled{border-left-color:var(--positive);}
+  .response.filled label{color:var(--positive);}
+
+  /* ---- response boxes: row-level (compact) ----
+     1.9em height is the skill's explicit override of the 52px above; keep it. */
+  tr.row-note td{padding:3px 9px 9px; border:1px solid var(--border);}
+  tr.row-note .response.mini{margin:0; border:none; background:none; padding:0;}
+  tr.row-note .response.mini textarea{display:block; width:100%; min-height:0; height:1.9em;
+    resize:none; overflow:hidden; font-family:var(--font); font-size:var(--fs-base);
+    line-height:1.4; color:var(--fg); background:var(--bg);
+    border:1px solid var(--border); padding:4px 9px;}
+  tr.row-note .response.mini textarea:focus{color:var(--fg);
+    box-shadow:inset 0 0 0 2px var(--focus); border-color:var(--focus);}
+  tr.row-note .response.mini.filled textarea{border-color:var(--positive);}
+
+  .savebar{position:fixed; bottom:14px; right:19px; display:flex; align-items:center;
+    gap:11px; z-index:50; background:var(--bg); border:1px solid var(--border);
+    padding:7px 9px 7px 16px;}
+  .savebar .stat{font-size:var(--fs-sm); color:var(--fg);}
+  .savebar button{font-family:var(--font); font-size:var(--fs-base); font-weight:700;
+    cursor:pointer; border:1px solid var(--border); background:none; color:var(--fg);
+    padding:6px 14px;}
+  .savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  .savebar button.ghost{border-color:var(--border); color:var(--fg); padding:6px 10px;}
+</style>
+</head><body>
+<nav>
+  <div class="brand"><span class="logo"></span> PRD-001</div>
+  <div class="grp">Orientation</div>
+  <a href="#p0" data-page="p0" class="cur">0 · How this factory works</a>
+  <div class="grp">Your repo</div>
+  <a href="#p1" data-page="p1">1 · What we found</a>
+  <div class="grp">Open questions</div>
+  <a href="#p2" data-page="p2">2 · Which suites gate a landing</a>
+  <a href="#p3" data-page="p3">3 · What's protected</a>
+  <a href="#p4" data-page="p4">4 · Tracker backend</a>
+  <a href="#p5" data-page="p5">5 · Landing policy</a>
+  <a href="#p6" data-page="p6">6 · First real work</a>
+  <div class="grp">Output</div>
+  <a href="#p7" data-page="p7">7 · Issues this PRD creates</a>
+  <div class="foot">This is the upstream artifact: filling it in creates
+    your project's first tracker issues, not the other way around. 💾 Save
+    writes your answers back into this file. New sections may get appended
+    below over time — this one won't move or get renamed.</div>
+</nav>
+
+<main>
+
+<section class="page cur" id="p0">
+  <h1>PRD-001 — Orient the factory to this repo</h1>
+  <p class="sub">The first document you fill in here. Answering it files your project's first real issues.</p>
+
+  <p><code>entropy-machines</code> is a workflow for running coding agents on
+  a real codebase without letting them corrupt each other's work or land
+  things nobody proved. It is four roles and a handful of gates, each one
+  built because something specific went wrong once.</p>
+
+  <div class="callout key"><span class="tag">upstream, not downstream</span>
+    A PRD is the artifact that <strong>creates</strong> work here — work does
+    not create a PRD. Filling in the questions on the following pages is what
+    files your first tracker issues; a one-off "discovery" task is never the
+    entry point, it's one issue that might fall out of an answer below.
+  </div>
+
+  <h2>The cycle</h2>
+  <pre><code>ISSUES ──▶ WORKED ──▶ VERIFIED ──▶ FOLDED ──▶ SPRINT REPORT ──▶ ISSUES</code></pre>
+  <p>Full stage-by-stage version, including the incidents each stage's rules
+  were built to stop recurring: <code>doctrine/WORKFLOW.md</code>. You should
+  not need to open it to follow this page.</p>
+
+  <h2>Four roles</h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Role</th><th>Does</th><th>Never</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Owner</strong> (you)</td>
+        <td>Rules on open questions like the ones ahead, says when held work
+          may merge, ticks the sprint closed.</td>
+        <td>Delegates the sprint-close tick or a decision an issue is gated
+          on — there is no code path to either.</td></tr>
+      <tr><td>Worker</td>
+        <td>Implements one scoped issue, in its own git worktree, leaves a
+          <code>HANDOFF.md</code>.</td>
+        <td>Commits, pushes, merges, or edits outside its declared file
+          scope.</td></tr>
+      <tr><td>Verifier</td>
+        <td>Sweeps <em>all</em> finished work for the sprint, once, on a
+          clean tree; reports a verdict.</td>
+        <td>Fixes, lands, or repeats a number it did not personally
+          re-run.</td></tr>
+      <tr><td>Orchestrator</td>
+        <td>Dispatches, folds verified work into <code>main</code> (the only
+          committer), turns rulings into issues.</td>
+        <td>Lands held work without your go-ahead, or relays a worker's own
+          claim as if it had re-run it.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Full definitions, including what each role must <em>not</em> do and why:
+  <code>doctrine/ROLES.md</code>.</p>
+
+  <h2>What the gates protect you from</h2>
+  <ul>
+    <li><code>bin/dispatch</code> refuses to run from anywhere but the repo
+      root, refuses uncommitted edits already sitting in the files it's about
+      to hand out, and refuses to overlap a file another live dispatch
+      already holds — a worker never starts from a wrong or dirty base.</li>
+    <li>The commit-msg hook refuses a commit that lands a dispatched issue
+      with no handoff record for it — a worker's
+      <code>changed</code>/<code>found</code>/<code>assumed</code>/<code>next</code>
+      is never lost to a fast commit.</li>
+    <li>The pre-commit hook refuses a commit touching a watched path with no
+      <code>changelog.d/</code> fragment — nobody has to reconstruct what
+      changed by reading the diff (off entirely if
+      <code>changelog.enabled</code> is false).</li>
+    <li><code>bin/handoff</code> refuses <code>--verified</code> text that
+      just relays what the worker claimed — "tests pass" is not evidence,
+      you have to say what <em>you</em> re-ran.</li>
+    <li>The tracker refuses <code>status=held</code> outright — held-ness
+      lives in <code>heldWhy</code>, gated-ness in <code>gate</code>, and
+      neither is a status value, so a hold with no reason attached cannot be
+      created.</li>
+  </ul>
+  <p>That is everything you need to read the rest of this document. The next
+  page is what an agent found looking at your actual repo; the pages after
+  that are yours to rule on.</p>
+</section>
+
+<section class="page" id="p1">
+  <h1>What we found in your repo</h1>
+  <p class="sub">Observations, not settled fact. Correct anything wrong
+    before answering the questions that follow — they build on this.</p>
+
+  <div class="callout warn"><span class="tag">not yet filled in</span>
+    This page ships empty. It gets filled in by an agent as part of bringing
+    this factory into your project — if you are reading this straight out of
+    the harness repo, everything below the line is a placeholder waiting for
+    that pass.
+  </div>
+
+  <!-- AGENT FILLING THIS IN: run the commands below, do not read them off a
+       README and repeat its claims back. An unverified suite command is
+       exactly the kind of claim this harness distrusts on principle: see
+       docs/CONFIG.md, bin/init leaves entropy.json's `suites` array empty
+       rather than guess at one, for the same reason. Report only what you
+       personally ran and watched pass or fail, with the actual command and
+       its actual result (pass, fail, or count).
+
+       Fill in, under each heading below, as short prose or a list:
+
+         Language and toolchain — what is actually in use: runtime, package
+         manager, framework. Read it off lockfiles and manifests, not off the
+         directory name or a guess.
+
+         Test and typecheck and build — the exact command you ran for each
+         (they may be the same command, or may not all exist) and what
+         happened. "Ran `npm test`, 41 passed, 0 failed" is the right shape.
+         "Probably `npm test`, per the README" is not — leave it unverified
+         and say so, do not put it in this section.
+
+         Codegen — is there a step that writes committed files from source
+         (a generate script, a codegen target)? What does it emit? Did you
+         run it and confirm the output matches what is already committed?
+
+         Worktree symlinks — what does a completely fresh worktree of this
+         repo need linked in before anything above will even run — the usual
+         one is a package manager's local cache directory, but check for a
+         virtualenv or vendored dependencies too. Prove it, don't guess it:
+         add a worktree, try the test command unlinked, note what actually
+         breaks.
+
+         Changelog convention — does one already exist (a CHANGELOG file, a
+         fragments directory, a commit message convention)? Quote what you
+         found. Do not invent a convention that is not there.
+
+       Leave the open questions on the pages after this one alone. Those are
+       owner calls (doctrine/ROLES.md) — not something to infer from code. -->
+
+  <h2>Language &amp; toolchain</h2>
+  <p><em>Not yet filled in.</em></p>
+
+  <h2>Test / typecheck / build — commands actually run, and what happened</h2>
+  <p><em>Not yet filled in.</em></p>
+
+  <h2>Codegen</h2>
+  <p><em>Not yet filled in.</em></p>
+
+  <h2>Worktree symlinks needed</h2>
+  <p><em>Not yet filled in.</em></p>
+
+  <h2>Changelog convention</h2>
+  <p><em>Not yet filled in.</em></p>
+</section>
+
+<section class="page" id="p2">
+  <h1>Which suites gate a landing, and which are advisory?</h1>
+  <p class="sub">This becomes <code>entropy.json</code>'s <code>suites</code> array.</p>
+
+  <p>Every entry under <code>suites</code> runs in the verifier's sweep and in
+  <code>bin/post-fold-audit</code>. An entry tagged <code>"slow"</code> can be
+  skipped with <code>--skip slow</code> — that is the built-in way to say
+  "don't block every single fold on this one," which in practice is what
+  makes a suite advisory rather than gating (<code>docs/CONFIG.md</code>).</p>
+
+  <div class="response" data-resp="prd001-q1-suites">
+    <label>Suites: gate vs. advisory</label>
+    <div class="discuss">
+      <strong>Option A</strong> — a small, fast set gates every fold (say,
+      typecheck + unit); anything slow or flake-prone (e2e, integration) is
+      tagged <code>"slow"</code> and only required once per sprint via the
+      verifier, not on every single dispatch. Cost: a red slow suite can sit
+      underneath a landed fix for a while, surfacing on your own review
+      cadence instead of blocking immediately.<br>
+      <strong>Option B</strong> — everything in <code>suites</code> gates
+      every fold, nothing tagged slow. Cost: every dispatch cycle pays the
+      full suite's wall time and flake rate, even for a one-line fix.<br>
+      I'd take <strong>A</strong> — start with typecheck + unit gating,
+      tag anything slow or historically flaky, and widen the gate later once
+      you trust it. Which suites do you have (or plan to have), and which
+      of them gate vs. which are advisory?
+    </div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p3">
+  <h1>What belongs in <code>project.protectedPaths</code>?</h1>
+  <p class="sub">Paths no dispatched agent may edit on its own initiative.</p>
+
+  <p>Candidates: an append-only interface, a generated bundle, a cross-writer
+  contract, anything that needs a human holding both ends. A worker (and the
+  unattended drainer, if you ever arm it) refuses to touch a listed path;
+  the drainer's runner also diffs finished work against the list before
+  pushing and quarantines the whole run on a match.</p>
+
+  <div class="response" data-resp="prd001-q2-protected-paths">
+    <label>protectedPaths list</label>
+    <div class="discuss">
+      <strong>Option A</strong> — start narrow: only what you can name right
+      now (a generated bundle, a public API surface, a schema migration you
+      don't want an agent improvising on). Cost: something you forgot is
+      editable by a worker until you notice and add it.<br>
+      <strong>Option B</strong> — start wide: anything that took real design
+      thought, docs included. Cost: workers stall asking to touch ordinary
+      files, and "held, needs owner" piles up for things that never needed
+      protecting.<br>
+      I'd take <strong>A</strong> — the list only blocks automated edits, not
+      yours; you can always add to it the first time a worker touches
+      something you regret. What paths go in it?
+    </div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p4">
+  <h1>Keep the built-in file tracker, or point at one you already use?</h1>
+  <p class="sub">This becomes <code>tracker.backend</code>.</p>
+
+  <p>The harness needs exactly six operations from a tracker —
+  <code>show</code>, <code>notes</code>, <code>remember</code>,
+  <code>claim</code>, <code>ready</code>, <code>set</code> (no
+  <code>add</code>; an issue is created with <code>set</code>, which
+  auto-vivifies). <code>"file"</code> is the built-in backend, storing
+  <code>.entropy/issues.json</code> locally. <code>"command"</code> shells
+  out to any executable implementing the same six ops
+  (<code>docs/TRACKER-ADAPTER.md</code>) — and that adapter has to be able to
+  express <em>held</em> (a <code>heldWhy</code> field) and <em>gated</em>
+  (a <code>gate</code> field) correctly, or <code>ready</code> will
+  over-report what's actually claimable.</p>
+
+  <div class="response" data-resp="prd001-q3-tracker-backend">
+    <label>tracker.backend</label>
+    <div class="discuss">
+      <strong>Option A</strong> — keep <code>"file"</code>. Zero setup,
+      works today, per-checkout state under <code>.entropy/</code>
+      (gitignored). Cost: not shared across machines, no UI beyond
+      <code>bin/tracker show</code>.<br>
+      <strong>Option B</strong> — point <code>tracker.command.bin</code> at
+      an adapter for a tracker you already run. Cost: someone has to write
+      and maintain that adapter, and get held/gated right, or claimable work
+      is reported wrong.<br>
+      I'd take <strong>A</strong> to start — nothing about the workflow
+      depends on which backend answers <code>bin/tracker ready</code>, so
+      migrating later costs nothing you wouldn't pay anyway. File-backed, or
+      point at something else?
+    </div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p5">
+  <h1>Does verified work land on your say-so every time, or on the verifier's word?</h1>
+  <p class="sub">Not a config key — a policy for how the orchestrator behaves.</p>
+
+  <p>The two doctrine docs phrase this slightly differently.
+  <code>doctrine/WORKFLOW.md</code> ties your say-so specifically to
+  <em>held</em> work: "Nothing is folded while work is HELD. The owner says
+  when." <code>README.md</code>'s summary states it more broadly: "Nothing
+  lands eagerly. Finished work is held until the owner says merge." Read
+  literally, the first lets the orchestrator fold anything verified and not
+  explicitly held, on its own judgment; the second reads as every fold
+  waiting on you. Worth ruling on explicitly rather than each orchestrator
+  session guessing which reading you meant.</p>
+
+  <div class="response" data-resp="prd001-q4-landing-policy">
+    <label>Landing policy</label>
+    <div class="discuss">
+      <strong>Option A</strong> — owner-gated: the orchestrator checks in
+      with you before every fold, even something verified and not held.
+      Cost: a check-in step per issue or per sprint; slower cadence, but
+      nothing lands without you seeing it first.<br>
+      <strong>Option B</strong> — verifier-gated: the orchestrator folds
+      automatically once the verifier reports healthy and the issue isn't
+      held; you brake specific issues with <code>heldWhy</code>. Cost:
+      faster, but you only get asked when the orchestrator is unsure —
+      you have to actually use <code>heldWhy</code> proactively.<br>
+      I'd take <strong>A</strong> for a new project — until you've seen a
+      few sprints go cleanly and trust the verifier's sweep and your own
+      review habits, then reassess toward B. Which do you want?
+    </div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p6">
+  <h1>What turns this from orientation into a project?</h1>
+  <p class="sub">The one question above that isn't config at all.</p>
+
+  <p>Everything on the previous four pages configures the harness. None of
+  it is a real feature or bug fixed yet. This is the question whose answer
+  becomes the first issue dispatched to an actual worker.</p>
+
+  <div class="response" data-resp="prd001-q5-first-work">
+    <label>First real issue</label>
+    <div class="discuss">
+      <strong>Option A</strong> — dispatch a verification issue first:
+      confirm the "What we found" page for real and finish
+      <code>entropy.json</code> (suites, generate, worktree links). Cost:
+      one dispatch cycle spent on bookkeeping before touching a real feature
+      or bug.<br>
+      <strong>Option B</strong> — skip straight to a real feature or bug you
+      already know needs doing, and patch <code>entropy.json</code>'s gaps
+      opportunistically as a worker or verifier hits them. Cost: your first
+      few dispatches run against unverified suites and paths, so a failure
+      might be the harness's config rather than the actual work.<br>
+      I'd take <strong>A</strong> if anything on the "What we found" page is
+      marked unverified; <strong>B</strong> if you already trust your own
+      toolchain commands and just want to see the loop move. What's the
+      first real issue, and which order?
+    </div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p7">
+  <h1>Issues this PRD creates</h1>
+  <p class="sub">Your five answers above, filed. Literal commands — the
+    tracker has six operations, no <code>add</code>; an issue is created
+    with <code>set</code>, which auto-vivifies
+    (<code>docs/TRACKER-ADAPTER.md</code>).</p>
+
+  <pre><code>bin/tracker set i-suites-policy \
+  status=notstarted \
+  title="Configure entropy.json suites per PRD-001 Q1" \
+  effort=S
+
+bin/tracker set i-protected-paths \
+  status=notstarted \
+  title="Set project.protectedPaths per PRD-001 Q2" \
+  effort=S
+
+# Q3 answered above but not yet DONE until you (or the worker) actually
+# write it into entropy.json -- filed the same as any other issue.
+bin/tracker set i-tracker-backend \
+  status=notstarted \
+  title="Configure tracker.backend per PRD-001 Q3" \
+  effort=S
+
+bin/tracker set i-landing-policy \
+  status=notstarted \
+  title="Record landing policy per PRD-001 Q4" \
+  effort=S
+
+# Q5's answer names your actual first issue -- write its own `set` once
+# you've picked it; there's no generic id to hand you here.
+
+bin/tracker remember --issue q-1 \
+  "Filed i-suites-policy, i-protected-paths, i-tracker-backend, i-landing-policy from PRD-001-orientation."
+bin/tracker set q-1 status=done</code></pre>
+
+  <p>If instead you're still genuinely undecided on one of these — not
+  "haven't gotten to it," actually undecided — file it <em>gated</em>
+  instead of plain <code>notstarted</code>, so <code>ready</code> holds it
+  back until you clear the gate:</p>
+
+  <pre><code>bin/tracker set i-tracker-backend \
+  status=notstarted \
+  title="Decide tracker.backend per PRD-001 Q3" \
+  gate="PRD-001#q3"</code></pre>
+
+  <p>Both forms run for real, against a throwaway project, while this page
+  was written:</p>
+
+  <pre><code>$ bin/tracker ready
+{"blockedBy": [], "effort": "S", "id": "i-landing-policy", "status": "notstarted", "title": "..."}
+{"blockedBy": [], "effort": "S", "id": "i-protected-paths", "status": "notstarted", "title": "..."}
+{"blockedBy": [], "effort": "S", "id": "i-suites-policy", "status": "notstarted", "title": "..."}
+# i-tracker-backend (filed gated) does not appear. q-1 (filed done) does not
+# appear either -- ready means claimable, not "exists."
+
+$ bin/tracker set i-tracker-backend status=held
+tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progress.
+  held and gated are not status values — set heldWhy=&lt;reason&gt; or gate=&lt;handle&gt; instead.</code></pre>
+
+  <div class="callout good"><span class="tag">already done for you</span>
+    <code>q-1</code>, "Orient the factory to this repo," is already filed
+    and was claimable before you opened this page —
+    <code>bin/tracker ready</code> shows it from the moment
+    <code>bin/init</code> ran. Marking it <code>status=done</code> above is
+    what closes the loop this PRD opened: a PRD creates issues, and one of
+    them was always going to be "answer this PRD."
+  </div>
+
+  <p>Next: <code>bin/dispatch &lt;id&gt; --files "…" --brief "…"</code> on
+  whichever of the above is both <code>ready</code> and next in the order you
+  gave in Q5 — see <code>docs/QUICKSTART.md</code> for one full walkthrough of
+  dispatch through handoff, start to finish, on a real example.</p>
+</section>
+
+</main>
+
+<div class="savebar">
+  <span class="stat" id="saveStat">Unsaved changes…</span>
+  <button class="ghost" id="clearBtn" title="Clear all responses">✕</button>
+  <button id="saveBtn">💾 Save</button>
+</div>
+<script type="application/json" id="responses-data">{}</script>
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('nav a[data-page]'));
+  function show(id){
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('cur', p.id===id); });
+    links.forEach(function(l){ l.classList.toggle('cur', l.dataset.page===id); });
+    try{ history.replaceState(null,'','#'+id); }catch(e){}
+    window.scrollTo(0,0);
+    document.querySelectorAll('#'+id+' .response textarea').forEach(function(t){ autoGrow(t); });
+  }
+  links.forEach(function(l){ l.addEventListener('click', function(ev){ ev.preventDefault(); show(l.dataset.page); }); });
+  if (location.hash && document.getElementById(location.hash.slice(1))) show(location.hash.slice(1));
+  // Required: without this, a deep link (#p2) does nothing when the tab is ALREADY
+  // open — the URL changes but the reader stays on page 0. show() uses
+  // history.replaceState, which does not fire hashchange, so there's no loop.
+  window.addEventListener('hashchange', function(){ var h=location.hash.slice(1); if(h && document.getElementById(h)) show(h); });
+  var KEY='PRD-001-orientation'; // CUSTOMIZE: unique per doc so localStorage never collides across docs
+  var boxes=[].slice.call(document.querySelectorAll('.response'));
+  var stat=document.getElementById('saveStat');
+  var dataEl=document.getElementById('responses-data');
+  var fileHandle=null;
+  function ta(b){return b.querySelector('textarea');}
+  function key(b){return b.getAttribute('data-resp');}
+  function markFilled(b){ if(ta(b).value.trim()) b.classList.add('filled'); else b.classList.remove('filled'); }
+  function autoGrow(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+  function load(){
+    var saved={};
+    try{ saved=JSON.parse(dataEl.textContent||'{}')||{}; }catch(e){}
+    try{ var ls=JSON.parse(localStorage.getItem(KEY)||'{}'); Object.keys(ls).forEach(function(k){ if(ls[k]&&ls[k].trim()) saved[k]=ls[k]; }); }catch(e){}
+    boxes.forEach(function(b){ var v=saved[key(b)]; if(typeof v==='string') ta(b).value=v; markFilled(b); autoGrow(ta(b)); });
+  }
+  function collect(){ var o={}; boxes.forEach(function(b){ o[key(b)]=ta(b).value; }); return o; }
+  function autosave(){ try{ localStorage.setItem(KEY,JSON.stringify(collect())); }catch(e){} }
+  document.getElementById('saveBtn').addEventListener('click',async function(){
+    dataEl.textContent=JSON.stringify(collect(),null,2);
+    boxes.forEach(function(b){ ta(b).textContent=ta(b).value; });
+    var html='<!doctype html>\n'+document.documentElement.outerHTML;
+    if(window.showSaveFilePicker){
+      try{
+        if(!fileHandle) fileHandle=await window.showSaveFilePicker({suggestedName:'PRD-001-orientation.html',types:[{description:'HTML',accept:{'text/html':['.html']}}]});
+        var w=await fileHandle.createWritable(); await w.write(html); await w.close();
+        stat.textContent='Saved to file'; return;
+      }catch(err){ if(err&&err.name==='AbortError'){stat.textContent='Save cancelled';return;} }
+    }
+    var blob=new Blob([html],{type:'text/html'}); var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='PRD-001-orientation.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    stat.textContent='Downloaded — overwrite the original';
+  });
+  document.getElementById('clearBtn').addEventListener('click',function(){
+    if(!confirm('Clear all responses?'))return;
+    boxes.forEach(function(b){ ta(b).value=''; markFilled(b); autoGrow(ta(b)); });
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    dataEl.textContent='{}'; stat.textContent='Cleared';
+  });
+  boxes.forEach(function(b){ ta(b).addEventListener('input',function(){ markFilled(b); autoGrow(ta(b)); autosave(); stat.textContent='Unsaved changes…'; }); });
+  load();
+  window.addEventListener('resize',function(){ boxes.forEach(function(b){ autoGrow(ta(b)); }); });
+})();
+</script>
+<script id="__disk-save-patch" data-ds="2">
+(function(){
+  var btn=document.getElementById('saveBtn');
+  var stat=document.getElementById('saveStat');
+  if(!btn) return;
+  var b=btn.cloneNode(true); btn.parentNode.replaceChild(b, btn);
+  function collect(){ var o={}; document.querySelectorAll('.response[data-resp]').forEach(function(el){ var t=el.querySelector('textarea'); if(t) o[el.getAttribute('data-resp')]=t.value; }); return o; }
+  var file=(location.pathname.split('/').pop()||'').split('?')[0];
+  b.addEventListener('click', async function(){
+    var data=collect();
+    if(stat) stat.textContent='Saving to disk…';
+    try{
+      var res=await fetch('/__save?file='+encodeURIComponent(file),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      if(res.ok){
+        if(stat) stat.textContent='Saved to disk ✓';
+        // Re-baseline the page's idea of what is on disk. Without this,
+        // responses-data still holds what the doc was SERVED with, so anything
+        // comparing the boxes against it reads every saved answer as an unsaved
+        // edit for the rest of the session — which made the live-reload patch
+        // refuse to auto-reload and tell the reader to 💾 something they had
+        // just saved.
+        try{
+          var el=document.getElementById('responses-data');
+          if(el) el.textContent=JSON.stringify(data,null,2);
+        }catch(_){}
+        return;
+      }
+      if(stat) stat.textContent='Save failed ('+res.status+')';
+    }catch(e){
+      if(stat) stat.textContent='Server offline — downloaded a copy (start serve.py to save in place)';
+      try{
+        var dataEl=document.getElementById('responses-data');
+        if(dataEl) dataEl.textContent=JSON.stringify(data,null,2);
+        document.querySelectorAll('.response[data-resp] textarea').forEach(function(t){ t.textContent=t.value; });
+        var htmlOut='<!doctype html>\n'+document.documentElement.outerHTML;
+        var a=document.createElement('a');
+        a.href=URL.createObjectURL(new Blob([htmlOut],{type:'text/html'}));
+        a.download=file; document.body.appendChild(a); a.click(); a.remove();
+      }catch(_){}
+    }
+  });
+})();
+</script>
+<style id="__todobanner-css">
+  /* Palette-aware. The first version hardcoded #fdf6e3 and pill radii, which
+     the 2026-08-07 doc standard forbids (rule 1: separate with BORDERS, never
+     background tints; no filled badges). Vars fall back for docs still on the
+     old sheet. */
+  #__todobar{ position:sticky; top:0; z-index:40; margin:0 0 1.1rem;
+    border:2px solid var(--caution,#a16207); background:var(--bg,#fff);
+    color:var(--caution,#a16207); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
+  #__todobar[hidden]{ display:none; }
+  #__todobar .hd{ font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    font-size:var(--fs-sm,.72rem); display:block; margin-bottom:.35rem; }
+  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#a16207);
+    background:none; border:1px solid currentColor; padding:.14rem .6rem;
+    margin:.16rem .3rem .16rem 0; text-decoration:none; }
+  #__todobar a:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
+</style>
+<script id="__todobanner-patch" data-tb="2">
+// An in-page "these need you" bar. Same source of truth as the nav marks —
+// __janusBoxes.pendingIn (see __boxstate-patch). Clicking a chip switches to
+// that page via the existing nav link, so it works with the doc's own router.
+//
+// v2: a row-note and a follow-up the conversation ran past are no longer
+// "answers needed". v1 counted every empty textarea, so a doc with per-row
+// note slots showed a permanent demand the owner could never clear.
+(function(){
+  var main=document.querySelector('main'); if(!main) return;
+  var bar=document.createElement('div'); bar.id='__todobar'; bar.hidden=true;
+  main.insertBefore(bar, main.firstChild);
+  function label(link){
+    // Clone and drop the navmark counter first — reading link.textContent raw
+    // concatenates "0/1" onto the title and no amount of regex untangles
+    // "0/10 · What is actually open" reliably.
+    var c=link.cloneNode(true);
+    var m=c.querySelector('.navmark'); if(m) m.remove();
+    var t=(c.textContent||'').replace(/\s+/g,' ').trim();
+    return t.replace(/^\d+\s*·\s*/,'').replace(/\s*⚑\s*$/,'').trim() || link.dataset.page;
+  }
+  function refresh(){
+    var pending=[];
+    [].slice.call(document.querySelectorAll('nav a[data-page]')).forEach(function(link){
+      var page=document.getElementById(link.dataset.page); if(!page) return;
+      if(!window.__janusBoxes) return;  // helper not loaded yet — deferred pass runs
+      var n=window.__janusBoxes.pendingIn(page).length;
+      if(n) pending.push({id:link.dataset.page, n:n, text:label(link)});
+    });
+    if(!pending.length){ bar.hidden=true; bar.innerHTML=''; return; }
+    var total=pending.reduce(function(a,p){ return a+p.n; },0);
+    bar.hidden=false;
+    bar.innerHTML='<span class="hd">'+total+(total===1?' answer needed':' answers needed')+'</span>'+
+      pending.map(function(p){
+        return '<a href="#'+p.id+'" data-goto="'+p.id+'">'+p.text+(p.n>1?' ('+p.n+')':'')+'</a>';
+      }).join('');
+  }
+  bar.addEventListener('click', function(e){
+    var a=e.target.closest('a[data-goto]'); if(!a) return;
+    e.preventDefault();
+    var nav=document.querySelector('nav a[data-page="'+a.dataset.goto+'"]');
+    if(nav) nav.click();
+    // Focus the first box that actually WANTS an answer — not merely the first
+    // empty one, which on a doc with row-notes is a note slot nobody owes.
+    var page=document.getElementById(a.dataset.goto);
+    var want=(page && window.__janusBoxes) ? window.__janusBoxes.pendingIn(page) : [];
+    var target=(want[0] && want[0].querySelector('textarea')) ||
+      document.querySelector('#'+a.dataset.goto+' .response[data-resp] textarea');
+    if(target){ target.scrollIntoView({block:'center'}); target.focus(); }
+  });
+  document.querySelectorAll('.response[data-resp] textarea').forEach(function(t){
+    t.addEventListener('input', refresh);
+  });
+  document.addEventListener('click', function(e){
+    var id=e.target && e.target.id;
+    if(id==='saveBtn'||id==='clearBtn') setTimeout(refresh,60);
+  });
+  refresh();
+  // See the same two hooks in __navmark-patch: on an already-patched doc the
+  // boxstate helper is appended AFTER this block, so the parse-time pass above
+  // finds nothing and the deferred passes do the work.
+  document.addEventListener('DOMContentLoaded', refresh);
+  setTimeout(refresh, 0);
+})();
+</script>
+<style id="__navmark-css">
+  nav a[data-page]{ overflow:hidden; }
+  nav a .navmark{ float:right; font-size:var(--fs-sm,12px); font-weight:700; line-height:1.5; margin-left:.4rem; }
+  nav a .navmark.done{ color:var(--good); }
+  nav a .navmark.todo{ color:var(--warn-deep); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
+  @media (prefers-color-scheme:dark){ nav a .navmark.todo{ background:#241d10; } }
+  nav .navsummary{ font-size:var(--fs-sm,12px); font-weight:700; color:var(--muted); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--code-bg); }
+  nav .navsummary .all-done{ color:var(--good); }
+</style>
+<script id="__navmark-patch" data-nm="2">
+// Live per-section review state in the sidebar. Independent of the main doc
+// script — listens to input/save/clear.
+//
+// v2: counts come from __janusBoxes (see __boxstate-patch), so a row-note and
+// a follow-up the conversation ran past no longer read as an unanswered
+// question. v1 counted every empty textarea and told the owner a finished doc
+// still needed him.
+(function(){
+  var links=[].slice.call(document.querySelectorAll('nav a[data-page]'));
+  function ensure(link){ var m=link.querySelector('.navmark'); if(!m){ m=document.createElement('span'); m.className='navmark'; link.insertBefore(m, link.firstChild); } return m; }
+  var summary=null;
+  var foot=document.querySelector('nav .foot');
+  if(foot){ summary=document.createElement('div'); summary.className='navsummary'; foot.parentNode.insertBefore(summary, foot); }
+  function refresh(){
+    var done=0, withBoxes=0;
+    links.forEach(function(link){
+      var page=document.getElementById(link.dataset.page);
+      if(!page) return;
+      var c=(window.__janusBoxes ? window.__janusBoxes.countsIn(page) : null);
+      if(!c){ return; }  // helper not loaded yet — the deferred pass will run
+      var m=link.querySelector('.navmark');
+      if(c.total===0){ if(m) m.parentNode.removeChild(m); return; }
+      withBoxes++;
+      m=ensure(link);
+      // A page with nothing PENDING is done even when a tail follow-up sits
+      // empty — that box is answered-past, not owed.
+      if(c.pending===0){ m.textContent='✓'; m.className='navmark done'; done++; }
+      else { m.textContent=c.filled+'/'+c.total; m.className='navmark todo'; }
+    });
+    if(summary){
+      if(!withBoxes){ summary.textContent=''; }
+      else if(done===withBoxes){ summary.innerHTML='<span class="all-done">✓ all '+withBoxes+' sections answered</span>'; }
+      else { summary.textContent='Answered '+done+'/'+withBoxes+' sections'; }
+    }
+  }
+  document.querySelectorAll('.response[data-resp] textarea').forEach(function(t){ t.addEventListener('input', refresh); });
+  document.addEventListener('click', function(e){ var id=e.target && e.target.id; if(id==='saveBtn'||id==='clearBtn'){ setTimeout(refresh,60); } });
+  refresh();
+  // An ALREADY-PATCHED doc gets __boxstate-patch appended after this block, so
+  // the helper does not exist during the parse-time pass above. Both hooks are
+  // cheap and idempotent.
+  document.addEventListener('DOMContentLoaded', refresh);
+  setTimeout(refresh, 0);
+})();
+</script>
+<style id="__trackernav-css">
+  /* Borders, never tints (2026-08-07 doc standard). Vars fall back for docs
+     still on the old sheet. */
+  nav .tracknav{ display:flex; flex-wrap:wrap; gap:.35rem; margin:.45rem .4rem .6rem; }
+  nav .tracknav a{ font-size:var(--fs-sm,12px); font-weight:700; text-decoration:none;
+    color:var(--muted,#71717a); border:1px solid var(--border,#ddd6fe);
+    padding:.1rem .5rem; }
+  nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+</style>
+<script id="__trackernav-patch">
+// Top-of-sidebar links back to the tracker pages, mirroring the header nav
+// those pages carry (docs ↔ issues ↔ questions ↔ plan). Inserted after the
+// nav brand; silently does nothing on a page without one (generated pages
+// have their own header nav).
+(function(){
+  var brand=document.querySelector('nav .brand'); if(!brand) return;
+  var row=document.createElement('div'); row.className='tracknav';
+  row.innerHTML='<a href="DOCS.html">docs</a><a href="TRACKER.html">issues</a>'+
+    '<a href="INDEX.html">questions</a><a href="WORKSTREAMS.html">plan</a>';
+  brand.parentNode.insertBefore(row, brand.nextSibling);
+})();
+</script>
+<style id="__livereload-css">
+  /* Borders, never tints (2026-08-07 doc standard). */
+  #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
+    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
+    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
+    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+  #__replybar[hidden]{ display:none; }
+  #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
+    background:none; border:1px solid currentColor; padding:.2rem .7rem; }
+  #__replybar button:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
+  #__replybar .dismiss{ border:none; font-weight:400; }
+</style>
+<script id="__livereload-patch" data-lr="2">
+// "I replied" signal. Without it the reader has no way to learn that a fold
+// landed except being told in chat — which was the last manual link in the
+// loop (owner, 2026-08-09: "otherwise I won't know that you've responded").
+//
+// Polls /__docversion for THIS file and watches the REVIEW SIGNATURE — a hash
+// of the folded <aside class="review"> blocks — not the version.
+//
+// It watched the version first, and that was wrong in the most annoying
+// possible way: a 💾 bumps the version, so saving your own answer announced
+// "New reply — reload to read it" and the reload showed nothing new, because
+// nothing was. Reported by the owner 2026-08-11 ("I never actually see replies
+// upon reload"). The signature moves when a reply is added or rewritten and
+// stays put for anything the reader does to their own boxes, which is the
+// question the banner claims to answer.
+//
+// It will not reload over unsaved typing. Clean is defined as: every textarea
+// matches the responses-data baked into the page at load. Clean -> reload on
+// its own. Dirty -> show the bar and let the reader choose, so a half-typed
+// answer is never destroyed by my fold landing at the wrong moment.
+(function(){
+  var file=(location.pathname.split('/').pop()||'').split('?')[0];
+  if(!file) return;
+  var seen=null, stopped=false;
+  var bar=document.createElement('div');
+  bar.id='__replybar'; bar.hidden=true;
+  bar.innerHTML='<span id="__replytext">New reply — reload to read it</span>'+
+    '<button id="__replygo">Reload</button>'+
+    '<button class="dismiss" id="__replyx" title="Dismiss">✕</button>';
+  document.body.appendChild(bar);
+  bar.querySelector('#__replygo').addEventListener('click',function(){ location.reload(); });
+  bar.querySelector('#__replyx').addEventListener('click',function(){ bar.hidden=true; stopped=true; });
+
+  function baked(){
+    var el=document.getElementById('responses-data');
+    try{ return JSON.parse((el&&el.textContent)||'{}')||{}; }catch(e){ return {}; }
+  }
+  function dirty(){
+    var disk=baked(), out=false;
+    document.querySelectorAll('.response[data-resp]').forEach(function(el){
+      var t=el.querySelector('textarea'); if(!t) return;
+      if((t.value||'').trim() !== String(disk[el.getAttribute('data-resp')]||'').trim()) out=true;
+    });
+    return out;
+  }
+  function tick(){
+    if(stopped) return;
+    fetch('/__docversion?file='+encodeURIComponent(file),{cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if(!d || typeof d.reviews!=='string') return;
+        if(seen===null){ seen=d.reviews; return; }
+        if(d.reviews===seen) return;
+        seen=d.reviews;   // announce a given reply once, not every 5s
+        // Reload only when nothing would be lost; otherwise hand the reader
+        // the choice. Either way the bar reports that a reply exists.
+        if(!dirty()){ location.reload(); return; }
+        document.getElementById('__replytext').textContent=
+          'New reply on disk — you have unsaved edits. 💾 first, then reload.';
+        bar.hidden=false;
+      })
+      .catch(function(){ /* server gone: stay quiet, the doc still works */ });
+  }
+  setInterval(tick, 5000); tick();
+})();
+</script>
+<script id="__autosave-patch">
+// Typing survives a closed tab. It did not.
+//
+// The dialogue template autosaves to localStorage as you type;
+// REPORT-TEMPLATE.html never did, so a report collected answers only between
+// the moment you typed them and the moment you pressed 💾 — close the tab
+// first and they were gone with no trace anywhere. Injected rather than
+// templated so every doc already written gets it too.
+//
+// It only ever FILLS AN EMPTY BOX. Disk is the truth for anything saved
+// (__disk-wins-patch), and a stale browser copy overwriting a saved answer is
+// a failure this folder has already had once — four answers on 2026-08-05 came
+// back holding the text of four other boxes.
+(function(){
+  var boxes=[].slice.call(document.querySelectorAll('.response[data-resp] textarea'));
+  if(!boxes.length) return;
+  var file=(location.pathname.split('/').pop()||'doc').split('?')[0];
+  // "janus-" prefix is load-bearing: __disk-wins-patch heals the stored map by
+  // looking up the first key with it.
+  var KEY='janus-'+file;
+  function keyOf(t){ return t.closest('.response').getAttribute('data-resp'); }
+  try{
+    var saved=JSON.parse(localStorage.getItem(KEY)||'{}')||{};
+    boxes.forEach(function(t){
+      var v=saved[keyOf(t)];
+      if(!t.value.trim() && typeof v==='string' && v.trim()){
+        t.value=v;
+        t.closest('.response').classList.add('filled');
+        t.style.height='auto'; t.style.height=t.scrollHeight+'px';
+      }
+    });
+  }catch(e){}
+  function dump(){
+    var o={}; boxes.forEach(function(t){ o[keyOf(t)]=t.value; });
+    try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){}
+  }
+  boxes.forEach(function(t){ t.addEventListener('input', dump); });
+  document.addEventListener('click', function(e){
+    if(e.target && e.target.id==='clearBtn') setTimeout(dump, 60);
+  });
+})();
+</script>
+<script id="__disk-wins-patch">
+/* Disk beats a stale localStorage for answers that are already SAVED.
+ *
+ * The template's load() does the opposite: it merges localStorage OVER the
+ * on-disk responses-data, unconditionally. That cost us four answers on
+ * 2026-08-05 — a1-goal-followup, a7-tools, a8-toolset and a9-render came back
+ * holding the text of the LAST four boxes, and the next save wrote the shift
+ * to disk as truth. Recovered from history/v015; the browser's localStorage
+ * was later confirmed to still hold the corrupted values, so the tab stayed
+ * armed to redo the damage on every subsequent save.
+ *
+ * localStorage exists to protect typing that has NOT been saved yet, and that
+ * is all it should win. So: a key with a non-empty value on disk is restored
+ * from disk; a key that is empty on disk keeps whatever the browser holds.
+ * Then localStorage is rewritten from the corrected DOM, which HEALS the drift
+ * instead of masking it — otherwise the bad map survives every reload.
+ *
+ * Runs after the template's own load() because it is appended at end-of-body.
+ */
+(function(){
+  var dataEl=document.getElementById('responses-data');
+  if(!dataEl) return;
+  var disk={};
+  try{ disk=JSON.parse(dataEl.textContent||'{}')||{}; }catch(e){ return; }
+  var healed=[];
+  document.querySelectorAll('.response[data-resp]').forEach(function(el){
+    var t=el.querySelector('textarea'); if(!t) return;
+    var k=el.getAttribute('data-resp'), v=disk[k];
+    if(typeof v==='string' && v.trim() && t.value!==v){
+      healed.push(k+' ('+t.value.length+'->'+v.length+' chars)');
+      t.value=v;
+    }
+    if(t.value.trim()) el.classList.add('filled'); else el.classList.remove('filled');
+    t.style.height='auto'; t.style.height=t.scrollHeight+'px';
+  });
+  if(healed.length){
+    try{
+      // Which stored map belongs to THIS doc. It used to be "the first key
+      // starting with janus-", which was a guess: localStorage is per-ORIGIN,
+      // so every doc served from 127.0.0.1:8787 shares one store, and the
+      // first janus- key is usually some other document's answers — healing
+      // would then overwrite THAT doc's unsaved typing with this doc's.
+      // Ownership is now proved, not guessed: a map belongs to this doc if it
+      // holds at least one of this doc's data-resp ids. __autosave-patch's own
+      // key (janus-<file>) is always included.
+      var mine={};
+      document.querySelectorAll('.response[data-resp]').forEach(function(el){
+        var t=el.querySelector('textarea');
+        if(t) mine[el.getAttribute('data-resp')]=t.value;
+      });
+      var file=(location.pathname.split('/').pop()||'doc').split('?')[0];
+      var targets=['janus-'+file];
+      for(var i=0;i<localStorage.length;i++){
+        var k2=localStorage.key(i);
+        if(!k2 || k2.indexOf('janus-')!==0 || targets.indexOf(k2)>=0) continue;
+        try{
+          var m=JSON.parse(localStorage.getItem(k2)||'{}')||{};
+          if(Object.keys(m).some(function(kk){ return kk in mine; })) targets.push(k2);
+        }catch(_e){}
+      }
+      targets.forEach(function(k3){
+        // Only rewrite ids the map already held, plus this doc's own key in
+        // full — a shared-prefix map from another doc keeps its other entries.
+        var out;
+        if(k3==='janus-'+file){ out=mine; }
+        else {
+          try{ out=JSON.parse(localStorage.getItem(k3)||'{}')||{}; }catch(_e){ return; }
+          Object.keys(out).forEach(function(kk){ if(kk in mine) out[kk]=mine[kk]; });
+        }
+        localStorage.setItem(k3,JSON.stringify(out));
+      });
+    }catch(e){}
+    console.warn('[dialogue-doc] restored '+healed.length+
+      ' answer(s) from disk over a stale localStorage: '+healed.join(', '));
+  }
+})();
+</script>
+<script id="__boxstate-patch" data-bs="1">
+// WHICH BOXES ACTUALLY WANT THE READER. One definition, used by the nav marks
+// and the todo bar, because they used to each count "every .response[data-resp]
+// with an empty textarea" and that count lied twice over:
+//
+//   1. A .mini row-note ("note on this row") is an INVITATION, never a demand.
+//      Counting them left pages reading 0/7 forever.
+//   2. A follow-up box the conversation already ran PAST is not pending. Chains
+//      read question -> answer -> my reply + follow-up -> answer -> ...; a gap
+//      in the middle means the reader kept going, a gap at the END means they
+//      have not answered yet.
+//
+// Both were reported by the owner against a doc that claimed four open
+// questions when every real question in it was answered ("uh.. everything is
+// checked off. what is open here?", 2026-08-23). Same rule as doctracker.py's
+// qstate/mark_superseded — if you change one, change the other.
+(function(){
+  function chainOf(key){
+    var stem=key, m;
+    while((m=/^(.*)-followup\d*$/.exec(stem))) stem=m[1];
+    return stem;
+  }
+  function all(){
+    return [].slice.call(document.querySelectorAll('.response[data-resp]'));
+  }
+  // A box counts at all only if it is a real question box, not a row-note.
+  function countable(box){ return !box.classList.contains('mini'); }
+  function filled(box){
+    var t=box.querySelector('textarea');
+    return !!(t && t.value.trim());
+  }
+  // Answered later in the SAME chain, anywhere in the doc, in document order.
+  function supersededMap(){
+    var boxes=all(), seen={}, out={};
+    for(var i=boxes.length-1;i>=0;i--){
+      var key=boxes[i].getAttribute('data-resp'), ch=chainOf(key);
+      out[key]=!!seen[ch];
+      if(filled(boxes[i])) seen[ch]=true;
+    }
+    return out;
+  }
+  function pendingIn(page){
+    var sup=supersededMap();
+    return [].slice.call(page.querySelectorAll('.response[data-resp]'))
+      .filter(function(b){
+        return countable(b) && !filled(b) && !sup[b.getAttribute('data-resp')];
+      });
+  }
+  function countsIn(page){
+    var boxes=[].slice.call(page.querySelectorAll('.response[data-resp]')).filter(countable);
+    return {total:boxes.length, filled:boxes.filter(filled).length,
+            pending:pendingIn(page).length};
+  }
+  window.__janusBoxes={chainOf:chainOf, pendingIn:pendingIn, countsIn:countsIn};
+})();
+</script>
+</body></html>

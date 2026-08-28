@@ -10,9 +10,10 @@ because something went wrong once.
 
 Decides. Ticks. Sets priority and scope.
 
-**Does:** rules on open questions in dialogue docs; ticks the sprint-close box
-that ends a sprint; says when held work may be merged; picks what the next
-sprint is.
+**Does:** rules on open questions in dialogue docs — served HTML pages with
+response boxes, rendered by `bin/serve` from `lib/doc-template.html`; ticks
+the sprint-close box that ends a sprint; says when held work may be merged;
+picks what the next sprint is.
 
 **Never delegated:** the ready tick (there is no code path to it), any
 decision an issue is gated on, and the call on whether to merge held work.

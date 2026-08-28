@@ -155,11 +155,17 @@ def git(args, cwd=ENTROPY_PROJECT):
 
 
 def worktree(at, label):
-    """A throwaway worktree at `at`, with node_modules symlinked.
+    """A throwaway worktree at `at`, with worktree.linkPaths symlinked in.
 
-    The symlink is not a convenience. Without it node walks UP out of the
-    worktree and resolves packages from a SIBLING worktree -- you run someone
-    else's code and report the result as your own.
+    The symlinks are not a convenience. Without them a runtime walks UP out of
+    the worktree and resolves dependencies from a SIBLING worktree -- you run
+    someone else's code and report the result as your own. That has happened
+    here.
+
+    READ FROM CONFIG, NOT HARDCODED. This used to symlink `node_modules` and
+    nothing else, which silently did nothing for a project that is not
+    JavaScript -- so a Python or Go project got an unlinked worktree and the
+    exact failure above, in the one code path whose job is to catch it.
     """
     d = tempfile.mkdtemp(prefix="post-fold-audit-%s-" % label)
     path = os.path.join(d, "tree")
@@ -167,12 +173,28 @@ def worktree(at, label):
     if rc != 0:
         shutil.rmtree(d, ignore_errors=True)
         return None, out
-    src = os.path.join(ENTROPY_PROJECT, "node_modules")
-    if os.path.isdir(src):
+    for rel in (CONFIG.get("worktree") or {}).get("linkPaths") or []:
+        src = os.path.join(ENTROPY_PROJECT, rel)
+        if not os.path.isdir(src):
+            continue
+        dst = os.path.join(path, rel)
+        if os.path.exists(dst):
+            # Already present in the tree (it is tracked, not ignored). Nothing
+            # to link, and nothing wrong.
+            continue
         try:
-            os.symlink(src, os.path.join(path, "node_modules"))
-        except OSError:
-            pass
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.symlink(src, dst)
+        except OSError as exc:
+            # SAY SO. A swallowed failure here leaves a worktree that resolves
+            # its dependencies from a sibling -- the precise thing this function
+            # exists to prevent -- and the audit would then report someone
+            # else's results as this sprint's, with nothing in the output to
+            # suggest anything went wrong.
+            print("post-fold-audit: WARNING could not link %s into %s (%s).\n"
+                  "  Suites run in this worktree may resolve dependencies from\n"
+                  "  another tree; treat their results as unproven."
+                  % (rel, path, exc), file=sys.stderr)
     return path, ""
 
 

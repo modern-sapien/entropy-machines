@@ -36,7 +36,7 @@ exists, usually with the failure that caused it. Keep that style. If you remove
 a guard, say which incident you believe can no longer happen.
 
 **Claims about tests need to be provable.** If you call something a regression
-guard, show it going red without the fix — `npm run failfirst -- --try <sha>
+guard, show it going red without the fix — `node lib/fail-first.mjs --try <sha>
 --test "<cmd>"`. "I ran it and it passed" is not evidence anyone can check.
 
 ## Before you open a PR

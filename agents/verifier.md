@@ -47,15 +47,18 @@ CLAUDE.md" — which was false and shaped how every brief in this project was wr
 2. **Never touch another agent's worktree.** You get the finished work as
    patch files. Apply them in YOUR worktree. A worker may be resumed later and
    an edit of yours in its tree would corrupt its diff.
-3. **Do not `npm run build`** — it rewrites `docs/CHANGELOG.md` and
-   `docs/.qa-checkpoint`.
+3. **Do not run the project's build.** In a repo with a changelog convention
+   it rewrites the collated changelog and the QA checkpoint, so a build turns
+   your read-only sweep into an edit nobody asked for. Run the suites in
+   `entropy.json`, not the build.
 4. **The paths in `worktree.linkPaths` are linked in for you** by
-   `hooks/post-checkout` at worktree creation. Hooks are per-clone,
-   so if nobody ran `npm run hooks:install` here they are absent — symlink
-   `node_modules` from the main checkout before running anything, or node
-   resolves out of a SIBLING worktree and you will verify someone else's code
-   and report it as this sprint's. A suite refusing with "this tree cannot
-   resolve its own dependencies" is the guard telling you exactly this.
+   `hooks/post-checkout` at worktree creation. Hooks are per-clone, so if
+   nobody ran `bash lib/install-hooks.sh` here they are absent — link those
+   paths from the main checkout yourself before running anything, or the
+   runtime resolves dependencies out of a SIBLING worktree and you will verify
+   someone else's code and report it as this sprint's. That has happened. A
+   suite refusing with "this tree cannot resolve its own dependencies" is the
+   guard telling you exactly this.
 5. **A linked path is reachable, but it is not your source of truth.** The
    same hook symlinks it in, so it is readable AND writable from your worktree
    and `bin/tracker` works there against the SHARED tracker store. Do not
@@ -142,7 +145,7 @@ Rules for the report:
   yours, and you say so. The whole point of this role dies the moment a report
   repeats a number nobody re-ran.
 - **Never write a number you have not read.** The first verifier to run this
-  role filled in an `npm run e2e` line from the workers' claims because its own
+  role filled in a suite's result line from the workers' claims because its own
   read of the output file came back empty, and presented it as its own. It
   caught itself, and the number turned out to be right — that is luck, not
   process. If a read comes back empty, say "not read" and move on.

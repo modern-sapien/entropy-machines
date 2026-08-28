@@ -11,12 +11,17 @@ Every other entry point refuses to run without `entropy.json` at the project
 root (rule 2 below) — on purpose, but that leaves a brand-new project with no
 way in. Run `bin/init` from inside it. It writes a starter file (project
 name, the file tracker backend, and otherwise empty/off: no suites, no
-protected paths, changelog disabled) and seeds issue `q-1`, "Orient the
-factory to this repo." The starter file is deliberately incomplete — it does
-not guess at a suite command or anything else it hasn't verified, because a
-fabricated suite is worse than an empty list — completing it is what `q-1`
-is for. `bin/init` refuses to overwrite an existing `entropy.json` unless you
-pass `--force`.
+protected paths, changelog disabled) and installs the orientation PRD into
+the project's docs directory, where `bin/serve` renders it.
+
+It files **no issues**. A PRD is the upstream artifact — it is what creates
+issues — so seeding a task here would invert that and skip the owner's
+ruling. The starter file is deliberately incomplete: it does not guess at a
+suite command or anything else it has not verified, because the harness would
+report a fabricated command as a failing project rather than an unconfigured
+one. Completing it is one of the issues the orientation PRD asks you to file.
+`bin/init` refuses to overwrite an existing `entropy.json` unless you pass
+`--force`.
 
 ```jsonc
 {

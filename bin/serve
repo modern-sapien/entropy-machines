@@ -1,0 +1,558 @@
+#!/bin/sh
+# The factory lights. A local web server, not a CLI:
+#
+#   bin/serve [port]      # default 8787
+#
+#   GET  /                       dashboard — ready issues, in-flight claims,
+#                                 per-doc answered/unanswered counts. Built
+#                                 only from what bin/tracker and lib/notes.py
+#                                 already know; no new state.
+#   GET  /<doc>.html             a doc from the configured docs directory,
+#                                 with the Downloads-folder save always
+#                                 defeated (see SAVE_PATCH below).
+#   GET  /__docversion?file=<f>  {"reviews": "<hash>"} — polled by the doc's
+#                                 own baked-in reload watcher (see
+#                                 lib/doc-template.html's __docversion
+#                                 script). Changes when the doc changes for a
+#                                 reason OTHER than the reader's own answer
+#                                 being written back — see docs/SERVE.md.
+#   POST /__save?file=<f>        body is {data-resp: answer}; merged back
+#                                 into <f> ON DISK, atomically.
+#
+# See docs/SERVE.md for the full contract, the docversion hash's exact
+# semantics, and the dashboard's data sources.
+set -e
+
+usage() {
+  cat >&2 <<'EOF'
+usage: bin/serve [port]
+EOF
+  exit 2
+}
+
+case "$1" in
+  -h|--help) usage ;;
+esac
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+entropy_require_project serve
+
+CONFIG_PY="$ENTROPY_HOME/lib/config.py"
+NOTES_PY="$ENTROPY_HOME/lib/notes.py"
+TRACKER="$ENTROPY_HOME/bin/tracker"
+
+# docs.dir has no entry in lib/config.py's DEFAULTS (that file is shared
+# infrastructure, not this bullet's to extend) — so a project that has not
+# set it fails config.py's "no such key" lookup, and that failure IS the
+# default path, not an error to surface.
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-docs"
+case "$docs_dir" in
+  /*) docs_path="$docs_dir" ;;
+  *) docs_path="$ENTROPY_PROJECT/$docs_dir" ;;
+esac
+mkdir -p "$docs_path"
+
+port="${1:-8787}"
+case "$port" in
+  ''|*[!0-9]*)
+    echo "serve: REFUSED — port must be a number, got '$port'." >&2
+    usage
+    ;;
+esac
+
+export ENTROPY_HOME ENTROPY_PROJECT
+export SERVE_DOCS_PATH="$docs_path"
+export SERVE_DOCS_DIR="$docs_dir"
+export SERVE_PORT="$port"
+export SERVE_TRACKER="$TRACKER"
+export SERVE_NOTES_PY="$NOTES_PY"
+
+exec python3 - <<'PY'
+"""bin/serve's HTTP server, run via `python3 -` from the shell shim above.
+Everything it needs — roots, docs dir, port — arrives as environment, already
+resolved by bin/serve (docs/CONFIG.md rule 3: a backend never re-reads
+entropy.json itself; this applies the same discipline to bin/serve's own
+python half).
+"""
+from __future__ import annotations
+
+import hashlib
+import html
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+ENTROPY_HOME = os.environ["ENTROPY_HOME"]
+ENTROPY_PROJECT = os.environ["ENTROPY_PROJECT"]
+DOCS_PATH = os.environ["SERVE_DOCS_PATH"]
+DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
+PORT = int(os.environ["SERVE_PORT"])
+TRACKER = os.environ["SERVE_TRACKER"]
+NOTES_PY = os.environ["SERVE_NOTES_PY"]
+
+# ---------------------------------------------------------------------------
+# save patch — injected at serve time, never written into a file. Keeping
+# this out of the doc on disk is the whole point: no doc can be served with
+# the browser's Downloads-folder save (showSaveFilePicker / <a download>)
+# still wired up as the only way to save, because this always runs first,
+# in the capture phase, and stopImmediatePropagation kills every listener
+# behind it on the same click — including lib/doc-template.html's own baked
+# -in __disk-save-patch, which already does the right thing but is not
+# guaranteed to be present on every doc this ever serves.
+# ---------------------------------------------------------------------------
+SAVE_PATCH = """
+<script>
+(function(){
+  var btn=document.getElementById('saveBtn'), stat=document.getElementById('saveStat');
+  if(!btn) return;
+  var file=location.pathname.replace(/^\\//,'');
+  btn.addEventListener('click', function(ev){
+    ev.stopImmediatePropagation(); ev.preventDefault();
+    var out={};
+    document.querySelectorAll('[data-resp]').forEach(function(el){
+      var ta=el.querySelector('textarea'); if(!ta) return;
+      var v=(ta.value||''); if(v.trim()) out[el.getAttribute('data-resp')]=v;
+    });
+    if(stat) stat.textContent='Saving…';
+    fetch('/__save?file='+encodeURIComponent(file),
+          {method:'POST',headers:{'Content-Type':'application/json'},
+           body:JSON.stringify(out)})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(j){
+        if(stat) stat.textContent='Saved '+j.count+' answer(s) to '+file;
+        var el=document.getElementById('responses-data');
+        if(el) el.textContent=JSON.stringify(out,null,2);
+      })
+      .catch(function(e){ if(stat) stat.textContent='SAVE FAILED: '+e.message; });
+  }, true);
+})();
+</script>
+"""
+
+
+def safe_doc_name(name: str):
+    """A save endpoint that takes a path is a file-write primitive aimed at
+    the whole disk — reject anything that is not a plain .html filename
+    directly inside the configured docs directory. Same three rules for GET
+    and POST alike: no '/', no '..', must end '.html'."""
+    if not name or "/" in name or ".." in name or not name.endswith(".html"):
+        return None
+    return name
+
+
+def doc_path(name: str):
+    safe = safe_doc_name(name)
+    if safe is None:
+        return None
+    return os.path.join(DOCS_PATH, safe)
+
+
+# ---------------------------------------------------------------------------
+# /__docversion — a content hash the doc's own baked-in reload watcher polls
+# (lib/doc-template.html's __docversion script, present on any doc built
+# from that template — see docs/SERVE.md for what happens on an older doc
+# that lacks it: nothing breaks, it just never reloads on its own).
+#
+# WHY NOT A HASH OF THE WHOLE FILE. The reader's own 💾 rewrites the
+# #responses-data block and every answered <textarea> — hash the whole file
+# and saving your OWN answer changes the hash, which the watcher reads as
+# "a reply arrived" and either reloads for no reason or, worse, throws up
+# the dirty-changes bar over nothing. So the hash excludes exactly the two
+# regions /__save owns: the #responses-data JSON block's contents, and the
+# text inside every <textarea>. What is left changes only when something
+# OTHER than an answer round-trip touched the file — an agent's reply
+# written into the doc's prose, a new response box, a restructured section.
+# ---------------------------------------------------------------------------
+_RESPONSES_DATA_RE = re.compile(
+    r'(<script type="application/json" id="responses-data">)(.*?)(</script>)',
+    re.S,
+)
+_TEXTAREA_RE = re.compile(r"(<textarea\b[^>]*>)(.*?)(</textarea>)", re.S)
+
+
+def doc_signature(text: str) -> str:
+    stripped = _RESPONSES_DATA_RE.sub(lambda m: m.group(1) + m.group(3), text)
+    stripped = _TEXTAREA_RE.sub(lambda m: m.group(1) + m.group(3), stripped)
+    return hashlib.sha256(stripped.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# save merge — same shape as the verified planning/serve.py reference:
+# rewrite #responses-data and each matching <textarea>, atomically.
+# ---------------------------------------------------------------------------
+def merge(path: str, answers: dict) -> int:
+    with open(path, encoding="utf-8") as f:
+        doc = f.read()
+
+    doc = _RESPONSES_DATA_RE.sub(
+        lambda m: m.group(1) + json.dumps(answers, indent=1) + m.group(3),
+        doc,
+        count=1,
+    )
+
+    for key, val in answers.items():
+        pat = re.compile(
+            r'(data-resp="' + re.escape(key) + r'"[\s\S]*?<textarea[^>]*>)([\s\S]*?)(</textarea>)'
+        )
+        doc = pat.sub(lambda m: m.group(1) + html.escape(val) + m.group(3), doc, count=1)
+
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".serve-", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(doc)
+        os.replace(tmp, path)  # atomic: a reader never sees a torn file
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return len(answers)
+
+
+# ---------------------------------------------------------------------------
+# per-doc answered/unanswered counts, for the dashboard
+# ---------------------------------------------------------------------------
+_DATA_RESP_RE = re.compile(r'data-resp="([^"]+)"')
+_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+
+
+def doc_counts(path: str):
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return None
+    # STRIP COMMENTS BEFORE COUNTING. lib/doc-template.html documents the
+    # contract in its own header comment, and that documentation contains a
+    # literal data-resp="UNIQUE-KEY" example. Counting it made every doc built
+    # from the template report one phantom unanswered question that no reader
+    # could ever answer -- so "fully answered" was an unreachable state and the
+    # dashboard could never go green.
+    keys = _DATA_RESP_RE.findall(_COMMENT_RE.sub("", text))
+    total = len(keys)
+    m = _RESPONSES_DATA_RE.search(text)
+    answered_keys = set()
+    if m:
+        try:
+            data = json.loads(m.group(2) or "{}")
+            if isinstance(data, dict):
+                answered_keys = {k for k, v in data.items() if isinstance(v, str) and v.strip()}
+        except json.JSONDecodeError:
+            pass
+    answered = sum(1 for k in keys if k in answered_keys)
+    return {"total": total, "answered": answered}
+
+
+def list_docs():
+    try:
+        names = sorted(n for n in os.listdir(DOCS_PATH) if n.endswith(".html"))
+    except OSError:
+        return []
+    out = []
+    for n in names:
+        counts = doc_counts(os.path.join(DOCS_PATH, n))
+        out.append({"name": n, "counts": counts})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# tracker data for the dashboard — shells to bin/tracker exactly the way
+# bin/dispatch does, so a reader sees the same "ready" and "in flight" the
+# dispatcher itself enforces against, not a second opinion.
+# ---------------------------------------------------------------------------
+def run(cmd, input_text=None):
+    try:
+        return subprocess.run(
+            cmd, input=input_text, capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def ready_issues():
+    r = run([TRACKER, "ready"])
+    if r is None or r.returncode != 0:
+        return None
+    out = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def in_flight_claims():
+    """CLAIM/PATHS lines from lib/notes.py, over ALL notes — same derivation
+    bin/dispatch uses: an issue's last event is a DISPATCH (still holding
+    its scope) or a HANDOFF (released). 24h default expiry, matching
+    DISPATCH_CLAIM_HOURS's default in bin/dispatch."""
+    notes = run([TRACKER, "notes"])
+    if notes is None or notes.returncode != 0:
+        return None
+    hours = os.environ.get("DISPATCH_CLAIM_HOURS", "24")
+    r = run(["python3", NOTES_PY, "claims", "--hours", hours], input_text=notes.stdout)
+    if r is None or r.returncode != 0:
+        return None
+    claims = []
+    for line in r.stdout.splitlines():
+        parts = line.split("\t")
+        if parts and parts[0] == "CLAIM" and len(parts) >= 3:
+            claims.append({"issue": parts[1], "paths": parts[2]})
+    return claims
+
+
+def recent_notes(limit=20):
+    r = run([TRACKER, "notes"])
+    if r is None or r.returncode != 0:
+        return None
+    recs = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            recs.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return recs[-limit:][::-1]
+
+
+# ---------------------------------------------------------------------------
+# dashboard page
+# ---------------------------------------------------------------------------
+PAGE_HEAD = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>the factory</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --fg:#292929; --border:#0F4A85; --focus:#006BBD; --link:#0F4A85;
+    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
+    --fs-sm:14px; --fs-base:17px; --fs-head:21px; --fs-title:30px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#000000; --fg:#FFFFFF; --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
+      --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6; }
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg);color:var(--fg);font:var(--fs-base)/1.5 var(--font);margin:0;padding:2rem 2.5rem 4rem;}
+  h1{font-size:var(--fs-title);margin:0 0 .3rem;}
+  h2{font-size:var(--fs-head);margin:2rem 0 .6rem;border-bottom:2px solid var(--border);padding-bottom:.3rem;}
+  .sub{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.04em;margin:0 0 1.5rem;}
+  .empty{font-size:var(--fs-sm);font-style:italic;}
+  table{border-collapse:collapse;width:100%;font-size:var(--fs-base);}
+  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top;}
+  th{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.03em;}
+  code,.mono{font:var(--fs-sm) var(--mono);}
+  a{color:var(--link);}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+  .neg{color:var(--negative);font-weight:700;}
+  .pos{color:var(--positive);font-weight:700;}
+  .caution{color:var(--caution);font-weight:700;}
+  .unavailable{border:2px solid var(--negative);padding:.7rem 1rem;font-weight:700;}
+</style>
+</head><body>
+"""
+
+PAGE_TAIL = "</body></html>\n"
+
+
+def esc(s):
+    return html.escape(str(s), quote=True)
+
+
+def render_dashboard() -> str:
+    ready = ready_issues()
+    claims = in_flight_claims()
+    notes = recent_notes()
+    docs = list_docs()
+
+    parts = [PAGE_HEAD]
+    parts.append(f"<h1>the factory</h1>\n<p class=\"sub\">{esc(ENTROPY_PROJECT)}</p>\n")
+
+    parts.append("<h2>ready</h2>\n")
+    if ready is None:
+        parts.append('<p class="unavailable">tracker unavailable — could not run `bin/tracker ready`.</p>\n')
+    elif not ready:
+        parts.append('<p class="empty">nothing ready — every issue is done, blocked, held or gated.</p>\n')
+    else:
+        parts.append("<table><tr><th>id</th><th>title</th><th>effort</th></tr>\n")
+        for issue in ready:
+            parts.append(
+                f"<tr><td class=\"mono\">{esc(issue.get('id',''))}</td>"
+                f"<td>{esc(issue.get('title',''))}</td>"
+                f"<td class=\"mono\">{esc(issue.get('effort',''))}</td></tr>\n"
+            )
+        parts.append("</table>\n")
+
+    parts.append("<h2>in flight</h2>\n")
+    if claims is None:
+        parts.append('<p class="unavailable">tracker unavailable — could not derive live claims.</p>\n')
+    elif not claims:
+        parts.append('<p class="empty">nothing dispatched right now (or every dispatch has been handed off).</p>\n')
+    else:
+        parts.append("<table><tr><th>issue</th><th>scope held</th></tr>\n")
+        for c in claims:
+            parts.append(
+                f"<tr><td class=\"mono\">{esc(c['issue'])}</td><td class=\"mono\">{esc(c['paths'])}</td></tr>\n"
+            )
+        parts.append("</table>\n")
+
+    parts.append(f"<h2>docs ({esc(DOCS_DIR)})</h2>\n")
+    if not docs:
+        parts.append(f'<p class="empty">no .html docs in {esc(DOCS_DIR)}.</p>\n')
+    else:
+        parts.append("<table><tr><th>doc</th><th>answered</th></tr>\n")
+        for d in docs:
+            c = d["counts"]
+            if c is None or c["total"] == 0:
+                status = '<span class="empty">no questions</span>'
+            elif c["answered"] >= c["total"]:
+                status = f'<span class="pos">{c["answered"]}/{c["total"]} answered</span>'
+            else:
+                status = f'<span class="caution">{c["answered"]}/{c["total"]} answered</span>'
+            parts.append(
+                f"<tr><td><a href=\"/{esc(d['name'])}\">{esc(d['name'])}</a></td><td>{status}</td></tr>\n"
+            )
+        parts.append("</table>\n")
+
+    parts.append("<h2>recent events</h2>\n")
+    if notes is None:
+        parts.append('<p class="unavailable">tracker unavailable — could not run `bin/tracker notes`.</p>\n')
+    elif not notes:
+        parts.append('<p class="empty">no notes recorded yet.</p>\n')
+    else:
+        parts.append("<table><tr><th>ts</th><th>verb</th><th>issue</th><th>actor</th></tr>\n")
+        for rec in notes:
+            parts.append(
+                f"<tr><td class=\"mono\">{esc(rec.get('ts',''))}</td>"
+                f"<td class=\"mono\">{esc(rec.get('verb',''))}</td>"
+                f"<td class=\"mono\">{esc(rec.get('issue',''))}</td>"
+                f"<td class=\"mono\">{esc(rec.get('actor',''))}</td></tr>\n"
+            )
+        parts.append("</table>\n")
+
+    parts.append(PAGE_TAIL)
+    return "".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# HTTP handler
+# ---------------------------------------------------------------------------
+class Handler(BaseHTTPRequestHandler):
+    server_version = "entropy-serve/1"
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("  %s\n" % (fmt % args))
+
+    def _send(self, code, body: bytes, content_type: str):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_json(self, code, obj):
+        self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/":
+            self._send(200, render_dashboard().encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if path == "/__docversion":
+            name = (parse_qs(parsed.query).get("file") or [""])[0]
+            target = doc_path(name)
+            if target is None or not os.path.isfile(target):
+                self._send_json(404, {"error": "no such doc"})
+                return
+            with open(target, encoding="utf-8") as f:
+                text = f.read()
+            self._send_json(200, {"reviews": doc_signature(text)})
+            return
+
+        # a bare filename request — the only other shape this server serves.
+        name = path.lstrip("/")
+        target = doc_path(name)
+        if target is not None and os.path.isfile(target):
+            with open(target, encoding="utf-8") as f:
+                body = f.read()
+            if "</body>" in body:
+                body = body.replace("</body>", SAVE_PATCH + "</body>", 1)
+            else:
+                body += SAVE_PATCH
+            self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        self._send(404, b"not found", "text/plain; charset=utf-8")
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/__save":
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return
+        name = (parse_qs(parsed.query).get("file") or [""])[0]
+        target = doc_path(name)
+        if target is None:
+            self._send_json(400, {"error": "bad file"})
+            return
+        if not os.path.isfile(target):
+            self._send_json(404, {"error": "no such doc"})
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            answers = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(answers, dict):
+                raise ValueError("expected an object")
+            count = merge(target, answers)
+        except Exception as exc:  # noqa: BLE001 - report, don't crash the server
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "count": count})
+
+
+def main():
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as exc:
+        if exc.errno == 48 or "Address already in use" in str(exc):  # EADDRINUSE
+            print(
+                "serve: REFUSED — port %d is already in use.\n"
+                "  Another server (maybe a previous `bin/serve`) already holds it.\n"
+                "  Try a different port:  bin/serve %d" % (PORT, PORT + 1),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print("serve: REFUSED — could not bind 127.0.0.1:%d (%s)." % (PORT, exc), file=sys.stderr)
+        sys.exit(1)
+    print("serving %s on http://localhost:%d" % (ENTROPY_PROJECT, PORT))
+    print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR))
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
+PY

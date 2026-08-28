@@ -67,8 +67,18 @@ project_name=$(basename -- "$project")
 # missing its PRD left the project half-initialised — configured, but with
 # nothing to do next and an entropy.json that a re-run would then refuse to
 # overwrite. A gate that fires after the damage is not a gate.
-prd_src="$ENTROPY_HOME/docs/QUICKSTART.md"
-prd_dst="$project/PRD-001-orientation.md"
+# The PRD is the HTML dialogue doc, not the markdown quickstart. They are two
+# different artifacts for two different readers: docs/QUICKSTART.md tells an
+# AGENT how to operate this repo, and PRD-001 is the doc the OWNER answers in a
+# browser. init used to copy the quickstart here, which put a document written
+# for agents in front of the human and gave them nothing to answer.
+#
+# It lands in the project's docs directory because that is what bin/serve
+# serves; docs.dir is config, defaulting to entropy-docs/.
+prd_src="$ENTROPY_HOME/lib/PRD-001-orientation.html"
+docs_dir=$(python3 "$ENTROPY_HOME/lib/config.py" get docs.dir 2>/dev/null | tr -d '"')
+if [ -z "$docs_dir" ] || [ "$docs_dir" = "null" ]; then docs_dir="entropy-docs"; fi
+prd_dst="$project/$docs_dir/PRD-001-orientation.html"
 
 if [ ! -f "$prd_src" ]; then
   echo "init: REFUSED — $prd_src is missing." >&2
@@ -125,13 +135,14 @@ fi
 # only step no code path can reach. The PRD's open questions are the owner's
 # to rule on, and the issues fall out of those rulings.
 #
-# The harness's own docs/QUICKSTART.md IS that PRD. It is not a tutorial
-# about a PRD, it is the first one, and it is copied into the project so the
-# owner fills in THEIR answers rather than editing the harness's copy.
+# lib/PRD-001-orientation.html IS that PRD. It is not a tutorial about a PRD,
+# it is the first one, and it is copied into the project so the owner fills in
+# THEIR answers rather than editing the harness's shipped copy.
 prd_written=""
 if [ -f "$prd_dst" ] && [ -z "$force" ]; then
   prd_note="init: left existing $prd_dst alone (--force overwrites)."
 else
+  mkdir -p -- "$(dirname -- "$prd_dst")"
   cp -- "$prd_src" "$prd_dst"
   prd_written=yes
   prd_note="init: wrote $prd_dst — open it. It is the first PRD, and the"
@@ -154,4 +165,5 @@ if [ -n "$prd_written" ]; then
   echo "      questions in it are the ones only you can answer."
 fi
 echo "init: tracker is live and empty — \`bin/tracker ready\` answers."
-echo "init: next — read PRD-001-orientation.md. Filing its issues is step one."
+echo "init: next — run \`bin/serve\` and answer the PRD it opens. Filing the"
+echo "      issues it produces is step one."
