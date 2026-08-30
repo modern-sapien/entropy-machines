@@ -1,0 +1,33 @@
+{
+  "_generatedBy": "bin/init, then completed by hand: suites verified by RUNNING them, protectedPaths from the layout rule in docs/CONFIG.md.",
+  "project": {
+    "name": "entropy-machines",
+    "protectedPaths": [
+      "doctrine/",
+      "LICENSE"
+    ]
+  },
+  "tracker": {
+    "backend": "file",
+    "file": {
+      "path": ".entropy/issues.json"
+    }
+  },
+  "suites": [
+    {
+      "name": "tests",
+      "cmd": [
+        "./tests/run"
+      ]
+    }
+  ],
+  "changelog": {
+    "enabled": false
+  },
+  "worktree": {
+    "linkPaths": []
+  },
+  "docs": {
+    "dir": "entropy-docs"
+  }
+}
