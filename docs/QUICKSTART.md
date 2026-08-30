@@ -74,7 +74,32 @@ whole job. Do not stop to ask permission between the steps.
    already there the project is initialised, so skip to the next step rather
    than reaching for `--force`.
 
-3. **`bin/serve`** — **start it.** Not "mention it". It is a server, not a
+3. **Do the baseline discovery, and record only what you RAN.** `bin/init`
+   writes `suites: []` on purpose — it will not guess a test command. Filling
+   it in is your job, and the rule is that a command you have not executed
+   does not go in the file.
+
+   Work out the language and toolchain from what is actually in the repo
+   (`package.json`, `Makefile`, `go.mod`, `pyproject.toml`, CI config), then
+   **run** the candidate test / typecheck / build commands and see what
+   happens. Put the ones that pass into `entropy.json`'s `suites`. A command
+   that fails or does not exist is a finding, not an entry — a fabricated
+   suite makes `bin/post-fold-audit` and the verifier report a broken command
+   as a failing project instead of an unconfigured one.
+
+   Then fill in the PRD's **"What I found in your repo"** page — it ships with
+   five empty headings waiting for exactly this: language and toolchain, the
+   commands you ran and what happened, codegen, worktree symlinks needed
+   (`worktree.linkPaths` — `node_modules`, `.venv`, `vendor`), and the
+   changelog convention if there is one. Say plainly what you could not
+   verify.
+
+   This is discovery, not decision. You are recording facts the owner would
+   otherwise have to go and look up. The open questions on the later pages —
+   which suites gate a landing, what is protected, which tracker backend —
+   stay untouched.
+
+4. **`bin/serve`** — **start it.** Not "mention it". It is a server, not a
    CLI: it holds the terminal until killed, so start it in the background.
    It prints the URL you are about to hand over:
 
@@ -87,10 +112,10 @@ whole job. Do not stop to ask permission between the steps.
    naming the next one to try — pass a port (`bin/serve 8788`).
 
 Then give the human that URL and **stop**. Do not file issues. Do not start
-project work. Do not answer the orientation PRD's questions, and do not
-infer them from the codebase — they are the owner's calls to make, in the
-browser, and a PRD you filled in yourself produces issues nobody agreed to.
-Your turn ends with the URL.
+project work. Do not answer the orientation PRD's open questions — filling in
+what you found is step 3's job, but the questions themselves are the owner's
+calls to make, in the browser, and a PRD you answered yourself produces issues
+nobody agreed to. Your turn ends with the URL.
 
 ## Where things are
 
