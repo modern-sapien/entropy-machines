@@ -22,6 +22,14 @@ printf 'x\n' > "$REPO/other/thing.txt"
 commit_all "add a second file"
 assert_rc 0 "baseline commit"
 
+# File the issues first: `claim` does not auto-vivify, and an unclaimable id
+# makes bin/dispatch print a WARNING of its own, which would muddy the
+# assertions below about the live-claim warning.
+for i in i-holder i-collider i-elsewhere i-after; do
+  run "$HARNESS/bin/tracker" set "$i" title="$i"
+  assert_rc 0 "file $i"
+done
+
 run "$HARNESS/bin/dispatch" i-holder --files "src/main.c" --brief "the first agent"
 assert_rc 0 "the first dispatch takes the file"
 
@@ -48,12 +56,22 @@ assert_not_out "LIVE claim" "and raises no live-claim warning"
 
 # --- and a claim is released by a handoff ----------------------------------
 # DISPATCH claims, HANDOFF releases; the claim set is derived from that pair
-# and needs no separate registry. Once i-holder is handed off, its file is
-# free again.
+# and needs no separate registry. BOTH holders of src/main.c have to be handed
+# off for it to be free — which is itself the assertion that the release is
+# per-issue and not a global "somebody handed something off" flag.
 run "$HARNESS/bin/handoff" i-holder --changed "made main.c return 1" \
     --verified "I re-ran the build in this checkout myself and read the diff" \
     --clean --no-interrogation "the agent's session had already ended"
-assert_rc 0 "record the handoff for the holding issue"
+assert_rc 0 "record the handoff for i-holder"
+
+run "$HARNESS/bin/dispatch" i-probe --files "src/main.c" --brief "probe" --dry-run
+assert_rc 0 "a dry-run dispatch after only ONE of two holders handed off"
+assert_out "LIVE claim" "still warns — the release is per-issue, not a global flag"
+
+run "$HARNESS/bin/handoff" i-collider --changed "made main.c return 1" \
+    --verified "I re-ran the build in this checkout myself and read the diff" \
+    --clean --no-interrogation "the agent's session had already ended"
+assert_rc 0 "record the handoff for i-collider"
 
 run "$HARNESS/bin/dispatch" i-after --files "src/main.c" --brief "after the handoff"
 assert_rc 0 "dispatching over a released file succeeds"

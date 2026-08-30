@@ -62,6 +62,22 @@ assert_not_out() {
   esac
 }
 
+# assert_out_words <phrase> <what was being tested>
+#
+# Same as assert_out, but every run of whitespace on both sides collapses to
+# one space first. The refusals in this harness are hand-wrapped to fit a
+# terminal, so a sentence worth asserting on is routinely split across two
+# lines — matching the literal text would pin the line breaks, which are not
+# the contract, and would break on any rewrap.
+assert_out_words() {
+  _hay=$(printf '%s' "$ALL" | tr '\n' ' ' | tr -s ' ')
+  _needle=$(printf '%s' "$1" | tr '\n' ' ' | tr -s ' ')
+  case "$_hay" in
+    *"$_needle"*) ;;
+    *) _fail "$2" "expected output to contain (ignoring line wrapping): $1" ;;
+  esac
+}
+
 # A gate that dies is not a gate. lib/handoff-guard.sh was found exiting on a
 # Python traceback instead of a verdict, which reads to a caller as a broken
 # tool rather than a rule — and the fix for that crash then turned it into a
@@ -197,6 +213,18 @@ fixture_hooks() {
 commit_all() {
   git -C "$REPO" add -A >/dev/null 2>&1
   run git -C "$REPO" commit -m "$1"
+}
+
+# commit_paths <message> <path>... — the same, but staging only the named
+# paths. Scope tests need this: `git add -A` would also sweep in whatever
+# bin/dispatch wrote (.dispatch-context/ is untracked and not ignored), and
+# then the set of files the commit touches is no longer the set the case
+# chose.
+commit_paths() {
+  _msg="$1"; shift
+  git -C "$REPO" reset -q >/dev/null 2>&1
+  git -C "$REPO" add -- "$@" >/dev/null 2>&1
+  run git -C "$REPO" commit -m "$_msg"
 }
 
 commit_count() {

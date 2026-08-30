@@ -9,6 +9,14 @@ fixture_new
 fixture_init
 fixture_hooks
 
+# File the issue first. dispatch claims through the adapter's `claim`, and
+# `claim` — unlike `set` — does not auto-vivify, so an id that was never filed
+# cannot be claimed. See the last block of this case.
+run "$HARNESS/bin/tracker" set i-worker title="the worker's issue"
+assert_rc 0 "file the issue"
+run "$HARNESS/bin/tracker" set i-second title="the second issue"
+assert_rc 0 "file a second issue"
+
 run "$HARNESS/bin/dispatch" i-worker --files "src/main.c" --brief "make main.c return 1"
 assert_rc 0 "a clean dispatch succeeds"
 assert_out "i-worker claimed" "it claims the issue in the same act"
@@ -53,3 +61,13 @@ assert_rc 0 "--dry-run runs every check"
 assert_out "nothing recorded" "and says it recorded nothing"
 run "$HARNESS/bin/tracker" notes --issue i-phantom
 assert_same "" "$OUT" "a --dry-run leaves no phantom claim behind"
+
+# --- dispatching an id that was never filed says so ------------------------
+# The brief is still recorded — losing the dispatch over a claim hiccup would
+# be worse than an unclaimed issue — but the claim cannot be made, and the
+# whole point of claiming in the same act is that a second session must not
+# read an issue with a live agent on it as free work. So it has to be loud.
+run "$HARNESS/bin/dispatch" i-unfiled --files "src/main.c" --brief "never filed"
+assert_rc 0 "dispatching an unfiled id still records the brief"
+assert_out "WARNING" "but warns"
+assert_out "could not claim i-unfiled" "that the issue could not be claimed"

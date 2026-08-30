@@ -24,11 +24,14 @@ assert_rc 0 "file a blocked issue"
 
 run "$T" ready
 assert_rc 0 "ready"
-assert_out     "i-control" "THE CONTROL: a plain issue IS listed"
-assert_out     "i-dep"     "and so is the unblocked dependency"
-assert_not_out "i-held"    "an issue with heldWhy is excluded"
-assert_not_out "i-gated"   "an issue with gate is excluded"
-assert_not_out "i-blocked" "an issue blocked by an unfinished dependency is excluded"
+# Matched on the id FIELD, not on the bare id: `i-dep` also appears inside
+# i-blocked's own blockedBy list, so a bare substring search would report the
+# dependency as ready when it is only being referred to.
+assert_out     '"id": "i-control"' "THE CONTROL: a plain issue IS listed"
+assert_out     '"id": "i-dep"'     "and so is the unblocked dependency"
+assert_not_out '"id": "i-held"'    "an issue with heldWhy is excluded"
+assert_not_out '"id": "i-gated"'   "an issue with gate is excluded"
+assert_not_out '"id": "i-blocked"' "an issue blocked by an unfinished dependency is excluded"
 
 # --- and each exclusion is reversible, which proves it is a filter on that
 # --- field and not on the issue.
@@ -45,7 +48,7 @@ assert_rc 0 "finish the dependency"
 
 run "$T" ready
 assert_rc 0 "ready after clearing all three"
-assert_out     "i-held"    "the un-held issue is ready again"
-assert_out     "i-gated"   "the un-gated issue is ready again"
-assert_out     "i-blocked" "the unblocked issue is ready again"
-assert_not_out "i-dep"     "and the done dependency is not ready work"
+assert_out     '"id": "i-held"'    "the un-held issue is ready again"
+assert_out     '"id": "i-gated"'   "the un-gated issue is ready again"
+assert_out     '"id": "i-blocked"' "the unblocked issue is ready again"
+assert_not_out '"id": "i-dep"'     "and the done dependency is not ready work"

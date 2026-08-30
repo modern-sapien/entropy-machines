@@ -18,7 +18,7 @@ run "$HARNESS/bin/init"
 assert_rc_nonzero "bin/init must refuse when the orientation PRD is missing"
 assert_out "REFUSED" "the refusal says so"
 assert_out "PRD-001-orientation.html" "the refusal names the file it could not find"
-assert_out "Nothing has been written" "the refusal states the invariant it is upholding"
+assert_out_words "Nothing has been written" "the refusal states the invariant it is upholding"
 
 # The whole point: NOTHING on disk moved.
 assert_no_file "$REPO/entropy.json"  "a refused init writes no entropy.json"

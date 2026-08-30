@@ -588,7 +588,12 @@ case "$mode" in
     # The COMMIT's own time, not now: the question is whether a dispatch was
     # open at the moment it was made.
     #
-    # format-UTC, and the difference is not cosmetic. `%cd --date=format:`
+    # TZ=UTC + format-LOCAL, and the difference is not cosmetic. There is no
+    # `format-utc:` in git -- an earlier pass invented it, and git answered
+    # `fatal: date format missing colon separator` on every audit run, so both
+    # non-hook modes printed an error and skipped the scope check entirely.
+    # `format-local` renders in whatever TZ the process has, so pinning TZ=UTC
+    # around it is how you actually get UTC out of git. `%cd --date=format:`
     # renders in the timezone RECORDED IN THE COMMIT, which for a commit made
     # elsewhere is not this machine's. Note-log timestamps are UTC with a
     # trailing Z (lib/notes.py stamps `datetime.now(timezone.utc)`), so both
@@ -599,7 +604,7 @@ case "$mode" in
     # scope check skipped every note and passed every commit. It went unseen
     # because a JSONL crash aborted the block before it could matter.
     check_scope "$msg" "$label" "$touched" \
-      "$(git log -1 --format=%cd --date=format-utc:'%Y-%m-%dT%H:%M:%SZ' "$arg")" "$frags"
+      "$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' "$arg")" "$frags"
     ;;
   --range)
     rc=0
@@ -611,7 +616,7 @@ case "$mode" in
       frags=$(fragment_ids "$added" "$sha")
       check_message "$msg" "$label" "$frags" || rc=1
       check_scope "$msg" "$label" "$touched" \
-        "$(git log -1 --format=%cd --date=format-utc:'%Y-%m-%dT%H:%M:%SZ' "$sha")" "$frags" || rc=1
+        "$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' "$sha")" "$frags" || rc=1
     done
     exit $rc
     ;;

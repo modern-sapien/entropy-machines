@@ -154,6 +154,10 @@ add_ignore ".entropy/"
 add_ignore "__pycache__/"
 # Per-dispatch briefs, written by bin/dispatch. Local scratch, not history.
 add_ignore ".dispatch-context/"
+# hooks/post-checkout drops this symlink into every worktree it creates. It was
+# invisible until the scope check started working; now every `handoff --lift`
+# would flag or refuse on it.
+add_ignore ".scratch"
 
 # STEP 5 — put the orientation PRD in front of the owner.
 #
