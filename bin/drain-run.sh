@@ -229,7 +229,19 @@ fi
 # ---- pick the work --------------------------------------------------------
 # The cost model and budget live in entropy.json (unattended.sizeCosts,
 # unattended.budget) and are applied by bin/drain-pick.py, which has tests.
-picked=$(python3 "$ENTROPY_HOME/bin/drain-pick.py" "$root" 2>>"$state/pick.err")
+# THE rc IS CAPTURED, NOT SWALLOWED. Under `set -e` a bare
+# `picked=$(...)` assignment kills this script the moment drain-pick exits
+# non-zero -- so a picker that could not reach the tracker took the whole run
+# down BEFORE the idle handler below, leaving no last-run.json, the real error
+# buried in pick.err, and `bin/drain status` still reporting "last fire:
+# never". Silent because the two outcomes look identical from outside: an
+# empty $picked means "nothing eligible", which is a normal idle tick, while a
+# non-zero rc means the picker itself failed and somebody has to be told.
+pick_rc=0
+picked=$(python3 "$ENTROPY_HOME/bin/drain-pick.py" "$root" 2>>"$state/pick.err") || pick_rc=$?
+if [ "$pick_rc" -ne 0 ]; then
+  finish "error" 7 "drain-pick failed (rc $pick_rc) — see $state/pick.err"
+fi
 if [ -z "$picked" ]; then
   finish "idle" 6 "nothing eligible for an unattended run"
 fi

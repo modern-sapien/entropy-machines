@@ -7,7 +7,7 @@
 #   bin/drain now         # run one fire in the foreground, right now
 #   bin/drain at HH:MM    # one detached one-shot fire, today or tomorrow
 #   bin/drain cancel      # cancel a pending one-shot
-#   bin/drain install     # install the scheduled job (launchd or systemd)
+#   bin/drain install     # install the scheduled job (launchd, macOS only)
 #
 # WHY A FLAG FILE RATHER THAN LOADING/UNLOADING THE SCHEDULER.
 #
@@ -92,14 +92,17 @@ case "${1:-status}" in
           scheduled=yes
         fi
         ;;
-      Linux)
-        if command -v systemctl >/dev/null 2>&1 && systemctl --user is-enabled "$label.timer" >/dev/null 2>&1; then
-          scheduled=yes
-        fi
+      *)
+        # No installer on any other platform, so there is no job of ours to
+        # look for — say that rather than pointing at an install that refuses.
+        scheduled=unsupported
         ;;
     esac
     if [ "$scheduled" = yes ]; then
       echo "scheduled:  yes (hourly, at :07)"
+    elif [ "$scheduled" = unsupported ]; then
+      echo "scheduled:  n/a — 'bin/drain install' is launchd/macOS only; on $os,"
+      echo "            fire bin/drain-run.sh from your own cron entry or systemd unit"
     else
       echo "scheduled:  no — run 'bin/drain install'"
     fi
@@ -233,36 +236,33 @@ PY
     ;;
 
   install)
-    # Which scheduler: explicit config wins, otherwise pick the one this OS
-    # actually has. Three independent things used to make this macOS-only —
-    # the scheduler itself (launchd has no Linux equivalent), a folder-access
-    # workaround that is a macOS-only concept (see below), and BSD-only date
-    # syntax (fixed above, in `at`). This branch is the scheduler half.
-    scheduler=$(cfg '.unattended.scheduler' '')
-    if [ -z "$scheduler" ]; then
-      case "$os" in
-        Darwin) scheduler=launchd ;;
-        Linux)  scheduler=systemd ;;
-        *)
-          echo "bin/drain install: no known scheduler for '$os'." >&2
-          echo "  set unattended.scheduler in entropy.json if you have one that fits," >&2
-          echo "  or drive fires yourself (cron, a CI schedule, ...) and just call" >&2
-          echo "  bin/drain-run.sh on your own timer — 'bin/drain on/off' still works" >&2
-          echo "  as the arm/disarm switch regardless of what triggers the fire." >&2
-          exit 3
-          ;;
-      esac
+    # ONLY THE INSTALLER IS macOS-ONLY. Everything else in this script — on,
+    # off, status, now, at, cancel — is plain POSIX sh and runs anywhere, so
+    # the platform check belongs here and nowhere higher up.
+    #
+    # launchd is the one scheduler this harness has ever actually installed on
+    # a real machine. Refuse the rest outright rather than writing unit files
+    # nobody has ever watched fire: an installer that reports success and
+    # leaves a broken job behind is worse than no installer, because every
+    # surface (`status`, `launchctl list`) then agrees it is armed.
+    if [ "$os" != "Darwin" ]; then
+      echo "bin/drain install: refusing — the scheduled-job installer supports" >&2
+      echo "  launchd (macOS) only, and this machine reports '$os'." >&2
+      echo "  Nothing was installed. Drive the fires yourself instead: put" >&2
+      echo "    $ENTROPY_HOME/bin/drain-run.sh" >&2
+      echo "  on your own cron entry or systemd timer. 'bin/drain on/off' is still" >&2
+      echo "  the arm/disarm switch whatever triggers the fire, and 'bin/drain now'" >&2
+      echo "  / 'bin/drain at HH:MM' need no scheduler at all." >&2
+      exit 3
     fi
+
+    # Explicit config still wins so a wrong value is a refusal, not a surprise.
+    scheduler=$(cfg '.unattended.scheduler' 'launchd')
 
     runner="$ENTROPY_HOME/bin/drain-run.sh"
 
     case "$scheduler" in
       launchd)
-        if [ "$os" != "Darwin" ]; then
-          echo "bin/drain install: unattended.scheduler is 'launchd' but this machine" >&2
-          echo "  reports '$os', not Darwin. launchd only exists on macOS." >&2
-          exit 3
-        fi
         # TCC (Transparency, Consent and Control) — a macOS-only OS security
         # subsystem — refuses a LaunchAgent filesystem access to ~/Desktop,
         # ~/Documents and ~/Downloads. Installing a job that is denied before
@@ -326,33 +326,11 @@ PY
         echo "    sudo pmset repeat wakeorpoweron MTWRFSU 02:00:00"
         ;;
 
-      systemd)
-        if ! command -v systemctl >/dev/null 2>&1; then
-          echo "bin/drain install: unattended.scheduler is 'systemd' but no systemctl" >&2
-          echo "  was found on this machine." >&2
-          exit 3
-        fi
-        unitdir="$HOME/.config/systemd/user"
-        mkdir -p "$unitdir"
-        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
-          "$ENTROPY_HOME/lib/entropy-drain.service.in" > "$unitdir/$label.service"
-        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g" \
-          "$ENTROPY_HOME/lib/entropy-drain.timer.in" > "$unitdir/$label.timer"
-        systemctl --user daemon-reload
-        systemctl --user enable --now "$label.timer"
-        echo "drain: systemd timer installed and enabled (hourly probe)"
-        echo "  it is INERT until you run 'bin/drain on'."
-        echo "  to remove: systemctl --user disable --now $label.timer && rm $unitdir/$label.{service,timer}"
-        echo
-        echo "  For it to fire while the machine is suspended, enable a wake timer at"
-        echo "  the OS/firmware level (e.g. rtcwake) — there is no systemd equivalent" >&2
-        echo "  of this line, the closest analog behaves differently and is not" >&2
-        echo "  installed automatically here."
-        ;;
-
       *)
         echo "bin/drain install: unknown scheduler '$scheduler' (unattended.scheduler" >&2
-        echo "  in entropy.json) — supported: launchd, systemd." >&2
+        echo "  in entropy.json) — the only scheduler this installer supports is" >&2
+        echo "  launchd. On any other platform, call bin/drain-run.sh from a timer" >&2
+        echo "  you write yourself (cron, a systemd unit, a CI schedule)." >&2
         exit 2
         ;;
     esac

@@ -76,7 +76,11 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
   "unattended": {
     "enabled": false,
     "stateHome": "~/.entropy",
-    "scheduler": "launchd",          // "launchd" | "systemd"
+    // "launchd" is the only value `bin/drain install` implements, and it
+    // is macOS-only. Off macOS the installer refuses and installs nothing;
+    // run bin/drain-run.sh from a cron entry or systemd unit you write
+    // yourself — bin/drain on/off/status/now/at work on any POSIX box.
+    "scheduler": "launchd",
     "label": "com.entropy.drain",
     "agent": { "cmd": ["claude", "-p"] }
   }

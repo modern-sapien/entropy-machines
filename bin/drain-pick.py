@@ -125,6 +125,19 @@ def pick(rows, costs, budget):
     return taken
 
 
+def _tracker_path():
+    """bin/tracker, resolved from THIS FILE rather than from the project root.
+
+    It used to be os.path.join(root, "bin", "tracker"), where root is the
+    PROJECT. That is only the same directory when the harness happens to sit
+    at the repo root; in the vendored-in-a-subdirectory layout it resolves to
+    <project>/bin/tracker, which does not exist, and every unattended pick
+    died with ENOENT. This file is a sibling of tracker inside the harness, so
+    its own location is the answer and is right in either layout.
+    """
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker")
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else \
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -138,7 +151,7 @@ def main():
                   f"number, ignoring", file=sys.stderr)
     try:
         r = subprocess.run(
-            [os.path.join(root, "bin", "tracker"), "ready"],
+            [_tracker_path(), "ready"],
             capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"drain-pick: cannot reach the tracker: {exc}", file=sys.stderr)
