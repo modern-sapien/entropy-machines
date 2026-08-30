@@ -29,6 +29,8 @@ import sys
 # the repo root or a subdirectory of it. Not a root and not a separate repo;
 # see lib/roots.sh.
 ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
+import config  # noqa: E402  -- needs ENTROPY_HOME on the path first
 
 
 def entropy_root():
@@ -127,6 +129,7 @@ def main(argv):
         print("usage: bin/status", file=sys.stderr)
         return 2
 
+    config.refuse_nested_clone("status")
     root = entropy_root()
     if not root or not os.path.isfile(os.path.join(root, "entropy.json")):
         print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_HOME)

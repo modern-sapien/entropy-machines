@@ -78,20 +78,96 @@ def _deep_merge(base, override):
     return out
 
 
-def find_repo_root(start=None):
-    """`git rev-parse --show-toplevel`, falling back to walking up for entropy.json when there is no git."""
-    start = start or os.getcwd()
+def _git_root(start):
+    """The main checkout of the git repository containing `start`, or None.
+
+    `--git-common-dir`, NOT `--show-toplevel`. Mirrors lib/roots.sh's
+    entropy_root(), which is canonical — read its header for why. The short
+    version: from inside a LINKED WORKTREE --show-toplevel prints the
+    worktree, --git-common-dir names the main checkout, and the main checkout
+    is where entropy.json and .entropy/ live. This loader used to say
+    --show-toplevel, so from a worktree it read a DIFFERENT entropy.json than
+    the shell scripts calling it did; that was invisible only because the
+    file is tracked and the two copies were identical.
+    """
     try:
         out = subprocess.run(
-            ["git", "-C", start, "rev-parse", "--show-toplevel"],
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=start,
             capture_output=True,
             text=True,
             timeout=10,
         )
-        if out.returncode == 0:
-            return out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
-        pass
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    common = out.stdout.strip()
+    if not os.path.isabs(common):
+        # git printed it relative to the directory it ran in.
+        common = os.path.join(start, common)
+    return os.path.realpath(os.path.join(common, os.pardir))
+
+
+def refuse_nested_clone(tool, harness_dir=None):
+    """Exit 2 if the harness is a git repo nested inside another git repo.
+
+    The Python mirror of lib/roots.sh's entropy_refuse_nested_clone(). The
+    harness is meant to be VENDORED as plain tracked files; a nested .git
+    shadows the enclosing repo for every git query, so commands run from
+    inside it resolve to the harness and silently operate on the wrong
+    repository.
+
+    Every shell entry point gets this through entropy_require_root(). The
+    Python ones resolve the root themselves and so have to ask explicitly --
+    which is exactly how bin/init came to be the one command exempt from a
+    refusal whose whole purpose is to stop it writing into the harness.
+    """
+    if harness_dir is None:
+        harness_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not os.path.exists(os.path.join(harness_dir, ".git")):
+        return
+    inner = _git_root(harness_dir)
+    parent = os.path.dirname(harness_dir)
+    outer = _git_root(parent) if parent and parent != harness_dir else None
+    if not outer or not inner or os.path.realpath(outer) == os.path.realpath(inner):
+        return
+    sys.stderr.write(
+        "%s: REFUSED — the harness at %s is a git repository of its own,\n"
+        "  nested inside %s.\n"
+        "  A nested .git shadows the enclosing repo, so commands run here\n"
+        "  resolve to the harness and operate on the wrong repository.\n"
+        "  Fix: remove %s/.git and commit these files into the project, or\n"
+        "  re-vendor the harness as plain files.\n"
+        % (tool, harness_dir, outer, harness_dir))
+    sys.exit(2)
+
+
+def find_repo_root(start=None):
+    """The ONE root: the repository's main checkout. Agrees with lib/roots.sh.
+
+    Precedence:
+      1. an explicit `start` — resolved with git from there. This is a seam
+         (lib/fail-first.mjs's FAIL_FIRST_REPO is the Node twin) for pointing
+         the loader at a repo other than the ambient one, so it must win.
+      2. $ENTROPY_ROOT — already resolved by lib/roots.sh's
+         entropy_require_root(), which exports it. Honouring it is what makes
+         the shell entry points and this loader agree BY CONSTRUCTION rather
+         than by two implementations happening to compute the same path. It
+         is not a user knob and not the deleted ENTROPY_PROJECT override:
+         nothing sets it but roots.sh, and it is ignored unless it names an
+         existing directory.
+      3. the process cwd.
+    Falls back to walking up for entropy.json when there is no git.
+    """
+    if start is None:
+        env_root = os.environ.get("ENTROPY_ROOT")
+        if env_root and os.path.isdir(env_root):
+            return os.path.realpath(env_root)
+        start = os.getcwd()
+    root = _git_root(start)
+    if root:
+        return root
     d = os.path.abspath(start)
     while True:
         if os.path.exists(os.path.join(d, CONFIG_FILENAME)):

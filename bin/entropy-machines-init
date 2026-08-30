@@ -1,0 +1,228 @@
+#!/usr/bin/env node
+'use strict';
+
+// The npm delivery mechanism, and nothing else.
+//
+// `npx entropy-machines init` copies the harness directories out of this
+// package and into the user's git repository as PLAIN TRACKED FILES, then
+// runs the vendored `bin/init`. After that, npm is out of the picture
+// permanently: nothing vendored imports from node_modules, nothing shells
+// out to node, and the harness runs on git + a POSIX shell + Python 3.
+//
+// The other supported route is `git clone` + `cp -R` of the same
+// directories. Both end in the same tracked tree; this file is a
+// convenience, not a second install format.
+//
+// THE ONE PROPERTY THAT MATTERS MOST: no `.git` is ever copied. A nested
+// `.git` shadows the parent repo for every git query and silently misroutes
+// every command in the harness — it is the exact failure the vendored layout
+// exists to avoid. The copy filter rejects it by path segment, so it cannot
+// arrive by any route (a published tarball has no `.git`, but `npm link`
+// against a clone does).
+//
+// Deliberately NOT here, because the owner deleted a 1072-line installer to
+// get rid of them: managed blocks, hash fences, install receipts, staleness
+// or version checking, an uninstall path, and any write into the user's
+// .claude/ or CLAUDE.md. Undoing this is `rm -rf` of one directory.
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const PKG_ROOT = path.resolve(__dirname, '..');
+const PKG = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+
+// What gets vendored. `docs/` is included on top of the five directories the
+// README names because the harness points at it from inside itself —
+// lib/roots.sh's refusal message cites `<harness>/docs/CONFIG.md`, and
+// docs/QUICKSTART.md is the document the next agent is told to read.
+const HARNESS_DIRS = ['bin', 'lib', 'docs', 'doctrine', 'hooks', 'agents'];
+
+// Never copied, at any depth. `.git` is the load-bearing one.
+const NEVER_COPY = new Set(['.git', '__pycache__', 'node_modules', '.DS_Store']);
+
+// This file is the npm wrapper, not part of the harness. It lives in bin/ so
+// it is where a reader looks for it, and it is left behind on the way in.
+const NPM_ENTRY = path.basename(__filename);
+
+const DEFAULT_DIR = 'entropy-machines';
+
+function die(lines) {
+  for (const line of [].concat(lines)) console.error(line);
+  process.exit(2);
+}
+
+function usage() {
+  console.log(`entropy-machines ${PKG.version}
+
+  npx entropy-machines init [--dir <path>]
+
+Copies the harness (${HARNESS_DIRS.join(', ')}) into your git repository as
+plain tracked files, then runs the vendored bin/init.
+
+  --dir <path>   where to put them, relative to the current directory.
+                 Default: ${DEFAULT_DIR}/ at the repository root.
+                 Pass --dir . to vendor at the repository root instead.
+  --help, -h     this text
+  --version, -v  package version
+
+Nothing is written if any refusal fires. To undo, delete the directory.`);
+}
+
+// The repository's MAIN checkout, resolved the same way lib/roots.sh does it:
+// --git-common-dir, not --show-toplevel, so a linked worktree still answers
+// with the main checkout.
+function repoRoot() {
+  const r = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+  if (r.error || r.status !== 0) return null;
+  const common = r.stdout.trim();
+  if (!common) return null;
+  const abs = path.isAbsolute(common) ? common : path.resolve(process.cwd(), common);
+  try {
+    return fs.realpathSync(path.dirname(abs));
+  } catch {
+    return null;
+  }
+}
+
+function isInside(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function copyFilter(src) {
+  const rel = path.relative(PKG_ROOT, src);
+  if (rel.split(path.sep).some((seg) => NEVER_COPY.has(seg))) return false;
+  if (rel === path.join('bin', NPM_ENTRY)) return false;
+  return true;
+}
+
+function init(argv) {
+  let dirArg = null;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--dir') {
+      dirArg = argv[++i];
+      if (!dirArg) die('entropy-machines: --dir needs a path.');
+    } else if (a.startsWith('--dir=')) {
+      dirArg = a.slice('--dir='.length);
+    } else {
+      die([`entropy-machines: unrecognized argument: ${a}`, 'Run `entropy-machines --help`.']);
+    }
+  }
+
+  // ---- REFUSALS. All of them, before any write. ----
+
+  const root = repoRoot();
+  if (!root) {
+    die([
+      'entropy-machines: REFUSED — not inside a git repository.',
+      `  Looked from ${process.cwd()}.`,
+      '  The harness is vendored as tracked files, so it needs a repo to be',
+      '  tracked in. cd into your project (or `git init` it) and re-run.',
+    ]);
+  }
+
+  const dest = dirArg ? path.resolve(process.cwd(), dirArg) : path.join(root, DEFAULT_DIR);
+
+  if (!isInside(dest, root)) {
+    die([
+      `entropy-machines: REFUSED — ${dest} is outside the repository at ${root}.`,
+      '  Vendoring means the files are committed alongside your code.',
+    ]);
+  }
+
+  // Vendoring into the package's own tree would have it copy itself over
+  // itself — and, in a `npm link`ed clone, that tree is where the `.git`
+  // this must never touch actually lives.
+  if (isInside(dest, PKG_ROOT) || isInside(PKG_ROOT, dest)) {
+    die([
+      `entropy-machines: REFUSED — ${dest} is inside this package's own directory.`,
+      `  (${PKG_ROOT})`,
+      '  Run this from the project you want the harness in, not from a',
+      '  checkout of the harness itself.',
+    ]);
+  }
+
+  const collisions = HARNESS_DIRS.filter((d) => fs.existsSync(path.join(dest, d)));
+  if (collisions.length) {
+    die([
+      `entropy-machines: REFUSED — ${dest} already has: ${collisions.join(', ')}.`,
+      '  Not overwriting them. If that is an older copy of the harness, the',
+      '  doctrine and config in it may have been edited on purpose; diff it',
+      '  or delete it yourself. If it is your own code, vendor somewhere',
+      `  else: entropy-machines init --dir <path>`,
+    ]);
+  }
+
+  // ---- WRITES. ----
+
+  fs.mkdirSync(dest, { recursive: true });
+  for (const d of HARNESS_DIRS) {
+    fs.cpSync(path.join(PKG_ROOT, d), path.join(dest, d), {
+      recursive: true,
+      filter: copyFilter,
+    });
+  }
+
+  // Elastic 2.0 asks that the notice travel with the source. Never clobbers.
+  const licenseDst = path.join(dest, 'LICENSE');
+  let licenseNote = '';
+  if (fs.existsSync(licenseDst)) {
+    licenseNote = ' (LICENSE already present, left alone)';
+  } else {
+    fs.copyFileSync(path.join(PKG_ROOT, 'LICENSE'), licenseDst);
+  }
+
+  const shown = path.relative(root, dest) || '.';
+  console.log(`entropy-machines ${PKG.version}: vendored into ${dest}`);
+  for (const d of HARNESS_DIRS) console.log(`  ${path.join(shown, d)}/`);
+  console.log(`  ${path.join(shown, 'LICENSE')}${licenseNote}`);
+  console.log('');
+
+  // ---- Hand over to the harness. Everything past here is shell + Python. ----
+
+  const vendoredInit = path.join(dest, 'bin', 'init');
+  console.log(`entropy-machines: running ${path.join(shown, 'bin', 'init')}`);
+  const r = spawnSync(vendoredInit, [], { cwd: root, stdio: 'inherit' });
+  if (r.error) {
+    console.error(`entropy-machines: could not run ${vendoredInit}: ${r.error.message}`);
+    console.error('  The files ARE vendored. Run it yourself from the repo root.');
+    process.exit(2);
+  }
+  if (r.status !== 0) {
+    console.error('');
+    console.error('entropy-machines: the files are vendored, but bin/init did not');
+    console.error('  finish. Fix what it named above and re-run it from the repo');
+    console.error(`  root:  ${path.join(shown, 'bin', 'init')}`);
+    process.exit(r.status === null ? 2 : r.status);
+  }
+
+  console.log('');
+  console.log('entropy-machines: done. Next —');
+  // Named paths only, never a guessed docs directory — that one is config
+  // (docs.dir), and CONFIG.md rule 1 makes a hardcoded path in bin/ a bug.
+  const addPaths = shown === '.' ? '.' : `${shown} entropy.json`;
+  console.log(`  1. commit what init just wrote:  git add ${addPaths}`);
+  console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'QUICKSTART.md')}`);
+  console.log(`  3. ${path.join(shown, 'bin', 'serve')}  — answer the PRD it opens`);
+}
+
+function main(argv) {
+  const cmd = argv[0];
+  if (cmd === '--help' || cmd === '-h' || cmd === 'help' || cmd === undefined) {
+    usage();
+    process.exit(cmd === undefined ? 2 : 0);
+  }
+  if (cmd === '--version' || cmd === '-v') {
+    console.log(PKG.version);
+    return;
+  }
+  if (cmd === 'init') return init(argv.slice(1));
+  die([`entropy-machines: unknown command: ${cmd}`, 'Run `entropy-machines --help`.']);
+}
+
+main(process.argv.slice(2));

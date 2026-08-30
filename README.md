@@ -37,8 +37,8 @@ recurring — that is the single most expensive thing this codebase learned.
 ## What is actually different here
 
 **Verification is a sprint-level sweep, not a per-agent gate.** One verifier
-across the whole sprint is cheaper than one per worker, and it is the only
-vantage point that can see two changes interacting.
+across the whole sprint is cheaper, and is the only vantage point that can see
+two changes interacting.
 
 **Proof is by mutation, not by re-running.** Replaying a worker's own revert
 only shows the test notices *that* revert. Blinding one half of a fix at a time
@@ -69,12 +69,10 @@ show up on other runners equally.
 ## The surface: a local server, not a CLI
 
 `bin/serve` starts a small local web server and is the actual front of this
-tool. Planning, open questions, and decisions happen in served HTML docs
-with response boxes the owner answers in a browser — not in a chat
-transcript, and not by hand-editing a tracker file. Think of it as the
-factory's lights: it's how you see what the factory is doing. The terminal
-is for one thing only — talking to the orchestrator agents that are
-actively doing the work — not for the owner to answer questions in.
+tool — the factory's lights. Planning, open questions, and decisions happen in
+served HTML docs with response boxes the owner answers in a browser, not in a
+chat transcript and not by hand-editing a tracker file. The terminal is for one
+thing only: talking to the orchestrator agents actively doing the work.
 
 ## A PRD creates issues, not the other way round
 
@@ -82,10 +80,10 @@ The orientation PRD — the first thing `bin/init` puts in front of you — is
 the **upstream** artifact. Filling it in is what produces a project's first
 issues; issues do not get worked in order to produce a PRD. Most of what
 belongs in a PRD is either already known or is a call only the owner gets
-to make, so answering one is normally minutes of work, not a dispatch. A
-worker only gets involved for the sub-questions that are genuinely
-expensive to answer — verified truth about a command or a codebase, which
-has to come from running something, not from memory.
+to make, so answering one is minutes of work, not a dispatch. A worker only
+gets involved for the sub-questions that are genuinely expensive to answer —
+verified truth about a command or a codebase, which has to come from running
+something, not from memory.
 
 ## The cycle: four commands, four roles
 
@@ -96,45 +94,42 @@ different role, each refusing a specific mistake:
    one scoped issue to one worker in its own git worktree. Refuses a
    dispatch from anywhere but the repo root (a session that has drifted
    gets the *wrong repo's* worktree, silently), refuses uncommitted edits
-   still sitting inside the files being handed out, and warns when the scope
-   overlaps a file another live dispatch is already holding — which
-   `bin/handoff` then refuses to lift.
+   still sitting inside the files being handed out, refuses a checkout with
+   no `commit-msg` hook installed, and warns when the scope overlaps a file
+   another live dispatch is already holding.
 2. **The worker implements it**, in that worktree, and commits nothing.
    Nothing it produces is real until someone else looks at it.
 3. **A verifier sweeps the whole sprint**, once, on a clean tree — not one
-   verifier per worker. It is the only vantage point that can see two
-   workers' changes interacting, and it reports a verdict, not a fix.
+   verifier per worker. It reports a verdict, not a fix.
 4. **`bin/handoff <id> --from <worktree> --verified "…"`** — the
    orchestrator folds verified work into `main` and is the *only* committer.
    It refuses `--verified` text that just relays what the worker claimed
-   ("tests pass" is not evidence); the orchestrator has to say what it
-   re-ran itself. For anything risky, that means mutating one half of a fix
-   at a time and checking the failure set belongs to that half — replaying
-   a worker's own revert only proves the test noticed *that* revert.
+   ("tests pass" is not evidence), and refuses a handoff that reports neither
+   a finding nor a next step without saying so with `--clean`.
 
 The **owner** sits outside this loop, on purpose: rules, in a served doc, on
 the questions a worker flags but cannot answer for itself; says when held
 work may merge; closes the sprint. That is the one step with no command
 behind it — see [doctrine/ROLES.md](doctrine/ROLES.md) for why it stays
-that way.
-
-Everything above is a summary. [doctrine/WORKFLOW.md](doctrine/WORKFLOW.md)
-has the cycle stage by stage, including the incidents each gate above was
-built to stop happening again.
+that way. [doctrine/WORKFLOW.md](doctrine/WORKFLOW.md) has the same cycle
+stage by stage, with the incident behind each gate.
 
 ## Getting it into your project
 
 The harness is **vendored as plain tracked files** — `bin/`, `lib/`,
-`doctrine/`, `hooks/`, `agents/` — committed alongside your code, the same
-way a repo carries its own `scripts/` directory. There is no nested
+`docs/`, `doctrine/`, `hooks/`, `agents/` — committed alongside your code, the
+same way a repo carries its own `scripts/` directory. There is no nested
 checkout and no submodule, so there is one git root: every `git rev-parse`
 answers with your project, and nothing has to reconcile two of them.
 
 Two ways to get those files in, both ending in the same tracked directories:
 
-- `npx entropy-machines init` — a thin wrapper that copies them in.
-  **Not built yet**; there is no npm package as this is written.
-- Clone this repo and copy `bin/`, `lib/`, `doctrine/`, `hooks/` and
+- `npx entropy-machines init [--dir <path>]` — the wrapper
+  `bin/entropy-machines-init` copies the directories in and then runs the
+  vendored `bin/init`. Default destination is `entropy-machines/` at the
+  repository root; `--dir .` vendors at the root itself. Node is needed for
+  this step and never again. See [docs/NPM.md](docs/NPM.md).
+- Clone this repo and copy `bin/`, `lib/`, `docs/`, `doctrine/`, `hooks/` and
   `agents/` into your project, then commit them. No Node required.
 
 Then tell your coding agent to read
@@ -162,6 +157,14 @@ Extracted from a private repo where it had been in daily use, and generalized.
 The incidents in the doctrine are real; the project they happened to is not
 described. Expect rough edges in the places where "our repo" was load-bearing
 and is now a config key.
+
+One known gap, because a gate that reads as enforced and is not is the failure
+this project is about: `bin/dispatch` writes its note log as structured JSON,
+and `bin/handoff` still parses the older free-text form. So `bin/handoff --lift`
+does not refuse a file another live dispatch is holding, the post-run
+interrogation of a worker is never required, and a recorded handoff does not
+release the claim — `bin/status` goes on reporting the issue in flight. Read
+`bin/dispatch`'s overlap warning yourself until that is fixed.
 
 ## License
 

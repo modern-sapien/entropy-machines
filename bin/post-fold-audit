@@ -65,6 +65,14 @@ sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
 from config import load_config  # noqa: E402  (path must be set up first)
 
 
+def _refuse_nested_clone():
+    """Mirror of lib/roots.sh's entropy_refuse_nested_clone(). See lib/config.py."""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+    import config
+    config.refuse_nested_clone("post-fold-audit")
+
+
 def _entropy_root():
     """Mirrors lib/roots.sh's entropy_root(): the repository's main checkout,
     or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
@@ -99,6 +107,7 @@ def _require_root():
     """Mirrors lib/roots.sh's entropy_require_root() -- returns the repo root
     or exits 2 naming the directory actually looked in, instead of silently
     operating on ENTROPY_HOME."""
+    _refuse_nested_clone()
     project = _entropy_root()
     if not project:
         print("post-fold-audit: REFUSED -- not inside a git repository, and no "

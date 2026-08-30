@@ -44,6 +44,10 @@ set -e
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
 cd "$ENTROPY_HOME"
+# The nested-clone refusal still applies and must be asked for explicitly,
+# because this script deliberately skips entropy_require_root (below).
+entropy_refuse_nested_clone drain-run
+
 # entropy_root, not entropy_require_root: the "no entropy.json" refusal exits
 # 2, and 2 is already this script's documented "disarmed" code (see EXIT CODES
 # above). A misconfigured repo is an internal error (1), not a disarmed one,

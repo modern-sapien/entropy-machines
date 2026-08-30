@@ -40,6 +40,14 @@ done
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
 
+# THE NESTED-CLONE REFUSAL STILL APPLIES, and has to be called explicitly.
+# entropy_require_root() runs it first, but this script cannot use that (see
+# below), so skipping it silently exempted the ONE command whose whole job is
+# to write files -- and it wrote entropy.json INTO the harness, which is the
+# exact misrouting the refusal exists to stop. A gate that every entry point
+# honours except the one that creates state is not a gate.
+entropy_refuse_nested_clone init
+
 # Deliberately entropy_root, NOT entropy_require_root: the latter
 # exits unless entropy.json already exists at the resolved root, and this
 # script is the thing that creates it.
