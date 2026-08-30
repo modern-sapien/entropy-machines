@@ -51,6 +51,24 @@ and removes it; edit the words there, not here.
 |        |                              |         | no markers needed, whole    |
 |        |                              |         | file is the payload         |
 
+THE BLOCK MUST ALSO BE TRUE INSIDE A LINKED WORKTREE, which is where workers
+actually run. In the intended nested-clone layout (`cd my-project && git clone
+<harness> entropy-machines`) the harness directory is gitignored, so no
+worktree contains it -- while CLAUDE.md, which carries the block, is tracked
+and is present in every one. A bare relative path there names something that
+is not on disk. So the nested layout (and only the nested layout) also renders
+{{HARNESS_RESOLVE}}: one line telling the reader to derive the real harness
+root from `git rev-parse --git-common-dir`, which resolves to the MAIN
+checkout's .git from anywhere, worktrees included. Absolute (harness outside
+the project) and "." (harness IS the project) already resolve from a worktree,
+so they render it empty.
+
+CWD DRIFT IS REFUSED. Run from inside `<project>/entropy-machines`, git would
+answer about the harness's own repo and adopt would write the block into the
+harness's own CLAUDE.md. When the resolved project IS the harness and the
+harness is a nested clone, this refuses and names the outer project instead.
+A standalone harness developing itself (no outer repo) is untouched.
+
 CONSENT IS REQUIRED. By default this PRINTS exactly what it will write and to
 which files and waits for a y/N answer before writing anything. --yes skips
 the prompt (for scripted/CI use); --dry-run prints and exits without ever
@@ -119,6 +137,36 @@ def _entropy_project():
         d = parent
 
 
+def _outer_repo_of(path):
+    """If `path`'s PARENT directory is inside some git repository, return that
+    repository's main-checkout root; else None.
+
+    Used to tell a NESTED CLONE of the harness (`cd my-project && git clone
+    <harness> entropy-machines` -- the intended install layout) apart from a
+    standalone one. Asking git from the parent, not from `path` itself, is the
+    whole point: from inside the harness git answers about the HARNESS's own
+    repo, which is exactly the confusion this detects."""
+    parent = os.path.dirname(os.path.realpath(path))
+    if parent == os.path.realpath(path) or not os.path.isdir(parent):
+        return None
+    try:
+        p = subprocess.run(
+            ["git", "-C", parent, "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0 or not p.stdout.strip():
+        return None
+    common = p.stdout.strip()
+    if not os.path.isabs(common):
+        common = os.path.join(parent, common)
+    outer = os.path.realpath(os.path.join(common, os.pardir))
+    if outer == os.path.realpath(path):
+        return None
+    return outer
+
+
 def require_project(tool="adopt"):
     project = _entropy_project()
     if not project:
@@ -127,18 +175,50 @@ def require_project(tool="adopt"):
         print("  cd into the project you want to adopt the factory into, or set "
               "ENTROPY_PROJECT to its root.", file=sys.stderr)
         sys.exit(2)
+    # CWD DRIFT INTO THE HARNESS CLONE. git answers from the cwd, so running
+    # this from inside `<project>/entropy-machines` resolves the project to the
+    # HARNESS's own repo and would write the block into the harness's own
+    # CLAUDE.md instead of the user's. Refuse and name the directory they
+    # almost certainly meant. Only when the harness is a NESTED clone -- a
+    # standalone entropy-machines checkout developing itself (harness ==
+    # project, no outer repo) is the self-hosting case and must still work.
+    if not os.environ.get("ENTROPY_PROJECT") \
+            and os.path.realpath(project) == os.path.realpath(ENTROPY_HOME):
+        outer = _outer_repo_of(ENTROPY_HOME)
+        if outer:
+            print("%s: REFUSED -- cwd is inside the harness clone (%s), so git "
+                  "resolved the project to the harness's own repo." % (tool, ENTROPY_HOME),
+                  file=sys.stderr)
+            print("  Adopting here would write the factory block into the "
+                  "harness's own files, not your project's.", file=sys.stderr)
+            print("  You probably meant:  cd %s && %s/bin/adopt"
+                  % (outer, os.path.relpath(ENTROPY_HOME, outer).replace(os.sep, "/")),
+                  file=sys.stderr)
+            print("  (If you really do mean to adopt into the harness checkout "
+                  "itself, set ENTROPY_PROJECT=%s.)" % ENTROPY_HOME, file=sys.stderr)
+            sys.exit(2)
     return project
 
 
 # --- lib/agent-block.md parsing --------------------------------------------
 
 def load_profiles():
-    """Parse lib/agent-block.md's @@profile:<name> ... @@end sections into a
-    dict {name: raw_template_text}. Each section's text is exactly the lines
-    between its @@profile: directive and the next @@ directive, joined with
-    "\n", with exactly one leading/trailing blank line trimmed (so authors
-    can leave a readable blank line after the directive without it becoming
-    part of the rendered block)."""
+    """Parse lib/agent-block.md's @@profile:<name> / @@fragment:<name> ...
+    @@end sections into two dicts, ({profile: text}, {fragment: text}). Each
+    section's text is exactly the lines between its directive and the next @@
+    directive, joined with "\n", with leading/trailing blank lines trimmed (so
+    authors can leave a readable blank line after the directive without it
+    becoming part of the rendered block).
+
+    A DIRECTIVE IS ONLY A DIRECTIVE AT COLUMN 0. lib/agent-block.md's header
+    comment documents this very format, indented; matching a stripped line
+    would let that documentation open or close a section. (The same trap --
+    a template's header comment documenting its own machine format, and every
+    regex reader then matching the documentation as content -- already cost
+    this project one permanently-wrong counter in lib/doc-template.html; see
+    _scan_unanswered_docs.) Nothing before the first column-0 directive is
+    ever collected, which is what keeps the header comment out of the hashed
+    body entirely."""
     if not os.path.isfile(AGENT_BLOCK_MD):
         print("adopt: REFUSED -- %s is missing. That file is the one source "
               "of the text this installs; nothing can be rendered without "
@@ -147,24 +227,34 @@ def load_profiles():
     with open(AGENT_BLOCK_MD, encoding="utf-8") as f:
         text = f.read()
     profiles = {}
+    fragments = {}
+    kind = None
     current = None
     buf = []
+
+    def flush():
+        if current is not None:
+            (profiles if kind == "profile" else fragments)[current] = \
+                "\n".join(buf).strip("\n")
+
     for line in text.splitlines():
-        if line.startswith("@@profile:"):
-            if current is not None:
-                profiles[current] = "\n".join(buf).strip("\n")
-            current = line[len("@@profile:"):].strip()
+        directive = None
+        for prefix, k in (("@@profile:", "profile"), ("@@fragment:", "fragment")):
+            if line.startswith(prefix):
+                directive = (k, line[len(prefix):].strip())
+                break
+        if directive is not None:
+            flush()
+            kind, current = directive
             buf = []
-        elif line.strip() == "@@end":
-            if current is not None:
-                profiles[current] = "\n".join(buf).strip("\n")
-            current = None
+        elif line.rstrip() == "@@end" and not line[:1].isspace():
+            flush()
+            kind = current = None
             buf = []
         elif current is not None:
             buf.append(line)
-    if current is not None:
-        profiles[current] = "\n".join(buf).strip("\n")
-    return profiles
+    flush()
+    return profiles, fragments
 
 
 def harness_path_for(project):
@@ -188,6 +278,32 @@ def harness_path_for(project):
     return home.replace(os.sep, "/")
 
 
+def harness_is_nested(project):
+    """True when the harness lives STRICTLY inside the project -- the vendored
+    / nested-clone layout, and the only one where the rendered path can go
+    missing on the reader (see HARNESS_RESOLVE_KEY below).
+
+    False when the harness IS the project root (its files are then tracked by
+    the project's own repo, so every worktree has them) and when it lives
+    outside the project (harness_path_for renders an absolute path, which
+    resolves the same from anywhere)."""
+    home = os.path.realpath(ENTROPY_HOME)
+    proj = os.path.realpath(project)
+    return home != proj and home.startswith(proj + os.sep)
+
+
+# The @@fragment: in lib/agent-block.md that tells an agent how to find the
+# harness when the rendered relative path is not there. THE HARNESS DIRECTORY
+# IS GITIGNORED (it is a nested clone), so it is absent from every linked
+# worktree -- while CLAUDE.md, which carries this block, is tracked and IS
+# present there. Workers run in linked worktrees; without this, the one
+# command a worker must run to hand its work back names a path that does not
+# exist where it is standing. Substituted in only for the nested layout, and
+# empty everywhere else, because in the other two layouts the rendered path
+# already resolves from a worktree.
+HARNESS_RESOLVE_KEY = "harness-resolve"
+
+
 def docs_dir_for(project):
     """entropy.json's docs.dir, defaulting to entropy-docs -- the same default
     bin/init writes to and bin/serve reads from. Never raises: this runs on
@@ -204,14 +320,28 @@ def docs_dir_for(project):
 
 
 def render(profile_name, project):
-    profiles = load_profiles()
+    profiles, fragments = load_profiles()
     if profile_name not in profiles:
         print("adopt: REFUSED -- lib/agent-block.md has no @@profile:%s "
               "section." % profile_name, file=sys.stderr)
         sys.exit(2)
     body = profiles[profile_name]
-    hp = harness_path_for(project)
-    return body.replace("{{HARNESS_PATH}}", hp)
+    resolve = ""
+    if harness_is_nested(project):
+        if HARNESS_RESOLVE_KEY not in fragments:
+            print("adopt: REFUSED -- lib/agent-block.md has no @@fragment:%s "
+                  "section, and this is the vendored layout, where the block "
+                  "would otherwise name a path that does not exist inside a "
+                  "linked worktree." % HARNESS_RESOLVE_KEY, file=sys.stderr)
+            sys.exit(2)
+        resolve = fragments[HARNESS_RESOLVE_KEY]
+    # RESOLVE FIRST, then HARNESS_PATH -- the fragment carries {{HARNESS_PATH}}
+    # of its own. Collapsing 3+ newlines afterwards is what lets a profile put
+    # {{HARNESS_RESOLVE}} on its own paragraph and still render tightly when it
+    # comes out empty.
+    body = body.replace("{{HARNESS_RESOLVE}}", resolve)
+    body = body.replace("{{HARNESS_PATH}}", harness_path_for(project))
+    return re.sub(r"\n{3,}", "\n\n", body).strip("\n")
 
 
 def body_hash(body):

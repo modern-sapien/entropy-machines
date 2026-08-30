@@ -18,6 +18,57 @@ not where the owner answers questions. `bin/dispatch` / `bin/handoff` /
 [../README.md](../README.md) and [../doctrine/](../doctrine/) for *why* it
 is shaped this way — this page only tells you *what to do*.
 
+## Step 0 — you were just cloned: set yourself up
+
+If the project has no `entropy.json` yet, this is your first job and it is
+the whole job. Run all three, in order, **from the project root** — not
+from inside the harness clone. Each resolves the project from your cwd's git
+repo, and a freshly cloned harness is its own git repo, so running them from
+inside it adopts and inits the *harness* instead of the project. Commands
+below assume the harness sits in `entropy-machines/` under the project root;
+if it is vendored *at* the root, drop the prefix.
+
+Do not stop to ask the human for permission between them. All three are
+idempotent and each carries its own refusals: `adopt` replaces its managed
+block in place rather than appending a second copy, `init` refuses to
+overwrite an existing `entropy.json` without `--force`, `serve` refuses a
+port already in use.
+
+1. **`entropy-machines/bin/adopt --yes`** — writes the managed integration
+   block (source: `lib/agent-block.md`) into the runner instruction files
+   this project already has, so future sessions know the factory exists:
+   `CLAUDE.md` (plus a `SessionStart` hook merged into
+   `.claude/settings.json`), `AGENTS.md`, `.cursor/rules/entropy.mdc`. With
+   no target named it installs into whichever of those the project already
+   shows signs of; name one (`claude` / `codex` / `cursor` / `all`) to
+   bypass detection. **`--yes` is not optional for you** — without it adopt
+   prints a preview and waits on a `y/N` prompt, and an agent with no stdin
+   to answer it counts as declining: nothing written, exit 1. Use
+   `--dry-run` first if you want the preview with no side effects at all.
+   Full contract in [ADOPT.md](ADOPT.md).
+
+2. **`entropy-machines/bin/init`** — writes the starter `entropy.json`,
+   gitignores `.entropy/`, drops the orientation PRD into the project's docs
+   directory, and reads the tracker back before it claims success. Its real
+   output is quoted verbatim under "How you find work" below — read it, the
+   last two lines are instructions.
+
+3. **`entropy-machines/bin/serve`** — **start it.** Not "mention it". It is
+   a server, not a CLI: it holds the terminal until killed, so start it in
+   the background. It prints the URL you are about to hand over:
+
+   ```
+   serving <project> on http://localhost:8787
+   ```
+
+   Pass a port (`bin/serve 8788`) if 8787 is already in use.
+
+Then give the human that URL and **stop**. Do not file issues. Do not start
+project work. Do not answer the orientation PRD's questions, and do not
+infer them from the codebase — they are the owner's calls to make, in the
+browser, and a PRD you filled in yourself produces issues nobody agreed to.
+Your turn ends with the URL.
+
 ## Where things are
 
 | Path | What it is |
@@ -25,7 +76,7 @@ is shaped this way — this page only tells you *what to do*.
 | `entropy.json` | The project's own contract — protected paths, suites, tracker backend. Missing at a project's root means the project hasn't been oriented yet. See [CONFIG.md](CONFIG.md). |
 | `bin/init` | Writes a starter `entropy.json` and drops the orientation PRD into the project's docs directory (`docs.dir` in `entropy.json`, default `entropy-docs/`). Refuses to overwrite an existing `entropy.json` without `--force`. |
 | `bin/serve [port]` | The factory lights — a local web server (default port 8787), not a CLI. `GET /` is a dashboard built from what `bin/tracker` and the notes log already know; `GET /<doc>.html` serves a doc out of the configured docs directory with response boxes; `POST /__save` writes an answer back into that file on disk; open docs poll for changes and reload. Verified live (see below). |
-| `bin/adopt` | Writes the managed integration block (source: `lib/agent-block.md`) into a project's `AGENTS.md`/`CLAUDE.md`/Cursor rules. **Not built as of this doc** — the content template exists, the script doesn't yet. Confirm it exists before trusting flags below. |
+| `bin/adopt` | Writes the managed integration block (source: `lib/agent-block.md`) into a project's `AGENTS.md`/`CLAUDE.md`/Cursor rules, bounded by hashed markers so a re-run replaces it in place. `--check` reports missing/stale/current, `--remove` deletes only its own block, and it prompts for consent unless given `--yes`. See [ADOPT.md](ADOPT.md). |
 | `bin/dispatch`, `bin/handoff`, `bin/tracker` | The commands you run to move an issue through the cycle. See below. |
 | `agents/isolated-worker.md`, `agents/verifier.md` | Role prompts — Claude Code agent definitions. A different runner needs to provide the same discipline manually; see the note at the top of each file. |
 | `doctrine/ROLES.md` | What each role does, and must never do. |
@@ -196,8 +247,3 @@ memory or a README.
   Code capability right now. Another runner gets the same gates and
   doctrine, working one issue at a time in one tree, manually following
   `agents/isolated-worker.md` as a prompt — not parity, a real limit.
-- **`bin/adopt` is not built as of this document.** The managed-block
-  content it will inject already exists (`lib/agent-block.md`); the script
-  and `docs/ADOPT.md` do not yet. `bin/serve` is real and verified above;
-  `docs/SERVE.md` may still be landing — check it exists before quoting its
-  exact contract as fact.

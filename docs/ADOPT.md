@@ -83,9 +83,9 @@ the entire file.
 `bin/adopt claude` also merges a hook into `.claude/settings.json` that runs
 `<harness>/bin/adopt prime` at the start of every session. This is how state
 gets served without bloating `CLAUDE.md`: `prime` prints issues ready, issues
-currently dispatched-but-not-yet-handed-off, and any dialogue doc under
-`planning/*.html` with unanswered questions (best-effort — see the source
-for exactly what it can and can't see).
+currently dispatched-but-not-yet-handed-off, and any dialogue doc in the
+project's configured docs directory with unanswered questions (best-effort —
+see the source for exactly what it can and can't see).
 
 SessionStart has no single "match everything" trigger — `startup`, `resume`,
 `clear`, and `compact` are four independent matchers, so adopt writes one
@@ -134,10 +134,14 @@ bypass detection.
 ## `prime`'s "unanswered docs" check is a heuristic
 
 There is no dedicated doc-status tool in this harness yet (that's a
-different, separate piece of work). `prime` scans `<project>/planning/*.html`
-for this harness's own dialogue-doc convention — `<div class="response"
-data-resp="KEY">` markers and a `<script id="responses-data">` JSON blob of
-answered keys (see `lib/doc-template.html`, `planning/serve.py`) — and counts
-keys with no non-empty answer. A project with dialogue docs somewhere else,
+different, separate piece of work). `prime` scans the `*.html` files in the
+project's docs directory — `docs.dir` in `entropy.json`, defaulting to
+`entropy-docs/`, the same directory `bin/init` writes PRD-001 into and
+`bin/serve` serves. It looks for this harness's own dialogue-doc convention
+(response-box markers and the answered-keys JSON blob; `lib/doc-template.html`
+is the canonical example) and counts keys with no non-empty answer. HTML
+comments are stripped before scanning, because a template that documents its
+own markup would otherwise be read as containing real unanswered questions.
+A project with dialogue docs somewhere else,
 or using a different convention, gets nothing reported here, silently — this
 is deliberately best-effort and never fails the hook.

@@ -73,6 +73,60 @@ entropy_project() {
   return 1
 }
 
+# entropy_harness_drift <resolved-project> <harness-root>  — echoes the OUTER
+# project directory and returns 0 when the caller has drifted into a vendored
+# harness clone. Returns 1 (echoing nothing) in every other layout.
+#
+# WHY THIS EXISTS. The install layout is a nested clone: the user runs
+# `git clone <harness> entropy-machines` from inside their project, so the
+# harness is a git repository of its own sitting inside another one. A nested
+# repo SHADOWS its parent for anything run inside it, so `cd entropy-machines
+# && bin/init` makes entropy_project answer with the HARNESS, and the factory
+# then initialises, tracks and dispatches against itself. Nothing errors; the
+# user's project is simply never touched. Three agents in a sibling project
+# died of exactly this on 2026-08-17.
+#
+# WHY IT ASKS THE PARENT, NOT THE HARNESS. From inside the nested clone git
+# can only ever see the clone. The outer repository is visible only to a query
+# rooted OUTSIDE the harness directory, which is why this walks up one level
+# first and asks there.
+#
+# WHY BOTH HALVES ARE REQUIRED. entropy-machines is also developed as its own
+# project — harness == project is legitimate and must keep working. The half
+# that separates the two cases is the second one: a standalone clone has no
+# other repository above it, so the parent query finds nothing (or finds the
+# harness itself) and this returns 1.
+entropy_harness_drift() {
+  _ehd_project=${1:-}
+  _ehd_home=${2:-}
+
+  # Not the harness's own directory — every ordinary layout lands here.
+  if [ -z "$_ehd_project" ] || [ -z "$_ehd_home" ] || [ "$_ehd_project" != "$_ehd_home" ]; then
+    unset _ehd_project _ehd_home
+    return 1
+  fi
+
+  _ehd_parent=$(CDPATH= cd -- "$_ehd_home/.." 2>/dev/null && pwd -P) || _ehd_parent=""
+  _ehd_outer=""
+  if [ -n "$_ehd_parent" ] && [ "$_ehd_parent" != "$_ehd_home" ]; then
+    _ehd_outer=$(CDPATH= cd -- "$_ehd_parent" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || _ehd_outer=""
+    if [ -n "$_ehd_outer" ]; then
+      # Canonicalise before comparing: git may print a path through a symlink,
+      # and the harness root arrives here already run through `pwd -P`.
+      _ehd_outer=$(CDPATH= cd -- "$_ehd_outer" 2>/dev/null && pwd -P) || _ehd_outer=""
+    fi
+  fi
+
+  if [ -n "$_ehd_outer" ] && [ "$_ehd_outer" != "$_ehd_home" ]; then
+    printf '%s\n' "$_ehd_outer"
+    unset _ehd_project _ehd_home _ehd_parent _ehd_outer
+    return 0
+  fi
+
+  unset _ehd_project _ehd_home _ehd_parent _ehd_outer
+  return 1
+}
+
 # entropy_require_project <tool-name>  — sets ENTROPY_PROJECT or exits 2 with a
 # message that names the directory actually looked in. The old refusal named
 # the HARNESS directory, which sent anyone who hit it to create entropy.json in
