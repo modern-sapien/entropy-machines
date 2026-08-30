@@ -32,9 +32,10 @@ handoff recorder, the commit gate — imports this module (or shells out to
 its CLI below) instead. One format, one parser, one place a format change
 has to land.
 
-CLI, all subcommands read newline-delimited note-record JSON from stdin
-unless noted otherwise (malformed lines are skipped, not fatal — an
-append-only log a human has hand-edited once should degrade, not die):
+CLI, all subcommands read note records from stdin (see load_records for the
+shapes accepted) unless noted otherwise; anything unparseable is skipped, not
+fatal — an append-only log a human has hand-edited once should degrade, not
+die:
 
   notes.py encode --verb V [--actor A] [--field k=v]...
       Print one line of JSON: the payload a caller passes as the <text>
@@ -72,6 +73,20 @@ append-only log a human has hand-edited once should degrade, not die):
       One of: no-dispatch | not-required | recorded | missing. See the
       docstring on interrogation_state() below for what each means.
 
+  notes.py dispatch-fields --issue ID
+      The fields of the LAST DISPATCH record for one issue, one per line,
+      for a shell caller that must not hand-roll note parsing (bin/handoff):
+          DISPATCH\t1|0            was a DISPATCH record found at all
+          SCOPE\t<space-joined>    the declared --files scope
+          DENYLIST\t<space-joined>|(none)|(unavailable)
+          INTERROGATION\t<value-or-empty>
+      The three denylist states are NOT interchangeable and are preserved
+      exactly: a real list is enforced, `(none)` means the claim log was read
+      and nobody held anything, `(unavailable)` means it could not be read and
+      the caller must fall back to enforcing the scope as an allowlist.
+      Exit 0 always when the stream could be read; a caller that gets a
+      non-zero exit has an unreadable store and must refuse, not proceed.
+
   notes.py dispatch-handoff-ts --issue ID
       Print the timestamp of the last DISPATCH and last HANDOFF record for
       one issue (each on its own line, empty if none):
@@ -86,6 +101,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 ARRAY_FIELDS = {"scope", "denylist", "found", "assumed"}
+
+# Of the array-shaped fields, only these two are built by a SHELL caller as one
+# delimited path list, so only these two are split on receipt. `found` and
+# `assumed` are prose an agent wrote; splitting those on whitespace turned one
+# sentence into a list of words, which is why the encode CLI now wraps them
+# instead. Both still land as arrays — the on-disk shape in ARRAY_FIELDS is
+# unchanged, only the way a single --field value is coerced into one.
+SPLIT_FIELDS = {"scope", "denylist"}
 
 
 # --------------------------------------------------------------------------
@@ -188,6 +211,118 @@ def parse_stream(text: str) -> list[dict]:
     return out
 
 
+def load_records(text: str) -> list[dict]:
+    """Every note in `text`, whatever shape it arrives in.
+
+    THREE SHAPES, because a reader that knows only one of them does not fail
+    loudly — it fails as a gate that passes everything.
+
+      - ONE PRETTY-PRINTED JSON DOCUMENT, `{"issues": {...}, "notes": [...]}`.
+        This is what lib/tracker-file writes to disk. Read a line at a time it
+        mostly raises JSONDecodeError and is skipped, until a line that is a
+        bare JSON string on its own (`          "src/main.c"`, one element of a
+        pretty-printed scope array) parses CLEANLY to a str and the next
+        `.get()` is an AttributeError. lib/handoff-guard.sh died exactly that
+        way, and the "fix" that only stopped the crash turned a gate that
+        exploded into one that silently allowed everything.
+      - A BARE JSON ARRAY of records.
+      - JSONL, one record per line — what `bin/tracker notes` prints, and the
+        shape older logs were stored in.
+
+    Anything unparseable yields nothing rather than raising. A caller that
+    cannot read its own state must decline or refuse; it must never mistake
+    "I read nothing" for "there is nothing".
+    """
+    raw = text or ""
+    try:
+        doc = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("notes"), list):
+        return [r for r in doc["notes"] if isinstance(r, dict)]
+    if isinstance(doc, list):
+        return [r for r in doc if isinstance(r, dict)]
+    return parse_stream(raw)
+
+
+# ANCHORED TO THE START OF THE NOTE BODY, NOT SEARCHED FOR IN IT — a HANDOFF
+# note that quotes this very format was read back as a live DISPATCH once and
+# left two issues holding their files after they had been handed off.
+LEGACY_VERB = re.compile(r"^(DISPATCH|HANDOFF|INTERROGATION)\s+(\S+)\s+—")
+
+
+def record_text(record: dict) -> str:
+    """The free-text body of a note, wherever it lives: at the top level in the
+    old flat log, under `fields` once a structured record wrapped it (which is
+    what lib/tracker-file's decode_payload does with any note that is not this
+    module's own JSON payload)."""
+    text = record.get("text")
+    if not isinstance(text, str):
+        fields = record.get("fields")
+        text = fields.get("text") if isinstance(fields, dict) else None
+    return text if isinstance(text, str) else ""
+
+
+def legacy_fields(text: str) -> dict:
+    """The three fields a rendered em-dash DISPATCH line carried, parsed the
+    way its readers parsed it before this module existed. Deliberately three
+    targeted patterns rather than a general `key: value` grammar: the brief is
+    free text and can itself contain an em dash, so a general split would let a
+    brief invent a scope. Scope is bounded by `— brief:` for the same reason —
+    the denylist is also a path list and sits after the brief."""
+    out: dict = {}
+    m = re.search(r"—\s+scope:\s*(.*?)\s+—\s+brief:", text)
+    if m:
+        out["scope"] = normalize_scope(m.group(1))
+    m = re.search(r"—\s+denylist:\s*(.*)$", text)
+    if m:
+        raw = m.group(1).strip()
+        # `(none)` and `(unavailable)` are STATES, not paths — see
+        # dispatch_fields for why the difference is load-bearing.
+        out["denylist"] = raw if raw in ("(none)", "(unavailable)") else normalize_scope(raw)
+    if " — interrogation: required" in text:
+        out["interrogation"] = "required"
+    return out
+
+
+def read_record(record):
+    """(verb, issue, fields) for one note — or None if it is neither shape.
+
+    STRUCTURED FIRST, RENDERED TEXT AS THE FALLBACK, so a store holding both
+    still works. A record whose verb is structurally present wins outright; one
+    carrying the old `DISPATCH <id> — scope: … — brief: …` string is parsed out
+    of its text. Nothing here raises: a record it cannot read is not a record.
+    """
+    if not isinstance(record, dict):
+        return None
+    verb, issue = record.get("verb"), record.get("issue")
+    fields = record.get("fields")
+    if not isinstance(fields, dict):
+        fields = {}
+    if isinstance(verb, str) and verb and verb != "NOTE" and isinstance(issue, str) and issue:
+        return verb, issue, fields
+    m = LEGACY_VERB.match(record_text(record).strip())
+    if not m:
+        return None
+    return m.group(1), m.group(2), legacy_fields(record_text(record))
+
+
+def dispatch_fields(records: list[dict], issue: str):
+    """The fields of the LAST DISPATCH record for `issue`, or None if there is
+    no DISPATCH for it at all. The two are not the same answer and the caller
+    must not collapse them: no dispatch is hand-done work and fails open; a
+    dispatch whose fields cannot be read is a broken gate and must not."""
+    found = None
+    for record in records:
+        parsed = read_record(record)
+        if parsed is None:
+            continue
+        verb, iid, fields = parsed
+        if verb == "DISPATCH" and iid == issue:
+            found = fields
+    return found
+
+
 def format_record(record: dict) -> str:
     return json.dumps(record, separators=(",", ":"), sort_keys=True)
 
@@ -259,7 +394,14 @@ def live_claims(records: list[dict], *, exclude_issue=None, never_claimed=(),
     live: dict[str, tuple] = {}
     order: list[str] = []
     for rec in records:
-        verb, issue = rec.get("verb"), rec.get("issue")
+        # read_record, not rec.get("verb"): a store still holding rendered
+        # em-dash notes must claim and release from those too, or the two
+        # readers of this log (here and lib/handoff-guard.sh, which already
+        # falls back) disagree about who is holding what.
+        parsed = read_record(rec)
+        if parsed is None:
+            continue
+        verb, issue, rec_fields = parsed
         if not issue or verb not in ("DISPATCH", "HANDOFF"):
             continue
         if verb == "HANDOFF":
@@ -269,7 +411,7 @@ def live_claims(records: list[dict], *, exclude_issue=None, never_claimed=(),
         if ts is not None and ts < cutoff:
             live.pop(issue, None)
             continue
-        scope = normalize_scope((rec.get("fields") or {}).get("scope"))
+        scope = normalize_scope(rec_fields.get("scope"))
         live[issue] = (ts, scope)
         if issue not in order:
             order.append(issue)
@@ -318,12 +460,15 @@ def interrogation_state(records: list[dict], issue: str) -> str:
     last_dispatch_i = last_interrogation_i = None
     required = False
     for i, rec in enumerate(records):
-        if rec.get("issue") != issue:
+        parsed = read_record(rec)
+        if parsed is None:
             continue
-        verb = rec.get("verb")
+        verb, iid, fields = parsed
+        if iid != issue:
+            continue
         if verb == "DISPATCH":
             last_dispatch_i = i
-            required = (rec.get("fields") or {}).get("interrogation") == "required"
+            required = fields.get("interrogation") == "required"
         elif verb == "INTERROGATION":
             last_interrogation_i = i
     if last_dispatch_i is None:
@@ -359,7 +504,7 @@ def _usage():
 
 
 def _read_stdin_records() -> list[dict]:
-    return parse_stream(sys.stdin.read())
+    return load_records(sys.stdin.read())
 
 
 def _take(args, flag, multi=False):
@@ -392,8 +537,10 @@ def _cli_encode(args):
         if k in fields:
             existing = fields[k]
             fields[k] = (existing if isinstance(existing, list) else [existing]) + [v]
-        elif k in ARRAY_FIELDS:
+        elif k in SPLIT_FIELDS:
             fields[k] = normalize_scope(v)
+        elif k in ARRAY_FIELDS:
+            fields[k] = [v] if v.strip() else []
         else:
             fields[k] = v
     print(encode_payload(verb, fields, actor=actor))
@@ -460,6 +607,37 @@ def _cli_record(args):
         print(format_record(rec))
 
 
+def _cli_dispatch_fields(args):
+    issue = _take(args, "--issue")
+    if not issue:
+        _usage()
+    fields = dispatch_fields(_read_stdin_records(), issue)
+    if fields is None:
+        print("DISPATCH\t0")
+        print("SCOPE\t")
+        print("DENYLIST\t")
+        print("INTERROGATION\t")
+        return
+    print("DISPATCH\t1")
+    print("SCOPE\t" + " ".join(normalize_scope(fields.get("scope"))))
+    # THREE STATES AND THEY ARE NOT INTERCHANGEABLE. A real list is enforced at
+    # lift. `(none)` means the claim log was read and nobody held anything, so
+    # every file is this agent's. ABSENT means it could not be read at all, and
+    # the caller has to fall back to enforcing the advisory scope as an
+    # allowlist. Collapsing the last two turns an unknown claim set into an
+    # empty one, which is the silent-allow this whole reader exists to prevent.
+    deny = fields.get("denylist")
+    if deny is None:
+        print("DENYLIST\t(unavailable)")
+    elif isinstance(deny, str):
+        print("DENYLIST\t" + deny.strip())
+    else:
+        paths = normalize_scope(deny)
+        print("DENYLIST\t" + (" ".join(paths) if paths else "(none)"))
+    interrogation = fields.get("interrogation")
+    print("INTERROGATION\t" + (str(interrogation) if isinstance(interrogation, str) else ""))
+
+
 def _cli_interrogation_state(args):
     issue = _take(args, "--issue")
     if not issue:
@@ -481,6 +659,7 @@ _CLI = {
     "claims": _cli_claims,
     "hits": _cli_hits,
     "record": _cli_record,
+    "dispatch-fields": _cli_dispatch_fields,
     "interrogation-state": _cli_interrogation_state,
     "dispatch-handoff-ts": _cli_dispatch_handoff_ts,
 }

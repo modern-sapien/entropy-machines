@@ -1,0 +1,149 @@
+#!/bin/sh
+# tests/run — the whole test runner. POSIX sh, no framework, no install step.
+#
+#   tests/run                  every case
+#   tests/run tracker serve    only cases whose name contains "tracker" or "serve"
+#   tests/run -v               print each case's output even when it passes
+#   tests/run -k               keep the temp directories (they are printed)
+#   tests/run -l               list the cases and exit
+#
+# Exits 0 only if every case passed.
+#
+# A case is tests/cases/<name>.sh, run as a separate `sh` process in its own
+# temp directory. Nothing is shared between cases and nothing is ordered: each
+# one builds the git repository it needs from scratch and the runner deletes
+# it afterwards. See tests/README.md.
+#
+# ENTROPY_SRC points at the harness under test and defaults to this file's
+# parent — the checkout tests/ lives in. Override it to run the suite against
+# a COPY, which is how you check the suite can actually fail:
+#
+#   cp -R <harness> /tmp/broken && <break something in /tmp/broken>
+#   ENTROPY_SRC=/tmp/broken tests/run
+
+set -u
+
+TESTS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+: "${ENTROPY_SRC:=$(CDPATH= cd -- "$TESTS_DIR/.." && pwd -P)}"
+export ENTROPY_SRC
+export TEST_LIB="$TESTS_DIR/lib"
+
+verbose=0
+keep=0
+list=0
+patterns=""
+for arg in "$@"; do
+  case "$arg" in
+    -v|--verbose) verbose=1 ;;
+    -k|--keep)    keep=1 ;;
+    -l|--list)    list=1 ;;
+    -h|--help)
+      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    -*)
+      echo "tests/run: unknown option $arg" >&2
+      exit 2 ;;
+    *) patterns="$patterns $arg" ;;
+  esac
+done
+
+if [ ! -x "$ENTROPY_SRC/bin/tracker" ]; then
+  echo "tests/run: REFUSED — $ENTROPY_SRC does not look like the harness" >&2
+  echo "  (no executable bin/tracker there). Set ENTROPY_SRC to a harness checkout." >&2
+  exit 2
+fi
+
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/entropy-tests.XXXXXX")
+cleanup() {
+  if [ "$keep" -eq 1 ]; then
+    echo "tests/run: kept $TMP_ROOT"
+  else
+    # The fixtures contain git repos and worktrees, never anything of the
+    # user's — every path under here was created by this run.
+    rm -rf "$TMP_ROOT"
+  fi
+}
+trap 'cleanup' EXIT
+trap 'cleanup; exit 130' INT TERM
+
+# ISOLATE THE ENVIRONMENT. A case's fixture is only throwaway if nothing
+# outside it can steer the run: an ENTROPY_ROOT left over from a real session
+# would point the tools at the developer's actual project, and bin/drain writes
+# under $HOME by default.
+HOME="$TMP_ROOT/home"
+mkdir -p "$HOME"
+export HOME
+unset ENTROPY_ROOT ENTROPY_HOME ENTROPY_ACTOR ENTROPY_TRACKER_PATH \
+      ENTROPY_DRAIN_HOME HANDOFF_MEMORY SKIP_HANDOFF SKIP_CHANGELOG \
+      DISPATCH_CLAIM_HOURS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE 2>/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_TERMINAL_PROMPT=0
+# The harness prints em dashes in its refusals and the assertions match on that
+# text, so the encoding is part of the contract, not cosmetics. The locale is
+# left alone (setting LC_ALL=C here would be the bug) and only Python's stream
+# encoding is pinned, because it is the one that varies with how it was spawned.
+export PYTHONIOENCODING=utf-8
+
+selected=""
+for case_file in "$TESTS_DIR"/cases/*.sh; do
+  [ -f "$case_file" ] || continue
+  name=$(basename "$case_file" .sh)
+  if [ -n "$patterns" ]; then
+    match=0
+    for p in $patterns; do
+      case "$name" in *"$p"*) match=1 ;; esac
+    done
+    [ "$match" -eq 1 ] || continue
+  fi
+  selected="$selected $name"
+done
+
+if [ -z "$selected" ]; then
+  echo "tests/run: no cases matched:$patterns" >&2
+  exit 2
+fi
+
+if [ "$list" -eq 1 ]; then
+  for name in $selected; do echo "$name"; done
+  exit 0
+fi
+
+echo "tests/run: harness under test = $ENTROPY_SRC"
+echo
+
+pass=0
+fail=0
+failed_names=""
+started=$(date +%s)
+
+for name in $selected; do
+  case_file="$TESTS_DIR/cases/$name.sh"
+  case_tmp="$TMP_ROOT/$name"
+  mkdir -p "$case_tmp"
+  log="$TMP_ROOT/$name.log"
+
+  TEST_TMP="$case_tmp" TEST_NAME="$name" \
+    sh "$case_file" >"$log" 2>&1
+  rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    pass=$((pass + 1))
+    printf 'ok    %s\n' "$name"
+    [ "$verbose" -eq 1 ] && sed 's/^/      /' "$log"
+  else
+    fail=$((fail + 1))
+    failed_names="$failed_names $name"
+    printf 'FAIL  %s  (exit %s)\n' "$name" "$rc"
+    sed 's/^/      /' "$log"
+  fi
+done
+
+elapsed=$(( $(date +%s) - started ))
+
+echo
+echo "tests/run: $pass passed, $fail failed, in ${elapsed}s"
+if [ "$fail" -ne 0 ]; then
+  echo "tests/run: failed:$failed_names"
+  exit 1
+fi
+exit 0

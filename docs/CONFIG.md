@@ -40,6 +40,11 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
     "command": { "bin": "bd" }
   },
 
+  // Where planning docs live: what bin/serve serves, where bin/init drops
+  // PRD-001, and where bin/status looks for unanswered questions. Defaults to
+  // "entropy-docs" when absent.
+  "docs": { "dir": "entropy-docs" },
+
   // What "the suites" means here. post-fold-audit and the verifier run these.
   // "tag" groups them: a tag can be skipped with --skip <tag>.
   "suites": [
@@ -87,6 +92,25 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
 }
 ```
 
+## Where the harness lives, and what "root" means
+
+The harness is **vendored as plain tracked files** inside your project — at
+the repo root, or in a subdirectory (`tools/`, `entropy-machines/`, anything)
+— and committed alongside your code, the same way a `scripts/` directory is.
+
+It must not be a git repository of its own. A nested `.git` shadows the
+enclosing repo for every git query, so commands run from inside it resolve to
+the harness and operate on the wrong repository. `git clone` and `git
+submodule` are both refused by name, pointing at the directory at fault.
+Copy the files in, or use `npx entropy-machines init`.
+
+**Root** always means the repository's MAIN CHECKOUT, resolved with
+`git rev-parse --git-common-dir` — never `--show-toplevel`. The two differ
+inside a linked worktree: `--show-toplevel` gives the worktree, and the issue
+store (`.entropy/`) lives in the main checkout. Workers run in worktrees, so
+resolving to the worktree sends their state somewhere nothing else reads.
+`lib/roots.sh` is canonical; `lib/config.py` and `lib/config.mjs` mirror it.
+
 ## Rules for contributors
 
 1. A new hardcoded path, command, or product noun in `bin/` or `lib/` is a bug.
@@ -96,3 +120,9 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
    un-portable.
 3. `entropy.json` is read once per process and passed down. Do not re-read it
    from library code.
+4. Anything that resolves the repository root independently must use
+   `git rev-parse --git-common-dir` and cite `lib/roots.sh`. Three
+   implementations of this rule have already drifted apart once — two used
+   `--show-toplevel` and disagreed with the fourth about which directory the
+   config lived in, masked only because the file happened to be identical in
+   both.

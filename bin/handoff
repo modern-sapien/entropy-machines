@@ -250,12 +250,74 @@ entropy_require_root handoff
 # existed at all, which is every note in the log today — means the claim set is
 # unknown, and then the ADVISORY list is enforced as an allowlist, i.e. the old
 # behaviour verbatim. There is no state in which nothing is checked.
+# READ THROUGH lib/notes.py, NOT WITH A sed. Both lists used to be scraped out
+# of a rendered em-dash line — `DISPATCH <id> — scope: … — brief: …`. bin/dispatch
+# stopped writing that form and writes a structured record instead
+# ({"verb":"DISPATCH","issue":…,"fields":{"scope":[…],"denylist":[…]}}), and the
+# seds went on matching nothing, silently: scope came back empty, so in_scope
+# said yes to every path; deny came back empty, so deny_known was 0 and the
+# out-of-scope branch enforced an EMPTY allowlist, which also says yes to
+# everything. Both halves of the check passed everything, on every real
+# dispatch, while still printing that they had run.
+#
+# lib/notes.py reads the structured record first and falls back to the rendered
+# string, so a store holding both still works, and lib/handoff-guard.sh reads
+# the same log through the same fallback — one grammar, two callers, no third
+# reimplementation of it here.
+NOTES_PY="$ENTROPY_HOME/lib/notes.py"
+: "${ENTROPY_ACTOR:=handoff}"
+export ENTROPY_ACTOR
+
 notes=""
-[ -n "$id" ] && notes=$("$ENTROPY_HOME/bin/tracker" notes --issue "$id" 2>/dev/null || true)
-scope=$(printf '%s\n' "$notes" \
-  | sed -n 's/.*DISPATCH .* — scope: \(.*\) — brief: .*/\1/p' | tail -1 || true)
-deny=$(printf '%s\n' "$notes" \
-  | sed -n 's/.*DISPATCH .* — denylist: \(.*\)$/\1/p' | tail -1 || true)
+if [ -n "$id" ]; then
+  notes=$("$ENTROPY_HOME/bin/tracker" notes --issue "$id" 2>/dev/null || true)
+fi
+
+# dispatch_found and "scope is empty" are DIFFERENT ANSWERS and collapsing them
+# is the whole defect above. No DISPATCH record at all is hand-done work and
+# fails open, by design and loudly ("no DISPATCH note found … recording
+# anyway"). A DISPATCH record whose fields cannot be read is a broken gate, and
+# a gate that cannot read its own state must refuse or decline — never quietly
+# allow, which is the regression that was caught in lib/handoff-guard.sh when
+# only its crash was fixed.
+dispatch_found=0
+scope=""
+deny=""
+istate="no-dispatch"
+notes_readable=1
+if [ -n "$notes" ]; then
+  if fields=$(printf '%s\n' "$notes" | python3 "$NOTES_PY" dispatch-fields --issue "$id" 2>/dev/null); then
+    dispatch_found=$(printf '%s\n' "$fields" | awk -F'\t' '$1=="DISPATCH"{print $2}')
+    scope=$(printf '%s\n' "$fields" | awk -F'\t' '$1=="SCOPE"{print $2}')
+    deny=$(printf '%s\n' "$fields" | awk -F'\t' '$1=="DENYLIST"{print $2}')
+  else
+    notes_readable=0
+  fi
+  if state_out=$(printf '%s\n' "$notes" | python3 "$NOTES_PY" interrogation-state --issue "$id" 2>/dev/null); then
+    istate="$state_out"
+  else
+    notes_readable=0
+  fi
+fi
+case "$dispatch_found" in 0|1) ;; *) dispatch_found=0 ;; esac
+
+if [ "$notes_readable" -eq 0 ]; then
+  echo "handoff: REFUSED — $id has tracker notes, but $NOTES_PY could not read" >&2
+  echo "  them. Every check below (declared scope, another agent's claims, whether" >&2
+  echo "  anyone questioned the agent) reads that log, so proceeding would report" >&2
+  echo "  clean without having checked anything." >&2
+  echo "  Reproduce it:  bin/tracker notes --issue $id | python3 $NOTES_PY dispatch-fields --issue $id" >&2
+  exit 1
+fi
+
+if [ "$dispatch_found" -eq 1 ] && [ -z "$scope" ]; then
+  echo "handoff: WARNING — the DISPATCH note for $id records NO file scope." >&2
+  echo "  bin/dispatch cannot produce that (--files is mandatory), so this note was" >&2
+  echo "  written by hand or truncated. Nothing below can tell an in-scope file from" >&2
+  echo "  an out-of-scope one; only the recorded denylist is still enforced. Read the" >&2
+  echo "  whole diff yourself:  git -C <worktree> status --porcelain -uall" >&2
+fi
+
 # Commas are a second separator in the live log (see dispatch's parser). Both
 # lists are read by unquoted `for f in $x` word-splitting, which does not split
 # on commas, so a comma-joined scope made in_scope match nothing and --lift
@@ -401,40 +463,42 @@ is_null_answer() {
 # The verb is anchored to the note prefix exactly as bin/dispatch anchors
 # its own, so a note that quotes the log format is not read as an entry in it.
 #
-# THE NOTES ARRIVE IN THE ENVIRONMENT, NOT ON STDIN. `python3 - <<'EOF'` reads
-# the PROGRAM from stdin, so a `printf … | python3 - <<'EOF'` pipeline hands the
-# heredoc to the interpreter and leaves sys.stdin at EOF — the loop then reads
-# nothing and every state comes back "no-dispatch", i.e. the gate silently never
-# fires. gen_set above gets away with the same form only because it pipes
-# nothing in.
+# READ ONCE, AT THE TOP, THROUGH lib/notes.py — see the block that sets $istate.
+# This used to run its own regex over the rendered note line, which is the same
+# text the seds above scraped and stopped matching for the same reason: against
+# a structured DISPATCH record every state came back "no-dispatch", so an agent
+# dispatched under the interrogation contract was never held to it and nothing
+# said so. The parse lives in one place now, with the same structured-first,
+# rendered-text-fallback grammar every other reader of this log uses.
+#
+# Still a function rather than a bare "$istate" so the two call sites below read
+# as the question they are asking, and so a re-read can be reinstated in one
+# place if a mode is ever added that records and then re-checks in one run.
 interrogation_state() {
-  INTERROGATION_NOTES="$notes" python3 - "$id" <<'PYINT'
-import os, re, sys
-me = sys.argv[1]
-VERB = re.compile(r"(?:^|\]\s+|note:\s+)(DISPATCH|INTERROGATION)\s+(\S+)\s+—")
-last_dispatch = last_interrogation = None
-required = False
-for i, line in enumerate(os.environ.get("INTERROGATION_NOTES", "").splitlines()):
-    m = VERB.search(line)
-    if not m:
-        continue
-    verb, iid = m.group(1), m.group(2)
-    if iid != me:
-        continue
-    if verb == "DISPATCH":
-        last_dispatch = i
-        required = " — interrogation: required" in line
-    else:
-        last_interrogation = i
-if last_dispatch is None:
-    print("no-dispatch")
-elif not required:
-    print("not-required")
-elif last_interrogation is not None and last_interrogation > last_dispatch:
-    print("recorded")
-else:
-    print("missing")
-PYINT
+  printf '%s\n' "$istate"
+}
+
+# EVERY NOTE THIS SCRIPT WRITES IS A STRUCTURED RECORD THAT ALSO CARRIES ITS
+# RENDERED LINE. The verb used to exist only at the head of a free-text string,
+# so lib/tracker-file filed all of it under verb "NOTE" and every structural
+# reader of the log went blind to it: lib/notes.py's live_claims never saw a
+# HANDOFF, so a handed-off issue kept holding its files for the full 24h claim
+# window; bin/dispatch's carry-forward looks up the last HANDOFF record and got
+# nothing; bin/status listed handed-off issues as still in flight. `text` is
+# kept verbatim in the fields so lib/handoff-guard.sh's text branch, and anyone
+# reading the log by eye, see exactly what they saw before.
+#
+# Falls back to writing the plain rendered line if the encoder is unavailable —
+# a note that only the fallback readers can parse still beats no note at all,
+# and the commit-msg gate reads that shape too.
+emit_note() {
+  _verb=$1; _text=$2; shift 2
+  if _payload=$(python3 "$NOTES_PY" encode --verb "$_verb" --actor "$ENTROPY_ACTOR" \
+        --field "text=$_text" "$@" 2>/dev/null) && [ -n "$_payload" ]; then
+    printf '%s\n' "$_payload"
+  else
+    printf '%s\n' "$_text"
+  fi
 }
 
 # The escape hatch, shared by both gates. Writes the reason into the log as a
@@ -445,8 +509,9 @@ record_skipped_interrogation() {
     echo "handoff: --dry-run — would record: interrogation SKIPPED — $no_interrogation"
     return 0
   fi
+  skip_note="INTERROGATION $id — SKIPPED by the lander — why: $(flatten_answer "$no_interrogation")"
   "$ENTROPY_HOME/bin/tracker" remember \
-    "INTERROGATION $id — SKIPPED by the lander — why: $(flatten_answer "$no_interrogation")" \
+    "$(emit_note INTERROGATION "$skip_note" --field "skipped=$(flatten_answer "$no_interrogation")")" \
     --issue "$id" >/dev/null 2>&1 || true
   echo "handoff: interrogation SKIPPED — recorded on $id as a claim, not an absence:"
   echo "    $no_interrogation"
@@ -546,7 +611,8 @@ if [ "$record_interrogation" -eq 1 ]; then
     echo "  $note"
     exit 0
   fi
-  "$ENTROPY_HOME/bin/tracker" remember "$note" --issue "$id" >/dev/null
+  "$ENTROPY_HOME/bin/tracker" remember "$(emit_note INTERROGATION "$note")" \
+    --issue "$id" >/dev/null
   echo "handoff: interrogation recorded on $id ($nq answer(s))."
   echo "  --lift and the record step will now run for this id."
   exit 0
@@ -1044,7 +1110,7 @@ if [ -n "$from" ]; then
   fi
 fi
 
-if [ -z "$scope" ]; then
+if [ "$dispatch_found" -eq 0 ]; then
   echo "handoff: no DISPATCH note found for $id — recording anyway (hand-done work?)."
 fi
 
@@ -1066,7 +1132,19 @@ if [ "$dry" -eq 1 ]; then
   exit 0
 fi
 
-"$ENTROPY_HOME/bin/tracker" remember "$note" --issue "$id" >/dev/null
+set -- --field "changed=$changed" --field "verified=$verified"
+[ -n "$found" ]     && set -- "$@" --field "found=$found"
+[ -n "$assumed" ]   && set -- "$@" --field "assumed=$assumed"
+[ -n "$next_note" ] && set -- "$@" --field "next=$next_note"
+[ -n "$scope" ]     && set -- "$@" --field "scope=$scope"
+# `set -e` and an AND-list whose test is false: harmless above because each is
+# followed by another statement, and deliberately not the LAST statement in this
+# block — a false test there ends the script before the note is written, which is
+# how three gates in this repo were silently lost.
+true
+
+"$ENTROPY_HOME/bin/tracker" remember "$(emit_note HANDOFF "$note" "$@")" \
+  --issue "$id" >/dev/null
 
 echo "handoff: recorded on $id."
 [ -n "$scope" ] && echo "  scope released: $scope"

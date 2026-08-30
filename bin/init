@@ -106,7 +106,7 @@ fi
 # owner to decide and then file as issues.
 cat > "$target" <<EOF
 {
-  "_generatedBy": "bin/init — a deliberately minimal starter, not a finished config. It does not guess at suite commands, protected paths, or anything else it has not verified. Completing it is one of the issues PRD-001-orientation.md asks you to file; see docs/CONFIG.md.",
+  "_generatedBy": "bin/init — a deliberately minimal starter, not a finished config. It does not guess at suite commands, protected paths, or anything else it has not verified. Completing it is one of the issues PRD-001-orientation.html asks you to file; see docs/CONFIG.md.",
   "project": {
     "name": "$project_name",
     "protectedPaths": []
@@ -148,6 +148,12 @@ add_ignore() {
 }
 
 add_ignore ".entropy/"
+# Python leaves these the first time any harness tool runs, INSIDE the files
+# the user just committed. Ignoring .entropy/ but not these meant a fresh init
+# dirtied the tree it had just set up.
+add_ignore "__pycache__/"
+# Per-dispatch briefs, written by bin/dispatch. Local scratch, not history.
+add_ignore ".dispatch-context/"
 
 # STEP 5 — put the orientation PRD in front of the owner.
 #
@@ -200,6 +206,16 @@ echo "$prd_note"
 if [ -n "$prd_written" ]; then
   echo "      questions in it are the ones only you can answer."
 fi
-echo "init: tracker is live and empty — \`bin/tracker ready\` answers."
-echo "init: next — run \`bin/serve\` and answer the PRD it opens. Filing the"
-echo "      issues it produces is step one."
+# PATHS ARE PRINTED AS THE READER MUST TYPE THEM. These lines used to say a
+# bare `bin/serve`, which is only correct when the harness sits at the repo
+# root. Vendored in a subdirectory -- now the default -- that command does not
+# exist, and the closing instruction of the setup command was one a user could
+# not run.
+case "$ENTROPY_HOME" in
+  "$project") cmd_prefix="bin" ;;
+  "$project"/?*) cmd_prefix="${ENTROPY_HOME#"$project"/}/bin" ;;
+  *) cmd_prefix="$ENTROPY_HOME/bin" ;;
+esac
+echo "init: tracker is live and empty — \`$cmd_prefix/tracker ready\` answers."
+echo "init: next — run \`$cmd_prefix/serve\` and answer the PRD it opens."
+echo "      Filing the issues it produces is step one."
