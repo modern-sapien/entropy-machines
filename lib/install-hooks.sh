@@ -1,70 +1,59 @@
 #!/usr/bin/env bash
-# install-hooks — put a shim in the PROJECT's hooks directory that runs the
-# HARNESS's checked-in hooks in hooks/.
+# install-hooks — put a shim in the repo's hooks directory that runs the
+# harness's checked-in hooks in hooks/.
 #
-#   lib/install-hooks.sh        (run with cwd inside the project)
+#   lib/install-hooks.sh        (run with cwd anywhere inside the repo)
 #
-# TWO ROOTS, NOT ONE. This file used to resolve a single `ROOT` via `git
-# rev-parse --show-toplevel` and use it both for "where do the hook bodies
-# live" and "whose .git/hooks do I write into" — correct only when the
-# harness is vendored AT the project root, which is the layout it was
-# extracted from. A harness in a sibling clone, or vendored into a project
-# subdirectory, has hook bodies in one tree and a project .git in another.
-# See lib/roots.sh for the split: ENTROPY_HOME is resolved from this
-# script's OWN path (correct no matter where the harness lives);
-# ENTROPY_PROJECT is resolved from cwd via `--git-common-dir` (correct even
-# from inside a linked worktree, unlike --show-toplevel). Both are computed
-# once, here, at install time.
+# ONE ROOT. The harness is vendored as plain tracked files inside the repo it
+# works on, so the hook bodies and the .git being written into are in the SAME
+# repository. There is no second repo to reconcile. Two paths still matter and
+# they are not the same directory:
 #
-# It does NOT set core.hooksPath. This repo already has core.hooksPath set
-# explicitly (to the absolute .git/hooks), that setting is shared by every
-# worktree, and rewriting it from a script would change hook resolution for
-# whatever else is running in a sibling worktree at the time. Instead we write
-# into whatever directory git currently resolves — `git rev-parse --git-path
-# hooks` honours core.hooksPath if it is set and falls back to the common
-# .git/hooks if it is not.
+#   ENTROPY_HOME   where hooks/ and lib/ actually are — the harness directory,
+#                  which may be the repo root or a subdirectory of it. Resolved
+#                  from this script's OWN path.
+#   ENTROPY_ROOT   the repo's MAIN checkout, resolved via --git-common-dir so
+#                  it is right even when this is run from a linked worktree
+#                  (see lib/roots.sh).
 #
-# THE SHIM CARRIES BOTH ROOTS BAKED IN, ABSOLUTE, AT INSTALL TIME:
+# It does NOT set core.hooksPath. A repo may already have it set, that setting
+# is shared by every worktree, and rewriting it from a script would change hook
+# resolution for whatever else is running in a sibling worktree at the time.
+# Instead we write into whatever directory git currently resolves — `git
+# rev-parse --git-path hooks` honours core.hooksPath if it is set and falls
+# back to the common .git/hooks if it is not.
 #
-#   - ENTROPY_HOME, because an installed shim lives inside the PROJECT's
-#     .git/hooks and can no longer assume a `hooks/` directory sits beside
-#     it — that assumption is the precise bug this file exists to fix. The
-#     shim still delegates to the WORKING-TREE copy of the hook body (not a
-#     frozen copy of its contents), so it never needs reinstalling when a
-#     hook's body changes — only when either root MOVES.
-#   - ENTROPY_PROJECT, so a hook does not have to re-derive the project root
-#     from a cwd git does not guarantee. Known for certain at install time
-#     (this script would already have refused if it were not); re-deriving
-#     it per hook invocation is strictly riskier than remembering it.
+# THE SHIM CARRIES ONE PATH BAKED IN, ABSOLUTE, AT INSTALL TIME: ENTROPY_HOME.
+# An installed shim lives inside .git/hooks and can no longer assume a hooks/
+# directory sits beside it, so it cannot find the harness relatively. It does
+# NOT bake the root: git guarantees a hook's cwd is a working tree of this
+# repo, so lib/roots.sh resolves the root correctly at hook time and a baked
+# copy could only ever go stale. The shim delegates to the WORKING-TREE copy of
+# the hook body (not a frozen copy of its contents), so it never needs
+# reinstalling when a hook's body changes — only when the harness MOVES.
 #
-# It VERIFIES afterwards, and says so. A setting that is quietly ignored is
-# the failure this repo already paid for once (worktree.bgIsolation, set to a
-# value that did not exist, silently doing nothing for a day) — an installer
-# that prints "installed" without checking is the same bug in a different
-# costume. That is also why this file now checks that the shim's BAKED-IN
-# path actually resolves: a shim that installs cleanly and points at a
-# harness directory that does not exist is "installed, verified, dead" —
-# exactly the failure mode a sibling-clone or vendored-subdirectory user was
-# hitting before this fix.
+# It VERIFIES afterwards, and says so. A setting that is quietly ignored is a
+# failure this project has already paid for once. An installer that prints
+# "installed" without checking is the same bug in a different costume. That is
+# also why it checks that the shim's BAKED-IN path actually resolves: a shim
+# that installs cleanly and points at a harness directory that does not exist
+# is "installed, verified, dead".
 
 set -euo pipefail
 
 . "$(dirname "$0")/roots.sh"
 
 ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_project install-hooks   # sets+exports ENTROPY_PROJECT or exits 2
+entropy_require_root install-hooks   # sets+exports ENTROPY_ROOT or exits 2
 
-# Everything below assumes cwd is inside the project. entropy_require_project
-# already required that to resolve ENTROPY_PROJECT in the first place; cd
-# there explicitly so a caller who invoked this from a project subdirectory
-# (or, in the harness-at-root layout, from the harness root itself) gets
-# unambiguous git-path resolution below.
-cd "$ENTROPY_PROJECT"
+# cd to the main checkout so `git rev-parse --git-path hooks` below resolves
+# unambiguously no matter which subdirectory (or worktree) this was run from.
+cd "$ENTROPY_ROOT"
 
 HOOK_DIR="$(git rev-parse --git-path hooks)"
 case "$HOOK_DIR" in
   /*) ;;
-  *) HOOK_DIR="$ENTROPY_PROJECT/$HOOK_DIR" ;;
+  *) HOOK_DIR="$ENTROPY_ROOT/$HOOK_DIR" ;;
 esac
 
 mkdir -p "$HOOK_DIR"
@@ -74,25 +63,24 @@ for src in "$ENTROPY_HOME"/hooks/*; do
   [ -f "$src" ] || continue
   name="$(basename "$src")"
   dest="$HOOK_DIR/$name"
-  # Deliberately UNQUOTED heredoc delimiter: $ENTROPY_HOME and
-  # $ENTROPY_PROJECT must expand NOW, baked into the generated file. $0, $@
-  # and the nested $(basename ...) are backslash-escaped so they survive
-  # into the shim literally and are evaluated at THAT script's run time,
-  # against the real hook path git passes it.
+  # Deliberately UNQUOTED heredoc delimiter: $ENTROPY_HOME must expand NOW,
+  # baked into the generated file. $0, $@ and the nested $(basename ...) are
+  # backslash-escaped so they survive into the shim literally and are
+  # evaluated at THAT script's run time, against the real hook path git
+  # passes it.
   cat > "$dest" <<SHIM
 #!/usr/bin/env bash
 # Generated by lib/install-hooks.sh — do not edit.
 #
-# ENTROPY_HOME and ENTROPY_PROJECT are baked in below, ABSOLUTE, because this
-# file lives inside the PROJECT's .git/hooks and cannot assume a hooks/ or
-# lib/ directory sits beside it (the harness may be a sibling clone or
-# vendored in a subdirectory — see lib/roots.sh). Re-run
-# lib/install-hooks.sh if either root moves.
+# ENTROPY_HOME is baked in below, ABSOLUTE, because this file lives inside
+# .git/hooks and cannot assume a hooks/ or lib/ directory sits beside it (the
+# harness may be vendored in a subdirectory). Re-run lib/install-hooks.sh if
+# the harness moves. The repo root is NOT baked in — git guarantees a hook's
+# cwd is a working tree of this repo, so lib/roots.sh resolves it live.
 #
-# It still delegates to the WORKING-TREE copy of hooks/$name in the harness,
-# so editing that file's body never requires reinstalling this shim.
+# It delegates to the WORKING-TREE copy of hooks/$name in the harness, so
+# editing that file's body never requires reinstalling this shim.
 export ENTROPY_HOME="$ENTROPY_HOME"
-export ENTROPY_PROJECT="$ENTROPY_PROJECT"
 set -euo pipefail
 HOOK="\$ENTROPY_HOME/hooks/\$(basename "\$0")"
 [ -x "\$HOOK" ] || exit 0
@@ -104,7 +92,7 @@ done
 
 echo "install-hooks: wrote $installed shim(s) to $HOOK_DIR"
 echo "install-hooks: harness (ENTROPY_HOME) = $ENTROPY_HOME"
-echo "install-hooks: project (ENTROPY_PROJECT) = $ENTROPY_PROJECT"
+echo "install-hooks: repo    (ENTROPY_ROOT) = $ENTROPY_ROOT"
 
 # --- verify, don't assume ---------------------------------------------------
 fail=0
@@ -120,12 +108,11 @@ for src in "$ENTROPY_HOME"/hooks/*; do
     fail=1
   fi
 
-  # NEW: prove the INSTALLED FILE'S OWN baked-in path resolves, by reading it
-  # back off disk rather than trusting the variables still in memory from the
-  # write above. This is the check that would have caught the bug this file
-  # exists to fix: a shim that installs cleanly, passes both checks above,
-  # and still points at a harness directory that does not exist (a stale
-  # install after the harness moved, or a shim copied between machines).
+  # Prove the INSTALLED FILE'S OWN baked-in path resolves, by reading it back
+  # off disk rather than trusting the variables still in memory from the write
+  # above. This catches a shim that installs cleanly, passes both checks
+  # above, and still points at a harness directory that does not exist (a
+  # stale install after the harness moved, or a shim copied between machines).
   baked="$(sed -n 's/^export ENTROPY_HOME="\(.*\)"$/\1/p' "$HOOK_DIR/$name" 2>/dev/null | head -1)"
   if [ -z "$baked" ]; then
     echo "install-hooks: FAIL $HOOK_DIR/$name has no baked-in ENTROPY_HOME — cannot verify it resolves." >&2
@@ -146,18 +133,15 @@ echo "               baked-in harness path resolves to an executable hook."
 # --- post-checkout needs a SHARED hooks dir, so check it is one -------------
 #
 # The checks above prove the shim exists, is executable, and its baked-in
-# harness path resolves. For post-checkout that is not enough to prove it
-# will ever RUN, because it has to fire inside a worktree that does not
-# exist yet.
+# harness path resolves. For post-checkout that is not enough to prove it will
+# ever RUN, because it has to fire inside a worktree that does not exist yet.
 #
 # git resolves hooks from core.hooksPath when it is set, and from
 # $GIT_COMMON_DIR/hooks when it is not. Both are shared by every worktree — but
 # only if core.hooksPath is ABSOLUTE. Set to a relative path, git resolves it
 # against each working tree's own root, so a brand-new worktree would look in
 # its own empty directory and post-checkout would silently never fire. The
-# install would still print "verified": installed, checked, dead. That is the
-# same bug in a different costume this file's header is about, so it gets a
-# check rather than a sentence.
+# install would still print "verified": installed, checked, dead.
 #
 # Not a hard failure: commit-msg and pre-commit install correctly in that
 # setup, and refusing the whole install to complain about one hook would be
@@ -181,5 +165,5 @@ if [ -f "$ENTROPY_HOME/hooks/post-checkout" ]; then
 fi
 
 echo "install-hooks: note — hooks are per-clone and per-worktree. Anyone who"
-echo "               never runs this has no hook; the CI job 'changelog' is the"
-echo "               enforcement that lives in the repo."
+echo "               never runs this has no hook; a CI job is the enforcement"
+echo "               that lives in the repo."

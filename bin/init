@@ -40,40 +40,13 @@ done
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
 
-# Deliberately entropy_project, NOT entropy_require_project: the latter
+# Deliberately entropy_root, NOT entropy_require_root: the latter
 # exits unless entropy.json already exists at the resolved root, and this
 # script is the thing that creates it.
-if ! project=$(entropy_project); then
+if ! project=$(entropy_root); then
   echo "init: REFUSED — not inside a git repository, and no entropy.json" >&2
   echo "  found by walking up from $PWD." >&2
-  echo "  cd into the project you want to run the factory on, or set" >&2
-  echo "  ENTROPY_PROJECT to its root." >&2
-  exit 2
-fi
-
-# DRIFT INTO THE HARNESS. The documented install layout is a nested clone —
-# `cd my-project && git clone <harness> entropy-machines` — so the harness is a
-# git repository of its own sitting inside the project's. A nested repo shadows
-# its parent for anything run inside it, so `cd entropy-machines && bin/init`
-# makes entropy_project answer with the HARNESS, and this script would then
-# happily configure the factory against itself: entropy.json, .gitignore and
-# the orientation PRD all land in the harness checkout and the user's project
-# is never touched. Nothing errors, which is what makes it expensive.
-#
-# harness == project is NOT automatically wrong: entropy-machines is developed
-# as its own project, and a standalone clone must still initialise. That case
-# is separated inside entropy_harness_drift — a standalone clone has no other
-# repository above it, so it returns 1 here and init proceeds.
-if outer=$(entropy_harness_drift "$project" "$ENTROPY_HOME"); then
-  echo "init: REFUSED — this is the harness's own checkout, not your project." >&2
-  echo "  $ENTROPY_HOME is a git repository nested inside another one, so" >&2
-  echo "  running init from in here would configure the factory against" >&2
-  echo "  itself and never touch the repo you meant." >&2
-  echo "  You almost certainly meant:  $outer" >&2
-  echo "  Run:  cd $outer && $ENTROPY_HOME/bin/init" >&2
-  echo "  (If you really are initialising the harness AS a project, it must" >&2
-  echo "  be a standalone clone with no repository above it.)" >&2
-  echo "  Nothing has been written." >&2
+  echo "  cd into the project you want to run the factory on." >&2
   exit 2
 fi
 
@@ -168,28 +141,6 @@ add_ignore() {
 
 add_ignore ".entropy/"
 
-# The harness itself, when it lives inside the project. In the nested-clone
-# layout it is a git repository inside a git repository: left untracked,
-# someone eventually runs `git add .` and commits a GITLINK — a bare 160000
-# entry pointing at a commit nobody else can fetch, because there is no
-# submodule record telling git where to fetch it from. The clone succeeds, the
-# directory comes down empty, and the harness is gone.
-#
-# Derived from the two roots, never hardcoded: the clone directory can be named
-# anything (`vendor/em`, `tools/factory`), and a harness that lives OUTSIDE the
-# project must not produce an entry at all. The `/?*` in the pattern is what
-# makes the self-hosting case (harness == project, no subdirectory to ignore)
-# fall through to an empty entry rather than writing `/` or a bare newline.
-harness_entry=""
-if [ "$ENTROPY_HOME" != "$project" ]; then
-  case "$ENTROPY_HOME" in
-    "$project"/?*) harness_entry="${ENTROPY_HOME#"$project"/}/" ;;
-  esac
-fi
-if [ -n "$harness_entry" ]; then
-  add_ignore "$harness_entry"
-fi
-
 # STEP 5 — put the orientation PRD in front of the owner.
 #
 # THIS IS THE POINT OF init, AND IT DOES NOT FILE ANY ISSUES. A PRD is the
@@ -217,9 +168,22 @@ fi
 # while the tracker is unreachable is the exact failure this harness exists
 # to prevent, and the owner would only discover it at the moment they tried
 # to file their first issue.
-if ! ENTROPY_PROJECT="$project" "$ENTROPY_HOME/bin/tracker" ready >/dev/null 2>&1; then
-  echo "init: REFUSED — wrote $target but bin/tracker could not read the" >&2
-  echo "  tracker back afterward. Check $project/.entropy/ by hand." >&2
+#
+# IT IS THE ONE CHECK THAT CANNOT MOVE UP. Everything above this line is a
+# refusal that fires before any write; this one cannot be, because what it
+# tests is whether the tracker answers for a config that does not exist until
+# step 3 wrote it. So it is NOT phrased as a refusal: the writes above really
+# did happen, and calling it "REFUSED" told the user nothing was written when
+# in fact everything was — and a plain re-run then died on "entropy.json
+# already exists" with no repair path named.
+if ! (cd "$project" && "$ENTROPY_HOME/bin/tracker" ready >/dev/null 2>&1); then
+  echo "init: WARNING — $target was WRITTEN, but bin/tracker could not read the" >&2
+  echo "  tracker back afterward. This is not a refusal: everything above" >&2
+  echo "  really was written, and the project is half-initialised." >&2
+  echo "  Check $project/.entropy/ and $target by hand." >&2
+  echo "  To re-run once you have fixed it (a plain re-run will refuse," >&2
+  echo "  because entropy.json now exists):" >&2
+  echo "      $ENTROPY_HOME/bin/init --force" >&2
   exit 2
 fi
 

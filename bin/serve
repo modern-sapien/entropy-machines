@@ -36,7 +36,7 @@ esac
 
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_project serve
+entropy_require_root serve
 
 CONFIG_PY="$ENTROPY_HOME/lib/config.py"
 NOTES_PY="$ENTROPY_HOME/lib/notes.py"
@@ -49,7 +49,7 @@ TRACKER="$ENTROPY_HOME/bin/tracker"
 docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-docs"
 case "$docs_dir" in
   /*) docs_path="$docs_dir" ;;
-  *) docs_path="$ENTROPY_PROJECT/$docs_dir" ;;
+  *) docs_path="$ENTROPY_ROOT/$docs_dir" ;;
 esac
 mkdir -p "$docs_path"
 
@@ -61,7 +61,7 @@ case "$port" in
     ;;
 esac
 
-export ENTROPY_HOME ENTROPY_PROJECT
+export ENTROPY_HOME ENTROPY_ROOT
 export SERVE_DOCS_PATH="$docs_path"
 export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
@@ -90,7 +90,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 ENTROPY_HOME = os.environ["ENTROPY_HOME"]
-ENTROPY_PROJECT = os.environ["ENTROPY_PROJECT"]
+ENTROPY_ROOT = os.environ["ENTROPY_ROOT"]
 DOCS_PATH = os.environ["SERVE_DOCS_PATH"]
 DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
 PORT = int(os.environ["SERVE_PORT"])
@@ -384,7 +384,7 @@ def render_dashboard() -> str:
     docs = list_docs()
 
     parts = [PAGE_HEAD]
-    parts.append(f"<h1>the factory</h1>\n<p class=\"sub\">{esc(ENTROPY_PROJECT)}</p>\n")
+    parts.append(f"<h1>the factory</h1>\n<p class=\"sub\">{esc(ENTROPY_ROOT)}</p>\n")
 
     parts.append("<h2>ready</h2>\n")
     if ready is None:
@@ -545,8 +545,15 @@ def main():
             sys.exit(1)
         print("serve: REFUSED — could not bind 127.0.0.1:%d (%s)." % (PORT, exc), file=sys.stderr)
         sys.exit(1)
-    print("serving %s on http://localhost:%d" % (ENTROPY_PROJECT, PORT))
-    print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR))
+    # flush=True IS THE POINT OF THESE TWO LINES. Python block-buffers stdout
+    # when it is not a tty — which is exactly the case a bootstrapping agent
+    # hits: `bin/serve &> serve.log &`, then read the URL out of the file and
+    # hand it to the human. Without the flush the buffer is never filled and
+    # never drained, because the very next statement blocks in serve_forever()
+    # forever; the log stays 0 bytes while the server runs and 0 bytes after
+    # it is killed. The URL is the one thing this command exists to produce.
+    print("serving %s on http://localhost:%d" % (ENTROPY_ROOT, PORT), flush=True)
+    print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

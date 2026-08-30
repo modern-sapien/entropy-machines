@@ -104,7 +104,7 @@ done
 
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_project dispatch
+entropy_require_root dispatch
 CONFIG_PY="$ENTROPY_HOME/lib/config.py"
 NOTES_PY="$ENTROPY_HOME/lib/notes.py"
 LIBDIR="$ENTROPY_HOME/lib"
@@ -113,10 +113,10 @@ export ENTROPY_ACTOR
 
 cfg_get() { python3 "$CONFIG_PY" get "$1" 2>/dev/null; }
 
-if [ "$(pwd -P)" != "$ENTROPY_PROJECT" ]; then
-  echo "dispatch: REFUSED — cwd is $(pwd -P), not the project root ($ENTROPY_PROJECT)." >&2
+if [ "$(pwd -P)" != "$ENTROPY_ROOT" ]; then
+  echo "dispatch: REFUSED — cwd is $(pwd -P), not the project root ($ENTROPY_ROOT)." >&2
   echo "  Worktrees are created in the repo the dispatching session's cwd is in." >&2
-  echo "  Run:  cd $ENTROPY_PROJECT" >&2
+  echo "  Run:  cd $ENTROPY_ROOT" >&2
   exit 1
 fi
 
@@ -132,7 +132,7 @@ fi
 # worktree whose checkout predates the hook has the shim, has a dead gate,
 # and checking only the shim would report OK.
 hooks=$(git rev-parse --git-path hooks)
-case "$hooks" in /*) ;; *) hooks="$ENTROPY_PROJECT/$hooks" ;; esac
+case "$hooks" in /*) ;; *) hooks="$ENTROPY_ROOT/$hooks" ;; esac
 if [ ! -x "$hooks/commit-msg" ]; then
   echo "dispatch: REFUSED — no commit-msg shim in $hooks." >&2
   echo "  Without it nothing requires a handoff when you land this agent, and the" >&2
@@ -338,7 +338,7 @@ fi
 # materialises a commit — untracked files are not carried in. So the path
 # printed in the brief is ABSOLUTE and points back at this checkout, which
 # the agent can read (its worktree lives under it).
-ctxdir="$ENTROPY_PROJECT/.dispatch-context"
+ctxdir="$ENTROPY_ROOT/.dispatch-context"
 ctx="$ctxdir/$id.md"
 
 # The three carry-forward fields an incoming agent can act on, read out of
@@ -437,7 +437,7 @@ for s in suites:
   {
     echo "# Dispatch context — $id"
     echo
-    echo "Written by bin/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $ENTROPY_PROJECT ($branch @ $head)."
+    echo "Written by bin/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $ENTROPY_ROOT ($branch @ $head)."
     echo "READ THIS BEFORE YOU DO ANYTHING ELSE. Everything you cannot look up for"
     echo "yourself was captured here at dispatch time — whether the tracker and any"
     echo "local docs directory are reachable from your worktree depends on this"
@@ -648,12 +648,12 @@ echo "  what it must contain in HANDOFF.md's found: line. The context file above
 echo "  has the full protocol and says what does and does not enforce it."
 echo "  SECOND, before you write anything: run \`git rev-parse --git-common-dir\`."
 echo "  It prints the MAIN repo's .git — which repo your worktree branched from."
-echo "  It MUST contain /$(basename "$ENTROPY_PROJECT")/. A bare relative \`.git\` means you"
+echo "  It MUST contain /$(basename "$ENTROPY_ROOT")/. A bare relative \`.git\` means you"
 echo "  are not in a worktree at all: report that."
 echo "  If either is wrong, STOP and report it. NEVER cd to make it pass and"
 echo "  never write to the shared checkout — a cd is the failure, not the fix."
 echo "  Do NOT use --show-toplevel here: yours is the worktree path, so it can"
-echo "  never end in /$(basename "$ENTROPY_PROJECT") and tells you nothing about the repo."
+echo "  never end in /$(basename "$ENTROPY_ROOT") and tells you nothing about the repo."
 # THE SCRATCHPAD, IN THE PASTE BLOCK RATHER THAN ONLY IN A DOC. The same
 # measurement that shapes the rest of this block puts a pasted rule at ~96%
 # and one sitting only in a doc the agent was told to go read at far less —

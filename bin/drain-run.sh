@@ -31,7 +31,27 @@
 #   2 disarmed           5 quota wall                    8 touched a protected path
 set -e
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+# ONE ROOT, TWO PATHS — see lib/roots.sh. ENTROPY_HOME is the harness
+# DIRECTORY (this script's own bin/, and the lib/ beside it); $root is the
+# repository this works on. They are the same tree — the harness is vendored
+# inside the project — but not necessarily the same directory.
+#
+# THE cd COMES FIRST AND IS LOAD-BEARING. A launchd/systemd unit fires with cwd
+# at `/`, so git has nothing to answer from. Stepping into the harness
+# directory — which is inside the repo — gives it one. This is what replaced
+# the old "an installed job only works when the harness sits at the project
+# root" gap: nothing has to carry the root in.
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_HOME=$(entropy_home "$0")
+cd "$ENTROPY_HOME"
+# entropy_root, not entropy_require_root: the "no entropy.json" refusal exits
+# 2, and 2 is already this script's documented "disarmed" code (see EXIT CODES
+# above). A misconfigured repo is an internal error (1), not a disarmed one,
+# and cfg() below already defaults every key it reads.
+if ! root=$(entropy_root); then
+  echo "drain-run: could not resolve the repository from $ENTROPY_HOME." >&2
+  exit 1
+fi
 
 # ---- config -------------------------------------------------------------
 # Same cfg() as bin/drain. Kept as a second copy rather than a shared sourced
@@ -209,7 +229,7 @@ fi
 # ---- pick the work --------------------------------------------------------
 # The cost model and budget live in entropy.json (unattended.sizeCosts,
 # unattended.budget) and are applied by bin/drain-pick.py, which has tests.
-picked=$(python3 "$root/bin/drain-pick.py" "$root" 2>>"$state/pick.err")
+picked=$(python3 "$ENTROPY_HOME/bin/drain-pick.py" "$root" 2>>"$state/pick.err")
 if [ -z "$picked" ]; then
   finish "idle" 6 "nothing eligible for an unattended run"
 fi
@@ -222,7 +242,7 @@ echo "drain: taking $count issue(s): $picked"
 # nobody there to answer, the session stalls. That is why the timeout below is
 # not optional: a stall costs one window and leaves a specific line in the log
 # to widen the allowlist by, rather than hanging until the scheduler kills it.
-prompt=$(sed "s|__ISSUES__|$picked|g; s|__BRANCH__|${branch_prefix}${slug}|g" "$root/bin/drain-prompt.md")
+prompt=$(sed "s|__ISSUES__|$picked|g; s|__BRANCH__|${branch_prefix}${slug}|g" "$ENTROPY_HOME/bin/drain-prompt.md")
 
 # Agent invocation is pluggable: unattended.agent.cmd is the argv prefix
 # (default ["claude", "-p"]) and the prompt is appended as the final argument.

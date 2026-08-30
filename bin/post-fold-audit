@@ -53,31 +53,26 @@ import sys
 import tempfile
 import time
 
-# THERE ARE TWO ROOTS AND THEY ARE NOT THE SAME -- see lib/roots.sh, which
-# this block mirrors for the shell entry points. ENTROPY_HOME is this
-# harness's own install location (bin/, lib/, hooks/, doctrine/), resolved
-# from this file's own path. ENTROPY_PROJECT is the MAIN checkout of the repo
-# being worked on -- where entropy.json, node_modules and the git history
-# actually live. They are equal only when the harness is vendored at the
-# project root; treating them as one value is the bug this mirrors the fix
-# for.
+# ONE ROOT -- see lib/roots.sh, which this block mirrors for the shell entry
+# points. ENTROPY_ROOT is the repository's MAIN checkout: entropy.json,
+# .entropy/ and the git history live there, and the harness is vendored inside
+# it as plain tracked files. ENTROPY_HOME is only the DIRECTORY this harness's
+# own files sit in (bin/, lib/, hooks/, doctrine/) -- the repo root, or a
+# subdirectory of it -- resolved from this file's own path so sibling lib/
+# imports work wherever it is vendored. It is not a root and not a repo.
 ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
 from config import load_config  # noqa: E402  (path must be set up first)
 
 
-def _entropy_project():
-    """Mirrors lib/roots.sh's entropy_project(): the project's main checkout
-    root, or None. ENTROPY_PROJECT in the environment wins, so a caller that
-    already knows (a hook, a test, a scheduler unit with no cwd to speak of)
-    is never second-guessed. Otherwise `git rev-parse --git-common-dir` --
-    NOT --show-toplevel, which prints a linked WORKTREE's own path and would
-    hand this tool a project root with no entropy.json in it. Falls back to
-    walking up for entropy.json when there is no git.
+def _entropy_root():
+    """Mirrors lib/roots.sh's entropy_root(): the repository's main checkout,
+    or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
+    prints a linked WORKTREE's own path and would hand this tool a root whose
+    .entropy/ does not exist. Falls back to walking up for entropy.json when
+    there is no git. No environment override, matching lib/roots.sh: with one
+    root there is nothing for an override to disambiguate.
     """
-    env = os.environ.get("ENTROPY_PROJECT")
-    if env:
-        return os.path.abspath(env)
     try:
         p = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
@@ -100,16 +95,15 @@ def _entropy_project():
         d = parent
 
 
-def _require_project():
-    """Mirrors lib/roots.sh's entropy_require_project() -- sets ENTROPY_PROJECT
+def _require_root():
+    """Mirrors lib/roots.sh's entropy_require_root() -- returns the repo root
     or exits 2 naming the directory actually looked in, instead of silently
     operating on ENTROPY_HOME."""
-    project = _entropy_project()
+    project = _entropy_root()
     if not project:
         print("post-fold-audit: REFUSED -- not inside a git repository, and no "
               "entropy.json found by walking up from %s." % os.getcwd(), file=sys.stderr)
-        print("  cd into the project you are running the factory on, or set "
-              "ENTROPY_PROJECT to its root.", file=sys.stderr)
+        print("  cd into the project you are running the factory on.", file=sys.stderr)
         sys.exit(2)
     if not os.path.exists(os.path.join(project, "entropy.json")):
         print("post-fold-audit: REFUSED -- no entropy.json at %s." % project, file=sys.stderr)
@@ -120,8 +114,8 @@ def _require_project():
     return project
 
 
-ENTROPY_PROJECT = _require_project()
-CONFIG = load_config(cwd=ENTROPY_PROJECT)
+ENTROPY_ROOT = _require_root()
+CONFIG = load_config(cwd=ENTROPY_ROOT)
 STAMP = os.path.join(
     os.path.expanduser(CONFIG["unattended"]["stateHome"]),
     "clean-tree-stamp.json")
@@ -150,7 +144,7 @@ def sh(args, cwd, timeout=2400):
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-def git(args, cwd=ENTROPY_PROJECT):
+def git(args, cwd=ENTROPY_ROOT):
     return sh(["git"] + args, cwd)
 
 
@@ -174,7 +168,7 @@ def worktree(at, label):
         shutil.rmtree(d, ignore_errors=True)
         return None, out
     for rel in (CONFIG.get("worktree") or {}).get("linkPaths") or []:
-        src = os.path.join(ENTROPY_PROJECT, rel)
+        src = os.path.join(ENTROPY_ROOT, rel)
         if not os.path.isdir(src):
             continue
         dst = os.path.join(path, rel)
@@ -208,7 +202,7 @@ def drop(path):
 def orchestrator_delta(patch, base, findings):
     """What the orchestrator wrote at merge time, and nothing else."""
     name = os.path.basename(patch)
-    rc, out = sh(["git", "apply", "--numstat", patch], ENTROPY_PROJECT)
+    rc, out = sh(["git", "apply", "--numstat", patch], ENTROPY_ROOT)
     if rc != 0:
         findings.append("%s: unreadable as a patch -- %s" % (name, out.strip()[:160]))
         return
@@ -232,13 +226,13 @@ def orchestrator_delta(patch, base, findings):
         print("\n=== ORCHESTRATOR DELTA - %s (base %s)" % (name, base[:9]))
         changed = []
         for f in files:
-            a, b = os.path.join(path, f), os.path.join(ENTROPY_PROJECT, f)
+            a, b = os.path.join(path, f), os.path.join(ENTROPY_ROOT, f)
             if not os.path.exists(b):
                 changed.append((f, "deleted after fold"))
                 continue
             if not os.path.exists(a):
                 continue
-            rc3, d = sh(["git", "diff", "--no-index", "--numstat", a, b], ENTROPY_PROJECT)
+            rc3, d = sh(["git", "diff", "--no-index", "--numstat", a, b], ENTROPY_ROOT)
             if d.strip():
                 n = d.split("\t")[:2]
                 changed.append((f, "+%s/-%s" % (n[0], n[1]) if len(n) == 2 else "differs"))
@@ -338,8 +332,8 @@ def main():
                     help="shorthand for --skip slow")
     a = ap.parse_args()
 
-    if os.path.realpath(os.getcwd()) != os.path.realpath(ENTROPY_PROJECT):
-        print("post-fold-audit: run from %s" % ENTROPY_PROJECT, file=sys.stderr)
+    if os.path.realpath(os.getcwd()) != os.path.realpath(ENTROPY_ROOT):
+        print("post-fold-audit: run from %s" % ENTROPY_ROOT, file=sys.stderr)
         return 2
     if a.patch and not a.base:
         print("post-fold-audit: --patch needs --base", file=sys.stderr)

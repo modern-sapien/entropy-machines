@@ -22,7 +22,7 @@ set -e
 
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_project drain
+entropy_require_root drain
 os=$(uname)
 
 # ---- config -----------------------------------------------------------------
@@ -34,7 +34,7 @@ os=$(uname)
 # refusal is this script's job for the keys that truly have none, e.g. an
 # unsupported scheduler below).
 cfg() {
-  python3 - "$ENTROPY_PROJECT/entropy.json" "$1" "$2" <<'PY'
+  python3 - "$ENTROPY_ROOT/entropy.json" "$1" "$2" <<'PY'
 import json, sys
 path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -271,14 +271,15 @@ PY
         # repo location(s) and say so. This entire check is a macOS concept
         # and does not apply on Linux.
         #
-        # TWO locations matter now that harness and project can differ:
-        # launchd has to reach ENTROPY_HOME to exec the runner script at all,
-        # and drain-run.sh then reads/writes inside ENTROPY_PROJECT (git,
-        # entropy.json, .entropy/) to do the actual work. Either one sitting
+        # Both locations are checked: launchd has to reach ENTROPY_HOME to
+        # exec the runner script at all, and drain-run.sh then reads/writes
+        # inside ENTROPY_ROOT (git, entropy.json, .entropy/) to do the work.
+        # They are usually the same tree now, but not the same DIRECTORY when
+        # the harness is vendored in a subdirectory, so either one sitting
         # under a protected folder denies the job — checked separately so the
         # message names the one that is actually the problem.
         tcc_blocked=""
-        for tcc_dir in "$ENTROPY_HOME" "$ENTROPY_PROJECT"; do
+        for tcc_dir in "$ENTROPY_HOME" "$ENTROPY_ROOT"; do
           case "$tcc_dir" in
             "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
               echo "bin/drain install: refusing — this is in a TCC-protected folder:" >&2
@@ -295,15 +296,21 @@ PY
           echo "    3. System Settings -> Privacy & Security -> Full Disk Access," >&2
           echo "       add /bin/sh — broad, since it grants every shell script" >&2
           echo "  Override once you have done 2 or 3: ENTROPY_DRAIN_FORCE=1" >&2
-          [ -z "$ENTROPY_DRAIN_FORCE" ] && exit 3
+          # `if`, not `[ ... ] && exit`. Under `set -e` a bare `[ test ] &&
+          # cmd` used as a STATEMENT exits the whole script when the test is
+          # FALSE — so with the override set, this line silently killed the
+          # install it was meant to permit. Also `${...:-}`: the variable is
+          # normally unset.
+          if [ -z "${ENTROPY_DRAIN_FORCE:-}" ]; then
+            exit 3
+          fi
           echo "  ENTROPY_DRAIN_FORCE set — installing anyway." >&2
         fi
-        # GAP (see HANDOFF-lane-b.md): a scheduler unit has no cwd and no git
-        # context to resolve ENTROPY_PROJECT from when it fires, but neither
-        # this template nor bin/drain-run.sh has a placeholder/env var to
-        # carry it in explicitly yet. Until that lands, an installed job only
-        # works in the layout it was extracted from (harness vendored at the
-        # project root).
+        # A scheduler unit fires with no useful cwd. That used to be a gap:
+        # nothing carried the project root in, so an installed job only worked
+        # when the harness sat AT the project root. With one root it resolves
+        # itself — bin/drain-run.sh cd's into the harness directory, which is
+        # inside the repo, and git answers from there. No placeholder needed.
         plist="$HOME/Library/LaunchAgents/$label.plist"
         mkdir -p "$HOME/Library/LaunchAgents"
         sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g; s|__LABEL__|$label|g" \

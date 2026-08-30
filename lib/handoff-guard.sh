@@ -130,10 +130,43 @@
 
 set -euo pipefail
 
+# ENTROPY_HOME is the harness DIRECTORY — where config.py sits — which may be
+# the repo root or a subdirectory of it. It is not a root and not a separate
+# repo (see lib/roots.sh). The shim installed by lib/install-hooks.sh exports
+# it; the fallback is for direct invocation, by hand or from a test.
+#
+# RESOLVED FIRST, before anything references it. It used to be assigned BELOW
+# the cutoff block, which then had to re-derive it inline — and a single
+# reference to the not-yet-assigned variable was an unbound-variable crash
+# under `set -u`, i.e. a gate that died instead of refusing.
+if [ -z "${ENTROPY_HOME:-}" ]; then
+  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+fi
+
+# TWO DIFFERENT TREES, one root. Both are computed here so the distinction is
+# visible in one place:
+#
+#   TREE  the working tree this commit belongs to — `--show-toplevel`, i.e.
+#         the LINKED WORKTREE when a worker is committing from one. The staged
+#         changelog.d fragments being committed are on disk there and nowhere
+#         else, so fragment reads must use this.
+#   ROOT  the repository's MAIN checkout — `--git-common-dir` via
+#         lib/roots.sh. The tracker's note log lives under .entropy/, which is
+#         gitignored and therefore absent from every worktree, so the dispatch
+#         memory must be read from here. Resolving it with --show-toplevel
+#         found no memory file inside a worktree and the guard passed
+#         everything in silence.
+#
+# `|| true` on both: a guard that cannot resolve its own inputs must decline
+# to judge (below), not die. Dying inside a hook reads as a broken tool.
+. "$(dirname -- "$0")/roots.sh"
+TREE="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+ROOT="$(entropy_root 2>/dev/null || true)"
+
 # Empty unless the project opts in — see the grandfathering note above.
 CUTOFF="$(
-  cd "$(git rev-parse --show-toplevel)" 2>/dev/null &&
-  python3 "${ENTROPY_HOME:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)}/lib/config.py" get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
+  cd "${TREE:-$PWD}" 2>/dev/null &&
+  python3 "$ENTROPY_HOME/lib/config.py" get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
 )"
 # `if`, not `[ ... ] && ...` — under `set -e` a failing test as the last
 # command of a compound exits the script, which would make this gate pass
@@ -141,14 +174,6 @@ CUTOFF="$(
 if [ "$CUTOFF" = "null" ]; then CUTOFF=""; fi
 SKIP_MARKER='[skip handoff]'
 
-# See lib/changelog-guard.sh for why these are two separate roots. NOTE the
-# cutoff block ABOVE runs before this assignment, so it derives ENTROPY_HOME
-# itself rather than referencing $ROOT — referencing it there was an unbound
-# variable under `set -u`, i.e. a crash in the gate rather than a refusal.
-if [ -z "${ENTROPY_HOME:-}" ]; then
-  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
-fi
-ROOT="${ENTROPY_PROJECT:-$(git rev-parse --show-toplevel)}"
 # HANDOFF_MEMORY is a TEST SEAM, not a bypass — tests/core/commit-gate-open-
 # dispatch.test.ts points it at a fixture so it can exercise the refuse path
 # without writing fake DISPATCH notes into the log two other sessions are
@@ -157,16 +182,24 @@ ROOT="${ENTROPY_PROJECT:-$(git rev-parse --show-toplevel)}"
 # no self-test below and never had been.)
 # Where the note log lives is the tracker backend's business, so ask it rather
 # than hardcoding a path. Falls back to the built-in backend's default.
-MEMORY="${HANDOFF_MEMORY:-$ROOT/$(
-  cd "$ROOT" 2>/dev/null &&
-  python3 "$ENTROPY_HOME/lib/config.py" get tracker.file.path 2>/dev/null | tr -d '"' || true
-)}"
+if [ -n "${HANDOFF_MEMORY:-}" ]; then
+  MEMORY="$HANDOFF_MEMORY"
+elif [ -n "$ROOT" ]; then
+  MEMORY="$ROOT/$(
+    cd "$ROOT" 2>/dev/null &&
+    python3 "$ENTROPY_HOME/lib/config.py" get tracker.file.path 2>/dev/null | tr -d '"' || true
+  )"
+else
+  MEMORY=""
+fi
 
-# The tracker's store may be a NESTED REPO, absent from dispatched agents'
-# worktrees. No memory file means no way to know what was dispatched, so the
-# guard has nothing to say — it must pass rather than block a commit it cannot
-# reason about.
-[ -f "$MEMORY" ] || exit 0
+# .entropy/ is gitignored per-checkout state. No memory file means no way to
+# know what was dispatched, so the guard has nothing to say — it must pass
+# rather than block a commit it cannot reason about. Same for an unresolvable
+# root: decline to judge, do not die.
+if [ -z "$MEMORY" ] || [ ! -f "$MEMORY" ]; then
+  exit 0
+fi
 
 if [ "${SKIP_HANDOFF:-}" = "1" ]; then
   echo "handoff-guard: SKIP_HANDOFF=1 — skipped."
@@ -200,8 +233,10 @@ fragment_ids() {
     case "$f" in changelog.d/*.md) ;; *) continue ;; esac
     if [ -n "$rev" ]; then
       body=$(git show "$rev:$f" 2>/dev/null || true)
-    elif [ -f "$ROOT/$f" ]; then
-      body=$(cat "$ROOT/$f")
+    elif [ -n "$TREE" ] && [ -f "$TREE/$f" ]; then
+      # $TREE, not $ROOT: the fragment being committed is staged in THIS
+      # working tree, which is a linked worktree when a worker is committing.
+      body=$(cat "$TREE/$f")
     else
       continue
     fi
@@ -233,9 +268,37 @@ import json, os, sys
 mem, iid = os.environ["MEMORY"], os.environ["ID"]
 cutoff, label = os.environ["CUTOFF"], os.environ["LABEL"]
 
-dispatched = handed = None
-with open(mem, encoding="utf-8") as f:
-    for line in f:
+def records(path):
+    """Every note in the store, whatever shape the store is.
+
+    TWO SHAPES, because this gate outlived one of them and DIED on the other.
+    lib/tracker-file writes ONE JSON DOCUMENT -- {"issues": {...}, "notes":
+    [...]} -- pretty-printed over many lines. The reader here used to iterate
+    LINES and json.loads() each one, which is the shape of an older flat JSONL
+    log. Against the current store that mostly raised JSONDecodeError and was
+    skipped, until a line that happens to be a bare JSON string on its own
+    (`          "src/main.c"`, one element of a pretty-printed scope array)
+    parsed CLEANLY to a str, and `.get` on a str is an AttributeError. The gate
+    then exited non-zero with a traceback: every commit naming any i- id was
+    blocked by what read as a broken tool rather than a rule. Confirmed on the
+    pristine file, so it predates the one-root collapse.
+
+    Both shapes are read, and anything unparseable yields nothing rather than
+    raising -- a guard that cannot read its own store must decline to judge.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        return []
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError:
+        doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("notes"), list):
+        return [r for r in doc["notes"] if isinstance(r, dict)]
+    out = []
+    for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -243,13 +306,37 @@ with open(mem, encoding="utf-8") as f:
             e = json.loads(line)
         except json.JSONDecodeError:
             continue
-        text, ts = e.get("text", ""), e.get("ts", "")
-        # Match on the note body, not the issue key: --issue is optional on
-        # `remember`, and a note filed without it still records the dispatch.
-        if text.startswith(f"DISPATCH {iid} "):
-            dispatched = ts
-        elif text.startswith(f"HANDOFF {iid} "):
-            handed = ts
+        if isinstance(e, dict):
+            out.append(e)
+    return out
+
+
+dispatched = handed = None
+for e in records(mem):
+    ts = e.get("ts") or ""
+    # A record carries the verb structurally (tracker-file / lib/notes.py) or
+    # inline at the head of a free-text note (the older flat log). Match on the
+    # note BODY as well as the issue key: --issue is optional on `remember`,
+    # and a note filed without it still records the dispatch.
+    verb = e.get("verb") or ""
+    issue = e.get("issue") or ""
+    # The free text lives at the top level in the old flat log and under
+    # "fields" in lib/notes.py's record. bin/handoff files its handoff as
+    # verb NOTE with the verb word at the head of fields.text, so reading only
+    # the top level saw the DISPATCH and never the HANDOFF -- the gate would
+    # then refuse the same commit forever, after the handoff was recorded.
+    text = e.get("text")
+    if not isinstance(text, str):
+        fields = e.get("fields")
+        text = fields.get("text") if isinstance(fields, dict) else None
+    if not isinstance(text, str):
+        text = ""
+    is_dispatch = (verb == "DISPATCH" and issue == iid) or text.startswith(f"DISPATCH {iid} ")
+    is_handoff = (verb == "HANDOFF" and issue == iid) or text.startswith(f"HANDOFF {iid} ")
+    if is_dispatch:
+        dispatched = ts
+    elif is_handoff:
+        handed = ts
 
 if dispatched is None:
     sys.exit(0)                      # nobody dispatched this — not agent work
@@ -300,14 +387,34 @@ check_scope() {
 import datetime, json, os, re, sys
 
 paths = os.environ["PATHS"].split()
+def _ts(v):
+    """Parse a note/commit timestamp, tolerating a trailing Z.
+
+    tracker-file stamps notes UTC as `...:43Z`; this reader's format string had
+    no %z and no Z, so EVERY note raised ValueError and was skipped. It was
+    invisible because the JSONL crash above aborted the block before reaching
+    here -- fixing that crash turned a gate that exploded into one that
+    silently passed everything. Both halves are the same defect: a guard that
+    cannot read its own store must refuse or decline, never quietly allow.
+    """
+    if not isinstance(v, str):
+        return None
+    v = v.strip()
+    if v.endswith("Z"):
+        v = v[:-1]
+    try:
+        return datetime.datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+
+
 label = os.environ["LABEL"]
 try:
     hours = float(os.environ.get("CLAIM_HOURS") or 24)
 except ValueError:
     hours = 24.0
-try:
-    now = datetime.datetime.strptime(os.environ["WHEN"], "%Y-%m-%dT%H:%M:%S")
-except ValueError:
+now = _ts(os.environ["WHEN"])
+if now is None:
     sys.exit(0)          # cannot place the commit in time — say nothing
 
 # NEVER CLAIMABLE. changelog.d/ is one file per entry BY DESIGN so two agents
@@ -343,9 +450,35 @@ def strip(p):
     p = re.sub(r"/\*.*$", "", p)
     return p.rstrip("/")
 
-events = []
-with open(os.environ["MEMORY"], encoding="utf-8") as f:
-    for line in f:
+# TWO STORE SHAPES, TWO RECORD SHAPES, AND THIS READER MUST SURVIVE BOTH.
+#
+# SHAPE OF THE FILE. tracker-file writes ONE pretty-printed JSON document;
+# older stores were JSONL. Reading the pretty-printed form a line at a time
+# makes `json.loads` succeed on a bare value line — `"src/main.c"` parses to a
+# str — and the next `.get()` raised AttributeError. That crash is why this
+# check was not gating: it exited on a traceback instead of a verdict, and a
+# gate that cannot read its own store must DECLINE, never explode.
+#
+# SHAPE OF A RECORD. Notes now carry structured fields
+# ({"verb": "DISPATCH", "issue": ..., "fields": {"scope": [...]}}); they used
+# to carry one rendered em-dash-separated "text" string. Structured is read
+# first and the regex is the fallback, so a store holding both still works.
+def _load_notes(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        return []
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError:
+        doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("notes"), list):
+        return [r for r in doc["notes"] if isinstance(r, dict)]
+    if isinstance(doc, list):
+        return [r for r in doc if isinstance(r, dict)]
+    out = []
+    for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -353,31 +486,55 @@ with open(os.environ["MEMORY"], encoding="utf-8") as f:
             e = json.loads(line)
         except json.JSONDecodeError:
             continue
-        m = VERB.match(e.get("text", ""))
-        if not m:
-            continue
-        try:
-            ts = datetime.datetime.strptime(e.get("ts", ""), "%Y-%m-%dT%H:%M:%S")
-        except ValueError:
-            continue
-        if ts > now:
-            continue        # not yet true when this commit was made
-        events.append((ts, m, e["text"]))
-events.sort(key=lambda r: r[0])
+        if isinstance(e, dict):
+            out.append(e)
+    return out
 
-live = {}
-for ts, m, text in events:
-    iid = m.group(2)
-    if m.group(1) == "HANDOFF":
-        live.pop(iid, None)
-        continue
+
+def _read(e):
+    """(verb, issue, scope-string) for one note, or None if it is not one."""
+    verb = e.get("verb")
+    issue = e.get("issue")
+    if isinstance(verb, str) and isinstance(issue, str) and verb in ("DISPATCH", "HANDOFF"):
+        fields = e.get("fields")
+        scope = fields.get("scope") if isinstance(fields, dict) else None
+        if isinstance(scope, list):
+            scope = " ".join(str(x) for x in scope)
+        return verb, issue, (scope if isinstance(scope, str) else "")
+    text = e.get("text")
+    if not isinstance(text, str):
+        return None
+    m = VERB.match(text)
+    if not m:
+        return None
     # Searched from the END OF THE ID GROUP: VERB already consumed the first em
     # dash. Bounded by `— brief:` so the denylist field, which is also a path
     # list and sits after the brief, can never be read as scope.
-    scope = re.search(r"—\s+scope:\s*(.*?)\s+—\s+brief:", text[m.end(2):])
+    hit = re.search(r"—\s+scope:\s*(.*?)\s+—\s+brief:", text[m.end(2):])
+    return m.group(1), m.group(2), (hit.group(1).strip() if hit else "")
+
+
+events = []
+for e in _load_notes(os.environ["MEMORY"]):
+    parsed = _read(e)
+    if not parsed:
+        continue
+    ts = _ts(e.get("ts"))
+    if ts is None:
+        continue
+    if ts > now:
+        continue        # not yet true when this commit was made
+    events.append((ts, parsed))
+events.sort(key=lambda r: r[0])
+
+live = {}
+for ts, (verb, iid, scope) in events:
+    if verb == "HANDOFF":
+        live.pop(iid, None)
+        continue
     if not scope:
         continue
-    live[iid] = (ts, scope.group(1).strip())
+    live[iid] = (ts, scope)
 
 hits = []
 for iid, (ts, scope) in live.items():
@@ -419,7 +576,7 @@ case "$mode" in
     msg=$(cat "$arg")
     frags=$(fragment_ids "$staged")
     check_message "$msg" "this commit" "$frags"
-    check_scope "$msg" "this commit" "$touched" "$(date '+%Y-%m-%dT%H:%M:%S')" "$frags"
+    check_scope "$msg" "this commit" "$touched" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$frags"
     ;;
   --commit)
     added=$(git show --name-only --diff-filter=AM --format= "$arg" 2>/dev/null || true)
@@ -431,14 +588,18 @@ case "$mode" in
     # The COMMIT's own time, not now: the question is whether a dispatch was
     # open at the moment it was made.
     #
-    # format-LOCAL, and the difference is not cosmetic. `%cd --date=format:`
+    # format-UTC, and the difference is not cosmetic. `%cd --date=format:`
     # renders in the timezone RECORDED IN THE COMMIT, which for a commit made
-    # elsewhere (or with GIT_COMMITTER_DATE given as ...Z) is not this machine's.
-    # Note-log timestamps are local and naive — `date '+%Y-%m-%dT%H:%M:%S'`
-    # via bin/tracker — so comparing the two demands both be local. Caught by
-    # the backdated-commit test, which was three hours in the FUTURE.
+    # elsewhere is not this machine's. Note-log timestamps are UTC with a
+    # trailing Z (lib/notes.py stamps `datetime.now(timezone.utc)`), so both
+    # sides of the comparison must be UTC.
+    #
+    # THIS COMMENT USED TO SAY LOCAL, AND SO DID THE CODE. Against UTC notes
+    # every dispatch looked like it was made in the FUTURE (`ts > now`), so the
+    # scope check skipped every note and passed every commit. It went unseen
+    # because a JSONL crash aborted the block before it could matter.
     check_scope "$msg" "$label" "$touched" \
-      "$(git log -1 --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%S' "$arg")" "$frags"
+      "$(git log -1 --format=%cd --date=format-utc:'%Y-%m-%dT%H:%M:%SZ' "$arg")" "$frags"
     ;;
   --range)
     rc=0
@@ -450,7 +611,7 @@ case "$mode" in
       frags=$(fragment_ids "$added" "$sha")
       check_message "$msg" "$label" "$frags" || rc=1
       check_scope "$msg" "$label" "$touched" \
-        "$(git log -1 --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%S' "$sha")" "$frags" || rc=1
+        "$(git log -1 --format=%cd --date=format-utc:'%Y-%m-%dT%H:%M:%SZ' "$sha")" "$frags" || rc=1
     done
     exit $rc
     ;;

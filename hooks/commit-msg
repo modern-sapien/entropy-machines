@@ -4,15 +4,12 @@
 # It exists separately from pre-commit because handoff-guard keys on the issue
 # id in the commit message, and pre-commit runs before a message exists.
 #
-# TWO ROOTS. lib/handoff-guard.sh is a HARNESS file (ENTROPY_HOME/lib/), not
-# necessarily beside the project tree the commit belongs to. $1, the message
-# file path git passes in, is already project-relative/absolute as git gives
-# it — nothing here needs to touch it beyond passing it through.
-#
-# The installed shim exports both ENTROPY_HOME and ENTROPY_PROJECT before
-# exec'ing this file (see lib/install-hooks.sh), so the normal run costs
-# nothing extra. The fallback below only matters when this file is run
-# directly — by hand, or from a test — bypassing the shim.
+# ONE ROOT. lib/handoff-guard.sh is a harness file living one directory up from
+# this one, inside the same repository as the commit being made. The shim
+# exports ENTROPY_HOME (it lives in .git/hooks and cannot find lib/
+# relatively); the fallback below only matters when this file is run directly.
+# $1, the message file path git passes in, is already project-relative or
+# absolute as git gives it — nothing here needs to touch it.
 #
 # Keep it fast. $1 is the path to the message file.
 
@@ -22,8 +19,6 @@ set -euo pipefail
 
 : "${ENTROPY_HOME:=$(entropy_home "$0")}"
 export ENTROPY_HOME
-if [ -z "${ENTROPY_PROJECT:-}" ]; then
-  entropy_require_project commit-msg
-fi
+entropy_require_root commit-msg
 
 exec "$ENTROPY_HOME/lib/handoff-guard.sh" --message "$1"

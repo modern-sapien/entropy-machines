@@ -37,16 +37,19 @@
 
 set -euo pipefail
 
-# TWO ROOTS. config.py ships with the HARNESS; entropy.json lives in the
-# PROJECT. They are the same directory only when the harness is vendored at the
-# project root, and this line used to assume that — in a drop-in install the
-# hook fired and then died on a missing lib/config.py, which reads as a broken
-# repo rather than a misinstalled harness. The shim installed by
-# lib/install-hooks.sh exports both; the fallbacks are for direct invocation.
+# ENTROPY_HOME is the harness DIRECTORY — where config.py sits — which may be
+# the repo root or a subdirectory of it. It is not a root and not a separate
+# repo (see lib/roots.sh). The shim installed by lib/install-hooks.sh exports
+# it; the fallback is for direct invocation, by hand or from a test.
+#
+# There is deliberately NO root variable here. Everything this guard reads is
+# `git diff --cached` against whatever working tree git put us in, which is
+# the tree the commit belongs to — the right answer in a linked worktree as
+# well as the main checkout. config.py finds entropy.json from cwd the same
+# way, and entropy.json is a TRACKED file, so it is present in every worktree.
 if [ -z "${ENTROPY_HOME:-}" ]; then
   ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
 fi
-ROOT="${ENTROPY_PROJECT:-$(git rev-parse --show-toplevel)}"
 CONFIG_PY="$ENTROPY_HOME/lib/config.py"
 
 ENABLED="$(python3 "$CONFIG_PY" get changelog.enabled)"

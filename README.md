@@ -50,9 +50,11 @@ it. It cannot tell you an assertion is meaningful — someone still reads it.
 
 ## Requirements
 
-Git, a POSIX shell, Python 3, and Node. Your *project* can be written in
-anything — every language- and toolchain-specific value lives in
-[`entropy.json`](docs/CONFIG.md), not in the harness.
+Git, a POSIX shell and Python 3. Nothing in `bin/` shells out to Node; the
+Node tools that ship here (`lib/fail-first.mjs`, the changelog collator) are
+run directly, by you or by CI, and only if you use them. Your *project* can
+be written in anything — every language- and toolchain-specific value lives
+in [`entropy.json`](docs/CONFIG.md), not in the harness.
 
 The reference implementation targets [Claude Code](https://claude.com/claude-code)
 for the agent runner. The gates (`bin/dispatch`, `bin/handoff`, `bin/tracker`,
@@ -94,8 +96,9 @@ different role, each refusing a specific mistake:
    one scoped issue to one worker in its own git worktree. Refuses a
    dispatch from anywhere but the repo root (a session that has drifted
    gets the *wrong repo's* worktree, silently), refuses uncommitted edits
-   still sitting inside the files being handed out, and refuses to overlap
-   a file another live dispatch is already holding.
+   still sitting inside the files being handed out, and warns when the scope
+   overlaps a file another live dispatch is already holding — which
+   `bin/handoff` then refuses to lift.
 2. **The worker implements it**, in that worktree, and commits nothing.
    Nothing it produces is real until someone else looks at it.
 3. **A verifier sweeps the whole sprint**, once, on a clean tree — not one
@@ -119,29 +122,37 @@ Everything above is a summary. [doctrine/WORKFLOW.md](doctrine/WORKFLOW.md)
 has the cycle stage by stage, including the incidents each gate above was
 built to stop happening again.
 
-## Adopting it
+## Getting it into your project
 
-Dropping this into a project is meant to write into that project's own
-`AGENTS.md` (and a pointer from `CLAUDE.md`, where the runner is Claude
-Code) rather than a human running a checklist — `bin/adopt` writes a small,
-versioned, content-hashed managed block, never a raw overwrite, and it asks
-before writing anything. `--check` reports whether the block is missing,
-stale, or current; `--remove` takes out only that block, cleanly. That
-script is still landing as this README is being written — the content it
-will inject already exists (`lib/agent-block.md`), the script doesn't yet.
-See [docs/QUICKSTART.md](docs/QUICKSTART.md), written for the agent doing
-the adopting, for its current state.
+The harness is **vendored as plain tracked files** — `bin/`, `lib/`,
+`doctrine/`, `hooks/`, `agents/` — committed alongside your code, the same
+way a repo carries its own `scripts/` directory. There is no nested
+checkout and no submodule, so there is one git root: every `git rev-parse`
+answers with your project, and nothing has to reconcile two of them.
 
-## Getting started
+Two ways to get those files in, both ending in the same tracked directories:
 
-Clone this into your project (or as it), then run `bin/init` — it writes a
-minimal starter `entropy.json` and puts the orientation PRD in front of you.
-[docs/QUICKSTART.md](docs/QUICKSTART.md) is written for the coding agent
-doing this alongside you, not for you directly: what the repo has, how it
-finds work, what it must never do, and what happens when it tries anyway.
+- `npx entropy-machines init` — a thin wrapper that copies them in.
+  **Not built yet**; there is no npm package as this is written.
+- Clone this repo and copy `bin/`, `lib/`, `doctrine/`, `hooks/` and
+  `agents/` into your project, then commit them. No Node required.
+
+Then tell your coding agent to read
+[docs/QUICKSTART.md](docs/QUICKSTART.md) and bootstrap the factory. That
+document is written for the agent, not for you: it has the agent write a
+short pointer into your `CLAUDE.md` / `AGENTS.md` so later sessions know the
+factory is there, run `bin/init` — which writes a minimal starter
+[`entropy.json`](docs/CONFIG.md) and puts the orientation PRD in your docs
+directory — start `bin/serve`, and hand you the URL. The PRD's questions are
+yours; answering them in the browser is what produces the first issues.
+
+`bin/status` is the read-only view of the same state at any later point:
+issues ready, issues in flight, docs still carrying unanswered questions.
 
 - [docs/CONFIG.md](docs/CONFIG.md) — every knob, and the rule that a new
   hardcoded path in `bin/` is a bug.
+- [docs/SERVE.md](docs/SERVE.md) — the server's contract: what it serves,
+  and how an answer gets written back to disk.
 - [docs/TRACKER-ADAPTER.md](docs/TRACKER-ADAPTER.md) — the six operations the
   harness needs from an issue tracker. Bring your own, or use the built-in.
 

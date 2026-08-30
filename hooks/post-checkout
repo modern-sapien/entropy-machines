@@ -128,17 +128,17 @@ warn() {
 # Always succeed, whatever happened above this line.
 trap 'exit 0' EXIT
 
-# ENTROPY_HOME (the harness root — where lib/config.py actually lives) is
-# baked in and exported by the installed shim (lib/install-hooks.sh). The
-# fallback here only matters when this hook is run directly, bypassing the
-# shim — by hand, or from a test. Best-effort and silent on failure, matching
-# this whole hook's fail-open philosophy: config_link_paths() below already
-# no-ops with nothing linked if ENTROPY_HOME cannot be resolved.
+# ENTROPY_HOME (the harness DIRECTORY — where lib/config.py actually lives,
+# which may be the repo root or a subdirectory of it) is baked in and exported
+# by the installed shim (lib/install-hooks.sh). The fallback here only matters
+# when this hook is run directly, bypassing the shim — by hand, or from a
+# test. Best-effort and silent on failure, matching this whole hook's fail-open
+# philosophy: config_link_paths() below already no-ops with nothing linked if
+# ENTROPY_HOME cannot be resolved.
 #
-# Note this hook does NOT need ENTROPY_PROJECT the same way — it already
-# resolves the project's main tree itself, below, via `--git-common-dir`,
-# because it needs that value for the new-worktree test too, not only for
-# config lookup.
+# This hook does not call entropy_require_root — it resolves the repo's main
+# tree itself, below, via `--git-common-dir`, because it needs that value for
+# the new-worktree test too, not only for config lookup.
 if [ -z "${ENTROPY_HOME:-}" ]; then
   . "$(dirname "$0")/../lib/roots.sh" 2>/dev/null && ENTROPY_HOME="$(entropy_home "$0" 2>/dev/null)"
 fi
@@ -245,17 +245,15 @@ config_link_paths() {
   command -v python3 >/dev/null 2>&1 || return 0
   [ -n "${ENTROPY_HOME:-}" ] || return 0
 
-  # TWO ROOTS. lib/config.py's own root resolution (find_repo_root) walks up
-  # from `os.getcwd()` looking for entropy.json — it does not care where its
-  # own file lives on disk. So cwd must be the PROJECT's main tree for it to
-  # find the PROJECT's entropy.json (a post-checkout hook's cwd is the NEW
-  # worktree, which reading config from directly would resolve against the
-  # wrong, and possibly nonexistent, tree). But lib/config.py the SCRIPT FILE
-  # is a HARNESS file: with the harness vendored anywhere other than the
-  # project root, "$main_tree/lib/config.py" does not exist — only
-  # "$ENTROPY_HOME/lib/config.py" does. So: cd into the project's main tree
-  # (for the config lookup to resolve against), but exec the harness's copy
-  # of the loader. The subshell keeps the cd off the caller.
+  # TWO PATHS, ONE ROOT. lib/config.py's own root resolution (find_repo_root)
+  # walks up from `os.getcwd()` looking for entropy.json — it does not care
+  # where its own file lives on disk. So cwd must be the MAIN tree for the
+  # lookup to resolve against a tree that certainly exists (a post-checkout
+  # hook's cwd is the NEW worktree, which may still be mid-creation). But
+  # lib/config.py the SCRIPT FILE lives in the harness DIRECTORY, which may be
+  # a subdirectory: "$main_tree/lib/config.py" does not exist there, only
+  # "$ENTROPY_HOME/lib/config.py" does. So: cd into the main tree, but exec the
+  # harness's copy of the loader. The subshell keeps the cd off the caller.
   ( cd "$main_tree" 2>/dev/null || exit 0
     python3 "$ENTROPY_HOME/lib/config.py" get worktree.linkPaths 2>/dev/null ) \
     | tr -d '[]",' | tr ' ' '\n' | sed '/^$/d'
@@ -280,11 +278,9 @@ done
 # already-linked worktree prints nothing.
 
 scratch_name="$(basename "$here")"
-# Rooted at $main_tree (the PROJECT's main checkout), not ENTROPY_HOME — the
-# scratchpad belongs to the project being worked on, not to wherever the
-# harness happens to be vendored. Already correct before this file's
-# HOME/PROJECT split: unlike config_link_paths() above, this was never
-# built from a single conflated ROOT, so there was nothing here to fix.
+# Rooted at $main_tree (the repo's main checkout), not ENTROPY_HOME — the
+# scratchpad belongs to the project being worked on, not to wherever inside it
+# the harness happens to be vendored.
 scratch_root="$main_tree/${ENTROPY_SCRATCH_ROOT:-.entropy/scratch}"
 scratch_target="$scratch_root/$scratch_name"
 

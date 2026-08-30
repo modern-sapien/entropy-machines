@@ -53,9 +53,9 @@ EOF
 
 . "$(dirname "$0")/../lib/roots.sh"
 ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_project tracker
+entropy_require_root tracker
 
-config="$ENTROPY_PROJECT/entropy.json"
+config="$ENTROPY_ROOT/entropy.json"
 
 # One read of entropy.json, here, once. Prints four tab-separated fields:
 #   backend            "file" or "command" (defaults to "file")
@@ -96,7 +96,9 @@ case "$backend" in
       echo "  or not executable." >&2
       exit 2
     fi
-    ( cd "$ENTROPY_PROJECT" && ENTROPY_ROOT="$ENTROPY_PROJECT" ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
+    # ENTROPY_ROOT is already exported by entropy_require_root; lib/tracker-file
+    # reads it as the root its storage path is relative to.
+    ( cd "$ENTROPY_ROOT" && ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
     ;;
   command)
     if [ -z "$cmd_bin" ]; then
@@ -104,7 +106,7 @@ case "$backend" in
       echo "  is empty in $config." >&2
       exit 2
     fi
-    ( cd "$ENTROPY_PROJECT" && exec "$cmd_bin" $cmd_args "$@" )
+    ( cd "$ENTROPY_ROOT" && exec "$cmd_bin" $cmd_args "$@" )
     ;;
   *)
     echo "tracker: REFUSED — unknown tracker.backend \"$backend\" in $config" >&2

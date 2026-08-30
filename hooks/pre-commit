@@ -3,20 +3,21 @@
 #
 # The installed shim (lib/install-hooks.sh) execs THIS working-tree file
 # directly, by an ABSOLUTE path baked in at install time, so the installed
-# artefact never goes stale, each worktree runs its own checked-in copy, and
-# reviewing the hook means reviewing this file.
+# artefact never goes stale and reviewing the hook means reviewing this file.
+# The baked path is the harness in the MAIN checkout, so every worktree runs
+# THIS copy, not its own checked-in one — deliberate: a gate that a worker
+# could weaken by editing its own worktree would not be a gate.
 #
-# TWO ROOTS. lib/changelog-guard.sh is a HARNESS file — it lives beside this
-# hook (one directory up, in ENTROPY_HOME/lib/), not necessarily beside
-# whatever project tree the commit belongs to. `git diff --cached`, which
-# changelog-guard.sh reads, still operates on the PROJECT's working tree via
-# cwd — git already puts pre-commit's cwd at the project's working-tree root,
-# and nothing here changes that.
+# ONE ROOT. lib/changelog-guard.sh is a harness file living one directory up
+# from this one, inside the same repository as the commit being made. The shim
+# exports ENTROPY_HOME (it lives in .git/hooks and cannot find lib/ relatively);
+# the fallback below only matters when this file is run directly — by hand, or
+# from a test — bypassing the shim.
 #
-# The installed shim exports both ENTROPY_HOME and ENTROPY_PROJECT before
-# exec'ing this file (see lib/install-hooks.sh), so the normal run costs
-# nothing extra. The fallback below only matters when this file is run
-# directly — by hand, or from a test — bypassing the shim.
+# `git diff --cached`, which changelog-guard.sh reads, operates on the working
+# tree git already put us in: git runs pre-commit with cwd at the working-tree
+# root, and nothing here changes that. In a linked worktree that is the
+# worktree, which is correct — the staged files being committed are there.
 #
 # Keep it fast. It runs on every commit; anything slower than a `git diff`
 # belongs in CI.
@@ -27,8 +28,6 @@ set -euo pipefail
 
 : "${ENTROPY_HOME:=$(entropy_home "$0")}"
 export ENTROPY_HOME
-if [ -z "${ENTROPY_PROJECT:-}" ]; then
-  entropy_require_project pre-commit
-fi
+entropy_require_root pre-commit
 
 exec "$ENTROPY_HOME/lib/changelog-guard.sh" --staged

@@ -154,14 +154,16 @@ produces:
 
 not a Python traceback.
 
-## Roots
+## Root
 
 Like every other entry point: `. lib/roots.sh`, `entropy_home "$0"`,
-`entropy_require_project serve`. `ENTROPY_HOME` is this harness;
-`ENTROPY_PROJECT` is the project being served — set it explicitly to test
-against a project nested inside this repo's own checkout (git-common-dir
-detection would otherwise resolve to the harness root, not the nested
-directory).
+`entropy_require_root serve`. There is ONE root — the git repository, resolved
+via `--git-common-dir` so it is the MAIN checkout even from inside a linked
+worktree. `ENTROPY_ROOT` names it; `ENTROPY_HOME` is only the directory this
+harness's own files sit in, which is inside it. There is no environment
+override for either: the harness is vendored as plain tracked files in the
+repo it works on, so git always has one answer. To serve a different project,
+`cd` into it.
 
 ## Verified
 

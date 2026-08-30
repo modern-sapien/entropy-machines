@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""status — print live factory state. Reads; writes nothing.
+
+    bin/status
+
+Three questions, answered from the tracker and the docs directory:
+
+    what is ready to work on        (bin/tracker ready)
+    what is in flight               (DISPATCH notes with no HANDOFF yet)
+    which docs have open questions  (unanswered .response boxes)
+
+It is a READ. Nothing here files, claims, dispatches or edits — so it is safe
+to run at the top of any session, on a shared checkout, or in a loop.
+
+This is the one surviving half of what used to be `bin/adopt prime`, the body
+of a Claude Code SessionStart hook that bin/adopt installed into
+.claude/settings.json. That whole mechanism — a hashed managed block written
+into someone else's instruction file, a consent prompt, a settings.json edit,
+per-runner profiles — is gone. The PRINTING is what was actually worth having,
+and it is worth having as a command a human or an agent can just run.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+# ENTROPY_HOME is the harness DIRECTORY — where bin/tracker sits — which may be
+# the repo root or a subdirectory of it. Not a root and not a separate repo;
+# see lib/roots.sh.
+ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def entropy_root():
+    """Mirrors lib/roots.sh's entropy_root(): the repository's main checkout,
+    or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
+    prints a linked WORKTREE's own path; .entropy/ is gitignored and absent
+    from every worktree, so that would report an empty tracker as "0 ready"
+    rather than as an error. Falls back to walking up for entropy.json when
+    there is no git."""
+    try:
+        p = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        p = None
+    if p is not None and p.returncode == 0 and p.stdout.strip():
+        common = p.stdout.strip()
+        if not os.path.isabs(common):
+            common = os.path.join(os.getcwd(), common)
+        return os.path.realpath(os.path.join(common, os.pardir))
+    d = os.getcwd()
+    while True:
+        if os.path.exists(os.path.join(d, "entropy.json")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def docs_dir_for(root):
+    """entropy.json's docs.dir, defaulting to entropy-docs -- the same default
+    bin/init writes to and bin/serve reads from. Never raises."""
+    try:
+        with open(os.path.join(root, "entropy.json"), encoding="utf-8") as f:
+            cfg = json.load(f)
+        d = (cfg.get("docs") or {}).get("dir")
+        if isinstance(d, str) and d.strip():
+            return d.strip().strip("/")
+    except Exception:
+        pass
+    return "entropy-docs"
+
+
+def scan_unanswered_docs(root):
+    """Best-effort: dialogue docs in this harness's convention mark each
+    question with <div class="response" data-resp="KEY"> and record answers in
+    a <script id="responses-data"> JSON blob (see bin/serve,
+    lib/doc-template.html). Returns [(path, unanswered_count), ...] for docs
+    with at least one unanswered question. Never raises -- a doc this cannot
+    parse is skipped."""
+    # THE CONFIGURED DOCS DIRECTORY. bin/init installs the orientation PRD into
+    # docs.dir and bin/serve serves it from there; this must agree with both.
+    docs = os.path.join(root, docs_dir_for(root))
+    if not os.path.isdir(docs):
+        return []
+    out = []
+    resp_re = re.compile(r'class="response"[^>]*data-resp="([^"]+)"')
+    data_re = re.compile(r'<script[^>]*id="responses-data"[^>]*>(.*?)</script>', re.DOTALL)
+    for fname in sorted(os.listdir(docs)):
+        if not fname.endswith(".html"):
+            continue
+        path = os.path.join(docs, fname)
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+            # Strip HTML comments first. lib/doc-template.html's own header
+            # comment contains a literal data-resp example -- counting it made
+            # every doc built from the template report one phantom question
+            # nobody could ever answer, so a fully-answered doc kept nagging.
+            content = re.sub(r"<!--[\s\S]*?-->", "", content)
+            keys = set(resp_re.findall(content))
+            if not keys:
+                continue
+            m = data_re.search(content)
+            answered = set()
+            if m:
+                try:
+                    answered = {k for k, v in json.loads(m.group(1)).items() if str(v).strip()}
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+            unanswered_n = len(keys - answered)
+            if unanswered_n:
+                out.append((path, unanswered_n))
+        except OSError:
+            continue
+    return out
+
+
+def main(argv):
+    if argv and argv[0] in ("-h", "--help"):
+        print(__doc__.strip("\n"))
+        return 0
+    if argv:
+        print("usage: bin/status", file=sys.stderr)
+        return 2
+
+    root = entropy_root()
+    if not root or not os.path.isfile(os.path.join(root, "entropy.json")):
+        print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_HOME)
+        return 0
+
+    tracker = os.path.join(ENTROPY_HOME, "bin", "tracker")
+
+    def run_tracker(args):
+        try:
+            p = subprocess.run(
+                [tracker] + args, cwd=root, capture_output=True, text=True, timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if p.returncode != 0:
+            return None
+        return p.stdout
+
+    ready_out = run_tracker(["ready"])
+    if ready_out is None:
+        print("entropy-machines: tracker unavailable (bin/tracker ready failed)")
+    else:
+        ready = []
+        for line in ready_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ready.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        if ready:
+            print("entropy-machines: %d issue(s) ready -- `bin/tracker ready`" % len(ready))
+            for i in ready[:10]:
+                print("  %s  %s" % (i.get("id", "?"), i.get("title") or i.get("summary") or ""))
+            if len(ready) > 10:
+                print("  ... and %d more" % (len(ready) - 10))
+        else:
+            print("entropy-machines: 0 issues ready")
+
+    notes_out = run_tracker(["notes"])
+    if notes_out is not None:
+        state = {}
+        for line in notes_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            issue = rec.get("issue")
+            if not issue:
+                continue
+            verb = rec.get("verb")
+            if verb == "DISPATCH":
+                state[issue] = "dispatched"
+            elif verb == "HANDOFF":
+                state[issue] = "handed_off"
+        in_flight = [i for i, st in state.items() if st == "dispatched"]
+        if in_flight:
+            print("entropy-machines: %d issue(s) in flight (dispatched, not yet handed off): %s"
+                  % (len(in_flight), ", ".join(sorted(in_flight))))
+
+    unanswered = scan_unanswered_docs(root)
+    if unanswered:
+        total_q = sum(n for _, n in unanswered)
+        print("entropy-machines: %d unanswered question(s) across %d doc(s) in %s/:"
+              % (total_q, len(unanswered), docs_dir_for(root)))
+        for path, n in unanswered:
+            print("  %s -- %d unanswered" % (os.path.relpath(path, root), n))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
