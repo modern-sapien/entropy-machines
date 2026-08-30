@@ -90,7 +90,9 @@ the steps.
    ```
 
    If the port is taken it refuses, exits 1 and names the next one to try —
-   pass a port (`bin/serve 8788`).
+   pass a port (`bin/serve 8788`). Run `bin/doclint` first: docs here are local
+   files that never load anything from an external site, and it refuses one
+   that does.
 
 Give the human that URL and **stop**. Do not file issues, start project work, or
 answer the PRD's open questions — a PRD you answered yourself produces issues
@@ -104,6 +106,7 @@ nobody agreed to.
 | `bin/init` | Bootstrap; step 0. Refuses (exit 2) over an existing `entropy.json` unless given `--force`; an existing PRD is left alone on the same terms. Every refusal fires before any write. |
 | `bin/status` | Read-only, no arguments. Issues ready, issues dispatched with no handoff recorded, docs with unanswered questions. Run it at the start of a session. |
 | `bin/serve [port]` | A local web server (default 8787). `GET /` is a dashboard built from what `bin/tracker` and the notes log already know; `GET /<doc>.html` serves a doc from the docs directory with response boxes; `POST /__save` writes an answer back to disk; open docs poll and reload. See [SERVE.md](SERVE.md). |
+| `bin/doclint [path…]` | Gates the docs. Refuses a doc that references an external site (`http://`, `https://`, `//host`) or that has an `<h2>` with no answer box, no `#saveBtn` or no `#responses-data`. Exit 1 names file, line and problem; exit 2 means it could not read its input. Style is not checked — copy `lib/REPORT-TEMPLATE.html` and restyle it freely. |
 | `bin/dispatch`, `bin/handoff`, `bin/tracker` | The commands that move an issue through the cycle. See below. |
 | `agents/isolated-worker.md`, `agents/verifier.md` | Role prompts — Claude Code agent definitions. A different runner supplies the same discipline by hand; `isolated-worker.md` says what it has to reproduce. |
 | `doctrine/ROLES.md` | What each role does, and must never do. |

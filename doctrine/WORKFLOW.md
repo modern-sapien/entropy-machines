@@ -122,6 +122,14 @@ looks like is up to the project; the doctrine only requires that it names the
 issues the sprint delivered and the issues it opened, and gives the owner
 somewhere to respond section by section.
 
+**The report is a local HTML file in the project's docs directory** — served
+by `bin/serve`, answered in the browser, saved back to disk — never published
+to an external site and never loading anything from one. `bin/doclint` gates
+it: run it on the report before you hand over the URL, and it refuses a doc
+that references an off-machine origin or that has a section with no box to
+answer in. Copy `lib/REPORT-TEMPLATE.html` to start; its look is a default,
+not a rule.
+
 **Leave this stage when:** the owner ticks the sprint-close box. That tick is
 owner-only and there is no code path to it.
 

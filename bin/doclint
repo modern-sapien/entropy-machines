@@ -1,0 +1,460 @@
+#!/usr/bin/env python3
+"""doclint — refuse a doc that phones out, or that nobody can answer.
+
+    bin/doclint                    every *.html in the project's docs directory
+    bin/doclint <path> [<path>…]   those files (a directory expands to its *.html)
+
+Exit 0 clean, 1 with violations named, 2 refused (bad usage, unreadable input,
+no docs directory). Every problem found is reported, not just the first.
+
+WHAT IT ENFORCES, AND WHY THOSE TWO THINGS
+
+1. LOCAL ONLY. A report, plan or PRD in this factory is a file on this
+   machine, served by bin/serve, answered in a browser and saved back to disk.
+   It is never published to an external site and it never depends on one. So
+   any reference — an href, a src, a CSS url(), a string literal inside a
+   script — pointing at http://, https:// or a protocol-relative //host is
+   refused, naming the file, the line and the URL. A doc that loads something
+   from someone else's server stops working the moment it leaves this machine
+   or the machine goes offline, and it leaks the fact that it was opened.
+
+   This subsumes the remote-webfont case for the right reason: a Google Fonts
+   stylesheet is refused because it is remote, not because it is a font.
+
+   PROSE IS NOT A REFERENCE. Text that merely mentions a URL fetches nothing
+   and passes. So do data: URIs, blob:, mailto:, same-document #anchors, and
+   every relative or root-relative path.
+
+2. ANSWERABLE. A doc with nowhere to answer is a broadcast. Every <h2> gets an
+   answer box, the boxes have unique keys and a textarea each, and the page
+   carries the save button and the saved-answers JSON block that get an answer
+   from the browser onto disk. Miss any of those and the owner's typing dies
+   in the tab.
+
+   A section that is genuinely NOT for answering — orientation prose, a
+   findings page the agent fills in — says so in the markup: put
+   data-informational on its <h2> and this check skips it. That is a
+   declaration, not a switch: it is visible in the file, it is per-section,
+   and writing it is a claim that nobody is expected to respond there. There
+   is no flag, no env var and no whole-file exemption, because the failure
+   this rule exists to catch is a doc that LOOKS answerable and is not.
+
+WHAT IT DELIBERATELY DOES NOT ENFORCE: the look. Colours, fonts, type scale,
+layout, whether there is a theme toggle — all of it is the author's. The house
+style in lib/REPORT-TEMPLATE.html is a good default and a starting point, not
+a conformance target. Somebody using this harness may want a report that looks
+nothing like ours, and that is fine; a report that fetches from the internet is
+not.
+
+TARGETED REGEX, NOT AN HTML PARSER. Deliberate, and the same thing the rest of
+this harness does (bin/serve's save merge and answer counts, bin/status's
+unanswered scan): the questions asked here are lexical — does this attribute
+value name a remote origin, is there an answer box between these two headings
+— and vendoring a parser to answer them would add a dependency to a harness
+that has none. The cost is real and bounded: exotic markup (an attribute value
+split across a CDATA section, a URL assembled at runtime from fragments) can
+slip past. A doc built by hand or from the template does not do those things.
+
+HTML COMMENTS ARE MASKED BEFORE ANYTHING IS COUNTED. A commented-out remote
+link loads nothing, and — the expensive half — a comment that DOCUMENTS the
+answer-box markup is not a question. lib/doc-template.html once carried a
+literal example in its header comment; every regex reader of these docs counted
+it, so each doc reported one phantom unanswered question nobody could answer
+and "fully answered" was unreachable. Masking keeps line numbers intact.
+"""
+import os
+import re
+import sys
+
+# ENTROPY_HOME is the harness DIRECTORY — where lib/config.py sits — which may
+# be the repo root or a subdirectory of it. Not a root and not a separate repo;
+# see lib/roots.sh.
+ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
+import config  # noqa: E402  -- needs ENTROPY_HOME on the path first
+
+
+# ---------------------------------------------------------------------------
+# lexing helpers
+# ---------------------------------------------------------------------------
+_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+
+
+def mask_comments(text):
+    """Blank every HTML comment, preserving length and newlines so offsets and
+    line numbers still refer to the real file."""
+    def blank(m):
+        return "".join("\n" if c == "\n" else " " for c in m.group(0))
+    return _COMMENT_RE.sub(blank, text)
+
+
+def line_of(text, offset):
+    return text.count("\n", 0, offset) + 1
+
+
+# ---------------------------------------------------------------------------
+# rule 1 — no external references
+# ---------------------------------------------------------------------------
+# Attributes whose value the browser FETCHES. `data` is <object data=…>.
+_URL_ATTRS = (
+    "href|src|srcset|action|formaction|poster|cite|ping|manifest|data|background|longdesc"
+)
+_ATTR_RE = re.compile(
+    r"\b(" + _URL_ATTRS + r")\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>\"'`]+))",
+    re.I,
+)
+_URL_FN_RE = re.compile(r"url\(\s*(?:\"([^\"]*)\"|'([^']*)'|([^)\s]*))\s*\)", re.I)
+_IMPORT_RE = re.compile(r"@import\s+(?:\"([^\"]*)\"|'([^']*)')", re.I)
+_SCRIPT_RE = re.compile(r"<script\b[^>]*>([\s\S]*?)</script>", re.I)
+_STRING_RE = re.compile(r"\"([^\"\n]*)\"|'([^'\n]*)'|`([^`]*)`")
+
+# http/https/ftp/ws and friends are off-machine by definition. file: is not
+# checked here: it is a local path, brittle but not a request to somebody
+# else's server, and this rule is about the latter.
+_REMOTE_SCHEME_RE = re.compile(r"^(?:https?|ftps?|wss?)://", re.I)
+# Protocol-relative //host/path inherits the page's scheme and is a remote
+# fetch when the page is served over http, which is exactly how bin/serve
+# serves it. Requires a host character so a bare "//" string in script code is
+# not mistaken for one.
+_PROTOCOL_RELATIVE_RE = re.compile(r"^//[A-Za-z0-9]")
+
+
+def remote_target(value):
+    """The URL if this reference leaves the machine, else None."""
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if _REMOTE_SCHEME_RE.match(v) or _PROTOCOL_RELATIVE_RE.match(v):
+        return v
+    return None
+
+
+def _group(m):
+    """The first non-None capture — the quoted or unquoted value."""
+    for g in m.groups()[1:] if m.re is _ATTR_RE else m.groups():
+        if g is not None:
+            return g
+    return None
+
+
+def check_external(masked, findings):
+    seen = set()
+
+    def flag(offset, url, where):
+        key = (offset, url)
+        if key in seen:
+            return
+        seen.add(key)
+        findings.append((
+            line_of(masked, offset),
+            "external-reference",
+            "%s points off this machine: %s" % (where, url),
+        ))
+
+    for m in _ATTR_RE.finditer(masked):
+        attr = m.group(1).lower()
+        value = _group(m)
+        if value is None:
+            continue
+        # srcset holds a comma-separated candidate list, each "<url> <descriptor>".
+        candidates = [c.strip().split()[0] for c in value.split(",") if c.strip()] \
+            if attr == "srcset" else [value]
+        for c in candidates:
+            url = remote_target(c)
+            if url:
+                flag(m.start(), url, "%s=" % attr)
+
+    for m in _URL_FN_RE.finditer(masked):
+        url = remote_target(_group(m))
+        if url:
+            flag(m.start(), url, "css url()")
+
+    for m in _IMPORT_RE.finditer(masked):
+        url = remote_target(_group(m))
+        if url:
+            flag(m.start(), url, "@import")
+
+    # Inside a script, any string literal naming a remote origin is a fetch
+    # waiting to happen — fetch(), XHR, import(), new Worker(), an <img>.src
+    # assignment. Matching string LITERALS and not bare text is what keeps a
+    # `// comment` from reading as a protocol-relative URL.
+    for block in _SCRIPT_RE.finditer(masked):
+        body = block.group(1)
+        base = block.start(1)
+        for m in _STRING_RE.finditer(body):
+            url = remote_target(_group(m))
+            if url:
+                flag(base + m.start(), url, "script string")
+
+
+# ---------------------------------------------------------------------------
+# rule 2 — the doc is answerable
+# ---------------------------------------------------------------------------
+_H2_RE = re.compile(r"<h2\b([^>]*)>([\s\S]*?)</h2>", re.I)
+# An <h2 data-informational> declares "nobody is expected to answer here".
+_INFORMATIONAL_RE = re.compile(r"\bdata-informational\b", re.I)
+_RESP_TAG_RE = re.compile(r"<[a-zA-Z][a-zA-Z0-9]*\b[^>]*\bdata-resp\s*=\s*\"([^\"]+)\"[^>]*>")
+_CLASS_RE = re.compile(r"\bclass\s*=\s*\"([^\"]*)\"", re.I)
+_SAVE_BTN_RE = re.compile(r"\bid\s*=\s*[\"']saveBtn[\"']")
+_RESP_DATA_RE = re.compile(r"\bid\s*=\s*[\"']responses-data[\"']")
+# The exact shape bin/serve's merge() rewrites. A different attribute order or
+# a missing type= means a saved answer never reaches the mirror block, so the
+# answer counters keep reporting the question as open after it was answered.
+_RESP_DATA_EXACT_RE = re.compile(
+    r"<script type=\"application/json\" id=\"responses-data\">", re.I
+)
+_TEXTAREA_RE = re.compile(r"<textarea\b", re.I)
+_TAGS_RE = re.compile(r"<[^>]+>")
+
+
+def check_answerable(masked, findings):
+    boxes = list(_RESP_TAG_RE.finditer(masked))
+
+    if not boxes:
+        findings.append((
+            1, "no-answer-boxes",
+            "no answer box anywhere — this is a broadcast, not a doc anyone "
+            "can respond to",
+        ))
+    else:
+        seen_keys = {}
+        for i, m in enumerate(boxes):
+            key = m.group(1)
+            line = line_of(masked, m.start())
+            if key in seen_keys:
+                findings.append((
+                    line, "duplicate-key",
+                    "answer key %r is already used on line %d — the second "
+                    "answer overwrites the first on save" % (key, seen_keys[key]),
+                ))
+            else:
+                seen_keys[key] = line
+
+            cls = _CLASS_RE.search(m.group(0))
+            if not cls or "response" not in cls.group(1).split():
+                findings.append((
+                    line, "answer-box-missing-class",
+                    "the box for %r has no class=\"response\" — bin/status "
+                    "will not count it" % key,
+                ))
+
+            end = boxes[i + 1].start() if i + 1 < len(boxes) else len(masked)
+            if not _TEXTAREA_RE.search(masked, m.end(), end):
+                findings.append((
+                    line, "empty-answer-box",
+                    "the box for %r has no <textarea> — there is nothing to "
+                    "type into" % key,
+                ))
+
+    box_starts = [m.start() for m in boxes]
+    heads = list(_H2_RE.finditer(masked))
+    for i, h in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(masked)
+        if any(h.end() <= s < end for s in box_starts):
+            continue
+        if _INFORMATIONAL_RE.search(h.group(1)):
+            continue  # declared not-for-answering, in the markup itself
+        title = " ".join(_TAGS_RE.sub("", h.group(2)).split()) or "(untitled)"
+        findings.append((
+            line_of(masked, h.start()), "no-answer-box",
+            "the section %r has no answer box under it — add one, or mark the "
+            "heading data-informational if nobody is meant to answer there"
+            % title[:60],
+        ))
+
+    if not _SAVE_BTN_RE.search(masked):
+        findings.append((
+            1, "no-save-button",
+            "no element with id=\"saveBtn\" — nothing can write the answers to "
+            "disk, so they die in the browser",
+        ))
+    if not _RESP_DATA_RE.search(masked):
+        findings.append((
+            1, "no-responses-data",
+            "no <script type=\"application/json\" id=\"responses-data\"> block "
+            "— bin/serve has nowhere to mirror the saved answers",
+        ))
+    elif not _RESP_DATA_EXACT_RE.search(masked):
+        findings.append((
+            1, "responses-data-shape",
+            "the responses-data block is not the exact shape bin/serve "
+            "rewrites — it must read: "
+            "<script type=\"application/json\" id=\"responses-data\">",
+        ))
+
+
+# ---------------------------------------------------------------------------
+# driving it
+# ---------------------------------------------------------------------------
+_SCRIPT_BODY_RE = re.compile(r"(<script\b[^>]*>)([\s\S]*?)(</script\s*>)", re.I)
+_GENERATED_RE = re.compile(r"<html\b[^>]*\bdata-generated\b", re.I)
+
+
+def mask_script_bodies(text):
+    """Blank the INSIDE of every <script>, preserving offsets.
+
+    check_answerable counts <h2> tags, and a generator that builds markup in JS
+    has `'<h2>' + title` in a string literal. Those were reported as sections
+    with no answer box: a rule firing on code that is not markup. The script
+    TAGS stay visible because check_external still has to see src= and any
+    remote URL inside the body.
+    """
+    def blank(m):
+        body = "".join("\n" if c == "\n" else " " for c in m.group(2))
+        return m.group(1) + body + m.group(3)
+    return _SCRIPT_BODY_RE.sub(blank, text)
+
+
+def is_generated(text):
+    """True when the root element declares data-generated.
+
+    A generated read-only view — bin/tracker render's TRACKER.html — legitimately
+    has no answer boxes: it is a report of state, regenerated on demand, and hand
+    edits to it are discarded. The ANSWERABILITY rule does not apply to it. The
+    external-reference rule still does, and is the one that actually matters:
+    generated or not, a doc that phones out is not a local doc.
+
+    Declared in the markup on the root element, not a flag and not a filename
+    allow-list, so the exemption travels with the document and is visible to
+    anyone reading it.
+    """
+    return bool(_GENERATED_RE.search(text))
+
+
+def lint_file(path):
+    """[(line, code, message), …], or None if the file could not be read.
+
+    None is not "clean" — a gate that cannot read its input must say so. The
+    caller turns it into a refusal.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+    masked = mask_comments(text)
+    findings = []
+    check_external(masked, findings)
+    if not is_generated(masked):
+        check_answerable(mask_script_bodies(masked), findings)
+    findings.sort(key=lambda f: (f[0], f[1]))
+    return findings
+
+
+def html_files_in(directory):
+    try:
+        return [os.path.join(directory, n)
+                for n in sorted(os.listdir(directory)) if n.endswith(".html")]
+    except OSError:
+        return None
+
+
+def docs_dir(cfg):
+    d = (cfg.get("docs") or {}).get("dir")
+    if isinstance(d, str) and d.strip():
+        d = d.strip()
+    else:
+        # Same default bin/init writes and bin/serve serves from. docs.dir has
+        # no entry in lib/config.py's DEFAULTS; that shared file is not this
+        # tool's to extend, so the fallback lives here exactly as it does in
+        # bin/serve and bin/status.
+        d = "entropy-docs"
+    return d if os.path.isabs(d) else os.path.join(cfg["_root"], d.strip("/"))
+
+
+def refuse(msg, *more):
+    sys.stderr.write("doclint: REFUSED — %s\n" % msg)
+    for line in more:
+        sys.stderr.write("  %s\n" % line)
+    return 2
+
+
+def main(argv):
+    if argv and argv[0] in ("-h", "--help"):
+        print(__doc__.strip("\n"))
+        return 0
+    for a in argv:
+        if a.startswith("-"):
+            sys.stderr.write("usage: bin/doclint [path…]\n")
+            return 2
+
+    config.refuse_nested_clone("doclint")
+
+    targets = []
+    if argv:
+        for a in argv:
+            if os.path.isdir(a):
+                found = html_files_in(a)
+                if found is None:
+                    return refuse("cannot read the directory %s." % a)
+                if not found:
+                    return refuse("no .html files in %s; nothing was checked." % a)
+                targets.extend(found)
+            elif os.path.isfile(a):
+                targets.append(a)
+            else:
+                return refuse("no such file: %s." % a,
+                              "Nothing was checked — an unreadable input is not a pass.")
+    else:
+        cfg = config.load_config()
+        if not cfg["_path"]:
+            return refuse("no entropy.json at %s." % cfg["_root"],
+                          "Run bin/init, or name the docs to check explicitly:",
+                          "  bin/doclint path/to/doc.html")
+        d = docs_dir(cfg)
+        if not os.path.isdir(d):
+            return refuse("the docs directory %s does not exist." % d,
+                          "That is docs.dir in entropy.json. Nothing was checked.")
+        found = html_files_in(d)
+        if found is None:
+            return refuse("cannot read the docs directory %s." % d)
+        if not found:
+            return refuse("no .html docs in %s; nothing was checked." % d,
+                          "This is a DECLINE, not a pass — a gate with no input",
+                          "must not report success.")
+        targets = found
+
+    total = 0
+    bad_files = 0
+    for path in targets:
+        findings = lint_file(path)
+        if findings is None:
+            return refuse("cannot read %s." % path,
+                          "Nothing was checked — an unreadable input is not a pass.")
+        if not findings:
+            continue
+        bad_files += 1
+        total += len(findings)
+        for line, code, msg in findings:
+            print("%s:%d: %s: %s" % (path, line, code, msg))
+
+    if total:
+        print("")
+        print("doclint: REFUSED — %d problem(s) in %d of %d doc(s)."
+              % (total, bad_files, len(targets)))
+        print("  A doc in this factory is a LOCAL file that the owner can "
+              "answer in place.")
+        print("  It never fetches from an external site, and every section "
+              "has a box to")
+        print("  answer in. Start from lib/REPORT-TEMPLATE.html. The look is "
+              "yours; these")
+        print("  two rules are not.")
+        return 1
+
+    print("doclint: %d doc(s) checked, all local and answerable." % len(targets))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as exc:  # noqa: BLE001
+        # A gate that dies must REFUSE, never look like a pass and never exit
+        # via a traceback. lib/handoff-guard.sh was found doing exactly that.
+        sys.stderr.write("doclint: REFUSED — could not complete the check (%s: %s).\n"
+                         % (type(exc).__name__, exc))
+        sys.exit(2)

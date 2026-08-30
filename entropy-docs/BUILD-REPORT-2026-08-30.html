@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build report — entropy-machines readiness — 2026-08-30</title>
+<style>
+/* Palette = VS Code High Contrast (hc-black / hc-light).
+   Rules: separate with borders never tints; focus/active is its own hue and is
+   a border; never encode state in opacity. Type: 12/14/16/20, nothing below 12. */
+:root{
+  --bg:#000; --panel:#000;
+  --ink:#fff; --dim:rgba(255,255,255,.7);
+  --line:#6FC3DF;            /* contrastBorder */
+  --focus:#F38518;           /* focusBorder / activeContrastBorder */
+  --accent:#21A6FF;          /* textLink.foreground */
+  --ok:#23D18B; --warn:#F5F543; --bad:#F48771; --alt:#D670D6;
+  --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
+  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+}
+:root[data-theme=light]{
+  --bg:#fff; --panel:#fff;
+  --ink:#292929; --dim:rgba(41,41,41,.75);
+  --line:#0F4A85; --focus:#006BBD; --accent:#0F4A85;
+  --ok:#0A5C21; --warn:#7A4A00; --bad:#A81C0B; --alt:#6B21A8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+h1{font-size:var(--fs-title);font-weight:700;margin:0 0 4px;line-height:1.3}
+h2{font-size:var(--fs-head);font-weight:700;margin:32px 0 8px;letter-spacing:.2px}
+h3{font-size:var(--fs-base);font-weight:700;margin:20px 0 6px}
+p,li,td,th{font-size:var(--fs-base)}
+.sub,.meta,figcaption{font-size:var(--fs-sm);color:var(--ink)}
+.eyebrow{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;margin:0 0 6px}
+code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+  border-radius:2px;padding:0 4px}
+h1 code{font-size:var(--fs-head)}
+pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+  border-radius:4px;padding:10px 12px;overflow-x:auto;line-height:1.5}
+pre code{border:0;padding:0;font-size:inherit}
+
+header{border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:8px;
+  display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header .sub{margin:0}
+#theme{margin-left:auto;background:var(--panel);border:1px solid var(--line);
+  color:var(--ink);border-radius:4px;padding:6px 10px;cursor:pointer;
+  font-family:inherit;font-size:var(--fs-sm);font-weight:600}
+#theme:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+
+.pill{display:inline-block;font-size:var(--fs-sm);font-weight:700;padding:1px 8px;
+  border-radius:10px;border:1px solid var(--line);color:var(--ink)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.warn{color:var(--warn);border-color:var(--warn)}
+.pill.bad{color:var(--bad);border-color:var(--bad)}
+.pill.alt{color:var(--alt);border-color:var(--alt)}
+
+.card{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin:12px 0}
+.card > :first-child{margin-top:0}
+.card > :last-child{margin-bottom:0}
+.card.flag{border-color:var(--focus)}
+table{width:100%;border-collapse:collapse;margin:12px 0;
+  display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{font-weight:700}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ul,ol{padding-left:20px}
+li{margin:3px 0}
+hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+
+nav{border:1px solid var(--line);padding:10px 12px;margin:0 0 22px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em}
+
+.links{border:1px solid var(--line);padding:8px 12px;margin:0 0 18px;
+  display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.links .k{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--dim)}
+.links a{font-family:var(--mono);font-size:var(--fs-sm);text-decoration:none;
+  border:1px solid var(--line);padding:1px 6px}
+.links a:hover{border-color:currentColor}
+.links .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
+
+.response{border:1px solid var(--line);padding:12px 14px;margin:16px 0}
+.response label{display:block;font-size:var(--fs-sm);font-weight:700;
+  text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}
+.response .discuss{font-size:var(--fs-base);margin:0 0 10px}
+.response textarea{display:block;width:100%;min-height:76px;padding:8px;
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  font:var(--fs-base)/1.5 var(--mono);resize:vertical}
+.response textarea:focus-visible{outline:none;border-color:var(--focus);
+  box-shadow:inset 0 0 0 1px var(--focus)}
+.savebar{position:fixed;bottom:14px;right:19px;display:flex;align-items:center;
+  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--line);
+  padding:7px 9px 7px 16px}
+.savebar .stat{font-size:var(--fs-sm)}
+.savebar button{font:700 var(--fs-base) inherit;cursor:pointer;
+  border:1px solid var(--line);background:none;color:var(--ink);padding:6px 14px}
+.savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+.savebar button.ghost{padding:6px 10px}
+</style></head>
+<body>
+<main>
+
+<nav aria-label="document">
+  <div class="brand">Build report · 2026-08-30</div>
+</nav>
+
+<header>
+  <div>
+    <h1>entropy-machines — is it shareable?</h1>
+    <p class="sub">Export of the factory · 9 commits, unpushed on <code>main</code> · verified by re-running, not by relaying</p>
+  </div>
+  <button id="theme">◐ theme</button>
+</header>
+
+<div class="links">
+  <span class="k">opens</span>
+  <span class="grp">
+    <a href="#i-prd-first-contact">i-prd-first-contact</a>
+    <a href="#i-audit-modes-ci">i-audit-modes-ci</a>
+    <a href="#i-worktree-dispatch">i-worktree-dispatch</a>
+    <a href="#i-drain-systemd">i-drain-systemd</a>
+    <a href="#i-suite-runtime">i-suite-runtime</a>
+    <a href="#i-npm-publish">i-npm-publish</a>
+  </span>
+  <span class="k">rulings</span>
+  <span class="grp"><a href="PRD-001-orientation.html">prd-001</a></span>
+</div>
+
+<p><span class="pill ok">usable</span> A developer can vendor the files, tell their
+agent to read one document, and have a working factory with gates that actually
+refuse things. <strong>Nobody but me has ever run it</strong> — that is the whole
+of the risk, and it does not shrink by waiting.</p>
+
+<h2>Landed</h2>
+
+<p><strong>The harness collapsed to one root.</strong> It was going to install as a
+nested <code>git clone</code> inside your project. A nested repo shadows its parent
+for every git query, so "which repo am I in" stopped having one answer — and ~1,000
+lines existed to survive that: two roots, drift detection, a worktree path-resolution
+scheme, and <code>bin/adopt</code>, a 1,072-line installer writing hash-fenced managed
+blocks into three config formats plus a session hook in <code>.claude/settings.json</code>.</p>
+
+<p>Vendoring as plain tracked files removes the second root, and everything hanging
+off it went with it. <strong>Net −983 lines.</strong> A nested clone is now refused by
+name rather than accommodated. What replaced the installer is a paragraph the agent
+writes itself.</p>
+
+<ul>
+  <li><code>bin/status</code> — live state (ready, in flight, unanswered docs) as a read that writes nothing.</li>
+  <li><code>package.json</code> + <code>bin/entropy-machines-init</code> — <code>npx entropy-machines init</code>. 44 files, no <code>.git</code>, name verified free. Never published.</li>
+  <li><code>tests/</code> — 22 black-box cases, the first this project has had.</li>
+  <li>Onboarding is two human steps: get the files, then one sentence to your agent.</li>
+</ul>
+
+<div class="response" data-resp="s-landed">
+  <label>On what landed</label>
+  <div class="discuss">The installer is gone and the agent writes its own pointer paragraph. Is that the right trade, or do you want state pushed at the agent each session?</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2>Verified</h2>
+
+<table>
+  <thead><tr><th>Check</th><th>Command</th><th class="num">Result</th></tr></thead>
+  <tbody>
+    <tr><td>Test suite</td><td><code>./tests/run</code></td><td class="num">22 / 0 · 291s</td></tr>
+    <tr><td>Vendored at repo root</td><td><code>bin/init</code>, <code>bin/status</code></td><td class="num">pass</td></tr>
+    <tr><td>Vendored in a subdirectory</td><td>same</td><td class="num">pass</td></tr>
+    <tr><td>Nested git clone</td><td>all four entry points</td><td class="num">refused, rc 2</td></tr>
+    <tr><td>Self-hosting (this repo)</td><td><code>bin/init</code></td><td class="num">not refused</td></tr>
+    <tr><td>From a linked worktree</td><td><code>bin/tracker ready</code></td><td class="num">reads main checkout</td></tr>
+    <tr><td>npm tarball</td><td><code>npm pack --dry-run</code></td><td class="num">44 files, no .git</td></tr>
+  </tbody>
+</table>
+
+<h3>Three gates were dead and looked fine</h3>
+<p>All three had been reported as working. All three were found by re-running the
+claim with a control, not by reading the report.</p>
+<ul>
+  <li><strong>The commit guard exited on a traceback</strong> instead of a verdict — it
+  read a pretty-printed store as JSONL. Fixing only the crash turned it into a gate
+  that silently passed everything, which is worse; caught only because the control ran too.</li>
+  <li><strong>Handoff couldn't read dispatch's notes.</strong> An out-of-scope file was
+  copied without comment four seconds after dispatch recorded the note forbidding it.
+  A denylisted file was overwritten after dispatch printed <code>ENFORCED denylist</code>.
+  Claims were never released, so issues showed in flight forever.</li>
+  <li><strong>A date format I invented, shipped hours earlier.</strong>
+  <code>--date=format-utc:</code> is not a git format. Both audit modes — the ones CI
+  would run — printed <code>fatal:</code> and exited zero. The 21-case suite stayed
+  green through it, because every existing test drove hook mode. That gap is case 22.</li>
+</ul>
+
+<p class="meta"><strong>Not run:</strong> Linux or Windows; a monorepo; a repo with
+submodules or an existing <code>core.hooksPath</code>; a non-Claude agent following the
+doctrine; the launchd scheduler install end to end. An unmentioned gap reads as a
+passing check, so those are the gaps.</p>
+
+<div class="response" data-resp="s-verified">
+  <label>On the verification</label>
+  <div class="discuss">What would you have wanted run that was not?</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2>Your call</h2>
+
+<div class="card flag">
+  <p class="eyebrow">Decision needed</p>
+  <p><strong>Push it public now, or hold?</strong></p>
+  <p>I would push. Everything I can verify alone is verified, and the one remaining
+  risk — that it breaks in a repo unlike the ones I built — only resolves by someone
+  else running it. Holding buys no information.</p>
+  <p>Against: no CI, and the orientation PRD has never been answered by anyone but its
+  author, so its five questions may be the wrong five.</p>
+</div>
+
+<div class="response" data-resp="s-call">
+  <label>On the decision</label>
+  <div class="discuss">Push public, push private, or hold? Say which and I'll do it.</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2>Still open</h2>
+
+<ul>
+  <li id="i-prd-first-contact"><span class="pill warn">gated</span>
+  <code>i-prd-first-contact</code> — PRD-001 has never been answered by anyone but its
+  author. <span class="meta">not started · M · gated on prd-001</span></li>
+
+  <li id="i-audit-modes-ci"><span class="pill bad">open</span>
+  <code>i-audit-modes-ci</code> — nothing runs the suite automatically; today's dead
+  gate survived because no one was watching. <span class="meta">not started · S</span></li>
+
+  <li id="i-worktree-dispatch"><span class="pill bad">open</span>
+  <code>i-worktree-dispatch</code> — agents can't be isolated in worktrees when the
+  harness is vendored in a different repo than the session's.
+  <span class="meta">not started · M</span></li>
+
+  <li id="i-drain-systemd"><span class="pill bad">open</span>
+  <code>i-drain-systemd</code> — the scheduled-run installer is macOS/launchd only.
+  <span class="meta">not started · M</span></li>
+
+  <li id="i-suite-runtime"><span class="pill bad">open</span>
+  <code>i-suite-runtime</code> — 291s is slower than it should be; likely per-case
+  fixture cost. <span class="meta">not started · S</span></li>
+
+  <li id="i-npm-publish"><span class="pill bad">open</span>
+  <code>i-npm-publish</code> — package builds, name is free, never published.
+  <span class="meta">not started · S</span></li>
+</ul>
+
+<h3>One that isn't filed, because it's about how this was built</h3>
+<p>Every agent today ran with disjoint file scopes rather than in isolated worktrees —
+the Agent tool branches the session's repo, which was a different repo. They could see
+each other's uncommitted work, and one <code>git add -A</code> of mine swept a live
+agent's edits into an unrelated commit. Nothing was lost. But that is the exact hazard
+this project exists to prevent, and it happened while building it.</p>
+
+<div class="response" data-resp="s-open">
+  <label>On what is still open</label>
+  <div class="discuss">Which of these should jump the queue before anyone else depends on this?</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<hr>
+<pre><code>$ ./tests/run
+tests/run: 22 passed, 0 failed, in 291s
+
+$ git log --oneline 24daa14..HEAD
+6a1873f init entropy-machines on itself
+74140d1 tests: 22 black-box cases, and the one that catches today's bug
+b4f7e42 repair the dispatch/handoff note contract, and undo a bad UTC fix
+064a4aa fix init's small lies, and write down the layout rule
+f36ba1d refuse the nested-clone layout, and agree on what "root" means
+a23504a cut the systemd path, and fix two drain bugs it was hiding
+d2b419c docs(quickstart): baseline discovery is step 0's third action
+af0a463 collapse the harness to one root, and delete the installer
+bec32f9 checkpoint: nested-clone sprint, superseded by the one-root collapse</code></pre>
+
+</main>
+
+<div class="savebar">
+  <span class="stat" id="saveStat">Unsaved changes…</span>
+  <button class="ghost" id="clearBtn" title="Clear">✕</button>
+  <button id="saveBtn">💾 Save</button>
+</div>
+<script type="application/json" id="responses-data">{}</script>
+<script>
+  // Autosave to localStorage between saves, so typing survives a reload.
+  (function(){
+    var file=(location.pathname.split('/').pop()||'report').split('?')[0];
+    var KEY='entropy-'+file;
+    var boxes=[].slice.call(document.querySelectorAll('.response[data-resp] textarea'));
+    try{
+      var disk=JSON.parse(document.getElementById('responses-data').textContent||'{}');
+      var saved=JSON.parse(localStorage.getItem(KEY)||'{}');
+      boxes.forEach(function(t){
+        var k=t.closest('.response').getAttribute('data-resp');
+        if(!t.value.trim()) t.value = disk[k] || saved[k] || '';
+      });
+    }catch(e){}
+    function dump(){
+      var o={}; boxes.forEach(function(t){ o[t.closest('.response').getAttribute('data-resp')]=t.value; });
+      try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){}
+    }
+    boxes.forEach(function(t){ t.addEventListener('input', dump); });
+    var clear=document.getElementById('clearBtn');
+    if(clear) clear.addEventListener('click', function(){
+      boxes.forEach(function(t){ t.value=''; }); dump();
+      var st=document.getElementById('saveStat'); if(st) st.textContent='Cleared — press 💾 to write it';
+    });
+  })();
+</script>
+<script>
+  const r = document.documentElement;
+  try { if (localStorage.reportTheme) r.dataset.theme = localStorage.reportTheme; } catch(e){}
+  document.getElementById('theme').onclick = () => {
+    const next = r.dataset.theme === 'light' ? 'dark' : 'light';
+    r.dataset.theme = next;
+    try { localStorage.reportTheme = next; } catch(e){}
+  };
+</script>
+<script>
+  // 💾 posts back to bin/serve, which writes the answers into this file on disk.
+  (function(){
+    var btn=document.getElementById('saveBtn'), st=document.getElementById('saveStat');
+    if(!btn) return;
+    btn.addEventListener('click', function(){
+      var o={};
+      document.querySelectorAll('.response[data-resp]').forEach(function(el){
+        var t=el.querySelector('textarea'); if(t) o[el.getAttribute('data-resp')]=t.value;
+      });
+      var file=(location.pathname.split('/').pop()||'').split('?')[0];
+    fetch('/__save?file='+encodeURIComponent((location.pathname.split('/').pop()||'').split('?')[0]),
+      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); 
+        var el=document.getElementById('responses-data');
+        if(el) el.textContent=JSON.stringify(o,null,2);
+        document.getElementById('saveStat').textContent='Saved to disk'; })
+      .catch(function(e){ document.getElementById('saveStat').textContent='Save failed ('+e.message+')'; });
+    });
+  })();
+</script>
+</body></html>

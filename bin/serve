@@ -9,7 +9,9 @@
 #                                 already know; no new state.
 #   GET  /<doc>.html             a doc from the configured docs directory,
 #                                 with the Downloads-folder save always
-#                                 defeated (see SAVE_PATCH below).
+#                                 defeated (see SAVE_PATCH below), and the
+#                                 theme named by docs.theme INLINED into it
+#                                 (see THEME below).
 #   GET  /__docversion?file=<f>  {"reviews": "<hash>"} — polled by the doc's
 #                                 own baked-in reload watcher (see
 #                                 lib/doc-template.html's __docversion
@@ -53,6 +55,69 @@ case "$docs_dir" in
 esac
 mkdir -p "$docs_path"
 
+# ---------------------------------------------------------------------------
+# THEME. docs.theme names a file in lib/themes/, and its tokens are INLINED
+# into every doc served and into the dashboard — never <link>ed. A doc in this
+# factory is a standalone local file the owner may open straight off disk or
+# move somewhere else, and an external-looking stylesheet reference is the
+# exact thing bin/doclint exists to refuse.
+#
+# An unknown name is REFUSED here, before anything binds a port, and the
+# refusal lists what exists. No silent fallback: docs/CONFIG.md rule 2 says a
+# key with a bad value is refused by name, and a server that quietly served
+# the default would look identical to one that applied the theme.
+#
+# Like docs.dir above, docs.theme has no entry in lib/config.py's DEFAULTS —
+# that shared file is not this command's to extend — so a project that never
+# set it fails the lookup, and that failure IS the default path.
+# ---------------------------------------------------------------------------
+THEMES_DIR="$ENTROPY_HOME/lib/themes"
+
+list_themes() {
+  for _f in "$THEMES_DIR"/*.css; do
+    if [ -f "$_f" ]; then
+      _n=$(basename "$_f")
+      echo "    ${_n%.css}"
+    fi
+  done
+}
+
+if theme=$(python3 "$CONFIG_PY" get docs.theme 2>/dev/null); then
+  theme_source="docs.theme in entropy.json"
+else
+  theme="high-contrast"
+  theme_source="the default (docs.theme is not set)"
+fi
+
+theme_bad=""
+case "$theme" in
+  '') theme_bad="it is empty" ;;
+  */*) theme_bad="it contains a path separator" ;;
+  *..*) theme_bad="it contains .." ;;
+  .*) theme_bad="it starts with a dot" ;;
+esac
+if [ -n "$theme_bad" ]; then
+  echo "serve: REFUSED — docs.theme is not a usable theme name ($theme_bad): '$theme'." >&2
+  echo "  A theme is a NAME, resolved to $THEMES_DIR/<name>.css. Available:" >&2
+  list_themes >&2
+  exit 1
+fi
+
+theme_file="$THEMES_DIR/$theme.css"
+if [ ! -r "$theme_file" ]; then
+  echo "serve: REFUSED — no such theme '$theme' (from $theme_source)." >&2
+  echo "  Looked for: $theme_file" >&2
+  if [ -n "$(list_themes)" ]; then
+    echo "  Available themes:" >&2
+    list_themes >&2
+  else
+    echo "  No themes are installed — $THEMES_DIR holds no readable .css file." >&2
+  fi
+  echo "  Set docs.theme to one of those, or add that file. Nothing was served:" >&2
+  echo "  a theme that cannot be read is not silently replaced with another one." >&2
+  exit 1
+fi
+
 port="${1:-8787}"
 case "$port" in
   ''|*[!0-9]*)
@@ -66,6 +131,8 @@ export SERVE_DOCS_PATH="$docs_path"
 export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
 export SERVE_TRACKER="$TRACKER"
+export SERVE_THEME_NAME="$theme"
+export SERVE_THEME_FILE="$theme_file"
 export SERVE_NOTES_PY="$NOTES_PY"
 
 exec python3 - <<'PY'
@@ -96,6 +163,68 @@ DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
 PORT = int(os.environ["SERVE_PORT"])
 TRACKER = os.environ["SERVE_TRACKER"]
 NOTES_PY = os.environ["SERVE_NOTES_PY"]
+THEME_NAME = os.environ["SERVE_THEME_NAME"]
+THEME_FILE = os.environ["SERVE_THEME_FILE"]
+
+# ---------------------------------------------------------------------------
+# THEME — read ONCE, at startup, and refused loudly if it cannot be read.
+#
+# The shell half above already checked the name and the file's readability, so
+# reaching the except here means the file went away or turned unreadable
+# between that check and this read. Either way the server does not start: a
+# transform that cannot read its input must refuse, never pass its input
+# through unchanged. Serving the doc's own baked-in tokens after being told to
+# apply another theme is indistinguishable, in the browser, from a theme that
+# does not work.
+# ---------------------------------------------------------------------------
+try:
+    with open(THEME_FILE, encoding="utf-8") as _f:
+        THEME_CSS = _f.read()
+except (OSError, UnicodeDecodeError) as exc:
+    sys.stderr.write(
+        "serve: REFUSED — cannot read the theme '%s' at %s (%s).\n"
+        "  Nothing was served. A theme that cannot be read is not silently\n"
+        "  replaced with the doc's own tokens.\n" % (THEME_NAME, THEME_FILE, exc)
+    )
+    sys.exit(1)
+
+if not THEME_CSS.strip():
+    sys.stderr.write(
+        "serve: REFUSED — the theme '%s' at %s is empty.\n"
+        "  A theme file is a :root token block; an empty one would leave every\n"
+        "  doc with no colours and no type scale at all.\n" % (THEME_NAME, THEME_FILE)
+    )
+    sys.exit(1)
+
+# The span a doc hands over to the theme. Everything between the two markers is
+# replaced, the markers themselves are kept, and NOTHING else in the file is
+# touched — no regex over the doc's CSS, no guessing at which :root rule is the
+# token block. A doc's structural CSS lives below the end marker and is shared
+# by every theme, which is the whole reason this ships themes and not a second
+# template. A doc with no markers is served exactly as it is, and said so in
+# the log, because the alternative is rewriting a span this never agreed on.
+THEME_BEGIN = "/* entropy-theme:begin */"
+THEME_END = "/* entropy-theme:end */"
+
+_unthemed_reported = set()
+
+
+def apply_theme(text: str, doc_name: str) -> str:
+    begin = text.find(THEME_BEGIN)
+    end = text.find(THEME_END, begin + len(THEME_BEGIN)) if begin != -1 else -1
+    if begin == -1 or end == -1:
+        if doc_name not in _unthemed_reported:
+            _unthemed_reported.add(doc_name)
+            sys.stderr.write(
+                "  theme '%s' NOT applied to %s — it has no %s / %s markers "
+                "around its token block; served with its own tokens.\n"
+                % (THEME_NAME, doc_name, THEME_BEGIN, THEME_END)
+            )
+        return text
+    head = text[: begin + len(THEME_BEGIN)]
+    body = THEME_CSS if THEME_CSS.endswith("\n") else THEME_CSS + "\n"
+    return head + "\n" + body + text[end:]
+
 
 # ---------------------------------------------------------------------------
 # save patch — injected at serve time, never written into a file. Keeping
@@ -333,22 +462,23 @@ def recent_notes(limit=20):
 # ---------------------------------------------------------------------------
 # dashboard page
 # ---------------------------------------------------------------------------
+# The dashboard is a viewable interface too, so it wears the same theme the
+# docs do — same tokens, same file, no second palette to keep in step. The
+# names it uses that a theme does not define (--fg, --link, --negative, --font)
+# are mapped onto theme tokens right after, as var() references so they follow
+# the toggle on their own.
 PAGE_HEAD = """<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>the factory</title>
 <style>
+/* entropy-theme:begin */
+__THEME__
+/* entropy-theme:end */
   :root{
-    --bg:#FFFFFF; --fg:#292929; --border:#0F4A85; --focus:#006BBD; --link:#0F4A85;
-    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
-    --fs-sm:14px; --fs-base:17px; --fs-head:21px; --fs-title:30px;
+    --fg:var(--ink); --link:var(--accent); --negative:var(--bad);
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#000000; --fg:#FFFFFF; --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
-      --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6; }
   }
   *{box-sizing:border-box;}
   body{background:var(--bg);color:var(--fg);font:var(--fs-base)/1.5 var(--font);margin:0;padding:2rem 2.5rem 4rem;}
@@ -366,9 +496,36 @@ PAGE_HEAD = """<!doctype html>
   .pos{color:var(--positive);font-weight:700;}
   .caution{color:var(--caution);font-weight:700;}
   .unavailable{border:2px solid var(--negative);padding:.7rem 1rem;font-weight:700;}
+  #theme{float:right;background:none;border:1px solid var(--border);color:var(--fg);
+    padding:.35rem .7rem;cursor:pointer;font:600 var(--fs-sm) var(--font);}
+  #theme:hover{box-shadow:inset 0 0 0 2px var(--focus);}
 </style>
+<script>
+  /* Both shipped themes name one state in the bare :root and the other under
+     [data-theme=…], so stamping the root is what makes BOTH directions
+     reachable whichever theme is inlined above. Same localStorage key the
+     docs use, so the dashboard and a doc agree. */
+  (function(){
+    var r=document.documentElement;
+    try{
+      r.dataset.theme = localStorage.reportTheme ||
+        (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    }catch(e){}
+  })();
+</script>
 </head><body>
-"""
+<button id="theme" type="button">&#9689; theme</button>
+<script>
+  (function(){
+    var r=document.documentElement, b=document.getElementById('theme');
+    b.onclick=function(){
+      var next = r.dataset.theme === 'light' ? 'dark' : 'light';
+      r.dataset.theme = next;
+      try{ localStorage.reportTheme = next; }catch(e){}
+    };
+  })();
+</script>
+""".replace("__THEME__", THEME_CSS.rstrip("\n"))
 
 PAGE_TAIL = "</body></html>\n"
 
@@ -497,6 +654,7 @@ class Handler(BaseHTTPRequestHandler):
         if target is not None and os.path.isfile(target):
             with open(target, encoding="utf-8") as f:
                 body = f.read()
+            body = apply_theme(body, name)
             if "</body>" in body:
                 body = body.replace("</body>", SAVE_PATCH + "</body>", 1)
             else:
@@ -554,6 +712,7 @@ def main():
     # it is killed. The URL is the one thing this command exists to produce.
     print("serving %s on http://localhost:%d" % (ENTROPY_ROOT, PORT), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
+    print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

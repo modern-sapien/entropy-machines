@@ -41,9 +41,12 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
   },
 
   // Where planning docs live: what bin/serve serves, where bin/init drops
-  // PRD-001, and where bin/status looks for unanswered questions. Defaults to
-  // "entropy-docs" when absent.
-  "docs": { "dir": "entropy-docs" },
+  // PRD-001, and where bin/status looks for unanswered questions. `dir`
+  // defaults to "entropy-docs" when absent. `theme` NAMES a file in
+  // lib/themes/ — "high-contrast" (the default) or "daylight" — whose tokens
+  // bin/serve inlines into every doc it serves and into its own dashboard.
+  // An unknown name is refused, listing what exists. See "Themes" below.
+  "docs": { "dir": "entropy-docs", "theme": "high-contrast" },
 
   // What "the suites" means here. post-fold-audit and the verifier run these.
   // "tag" groups them: a tag can be skipped with --skip <tag>.
@@ -91,6 +94,52 @@ one. Completing it is one of the issues the orientation PRD asks you to file.
   }
 }
 ```
+
+## Themes
+
+`docs.theme` is a NAME, resolved to `lib/themes/<name>.css`. Two ship:
+
+| name | what it is |
+|---|---|
+| `high-contrast` | the default and the house style — VS Code hc-black, with hc-light on the theme toggle. 12/14/16/20. |
+| `daylight` | light-first, softer and lower-contrast, for reading a long report end to end. Warm paper ground, quiet rules, 13/16/20/28, and a dark state on the toggle. |
+
+A theme file is a `:root { … }` token block and nothing else — no layout, no
+component rules, no `@font-face`, no remote URL of any kind. Layout lives in
+the templates, so every theme gets a structural fix for free; that is the
+whole reason this ships themes rather than a second template, which would
+have to be fixed twice and would drift.
+
+**The tokens are the contract.** Every theme defines the same names, and every
+one of them has a real value in the bare `:root`:
+
+`--bg --panel --ink --dim --line --focus --accent --ok --warn --bad --alt`,
+the four type steps `--fs-sm --fs-base --fs-head --fs-title`, `--mono`, and
+the aliases older docs use — `--positive --good --muted --border --caution
+--warn-deep --code-bg`. A token defined ONLY under a `[data-theme=…]` block
+renders unstyled in the default state; `tests/cases/themes-ship-and-apply.sh`
+compares the two files' name sets for exactly that reason.
+
+Each theme names one state in the bare `:root` and the other under
+`[data-theme=…]` — high-contrast is dark-first, daylight is light-first — so
+the toggle works in both directions under either.
+
+**It is inlined, never linked.** A doc here is a standalone local file the
+owner may open straight off disk or move somewhere else, and `bin/doclint`
+refuses any reference that points off this machine. So `bin/serve` splices the
+theme's text into the page it serves, between the doc's
+
+    /* entropy-theme:begin */   …   /* entropy-theme:end */
+
+markers — the markers are kept, the span between them is replaced, and nothing
+else in the file is touched. `lib/REPORT-TEMPLATE.html` carries the
+high-contrast tokens between those markers already, so a template opened
+without a server still looks right. A doc with no markers is served exactly as
+it is and `bin/serve` says so, by name, in its log: a transform that cannot
+find its input reports that rather than passing silently.
+
+Adding a third theme is one new file in `lib/themes/` defining those same
+names, and `docs.theme` pointed at it. Nothing else changes.
 
 ## Where the harness lives, and what "root" means
 

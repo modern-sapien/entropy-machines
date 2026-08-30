@@ -10,6 +10,13 @@
 #   bin/tracker claim i-foo
 #   bin/tracker ready
 #   bin/tracker set i-foo status=done
+#   bin/tracker render
+#
+# `render` is the ONE word this file answers itself. It is not a seventh
+# adapter operation and never reaches a backend: it writes TRACKER.html, a
+# read-only browsable view of the store, into docs.dir (lib/tracker-view.py).
+# Rendering is a view over what a backend already holds, so requiring it of
+# every future backend would be asking each one to ship an HTML generator.
 #
 # `tracker.backend` in entropy.json picks the implementation: "file" runs the
 # built-in lib/tracker-file over a flat JSON file, "command" shells out to an
@@ -45,6 +52,7 @@ usage: bin/tracker show <id>
        bin/tracker claim <id>
        bin/tracker ready
        bin/tracker set <id> <key>=<value> [<key>=<value> ...]
+       bin/tracker render
 EOF
   exit 2
 }
@@ -76,7 +84,13 @@ file_path = ((t.get("file") or {}).get("path")) or ".entropy/issues.json"
 command = t.get("command") or {}
 cmd_bin = command.get("bin") or ""
 cmd_args = " ".join(command.get("args") or [])
-print("\t".join([backend, file_path, cmd_bin, cmd_args]))
+# Fields 5 and 6 are for `render` only. They are read HERE, in the one place
+# this harness reads entropy.json per command (docs/CONFIG.md rule 3), rather
+# than in lib/tracker-view.py — which must stay as ignorant of the config file
+# as a backend is.
+docs_dir = ((cfg.get("docs") or {}).get("dir")) or "entropy-docs"
+project_name = ((cfg.get("project") or {}).get("name")) or ""
+print("\t".join([backend, file_path, cmd_bin, cmd_args, docs_dir, project_name]))
 PY
 ) || {
   echo "tracker: REFUSED — could not read tracker config out of $config." >&2
@@ -87,6 +101,29 @@ backend=$(printf '%s' "$info" | cut -f1)
 file_path=$(printf '%s' "$info" | cut -f2)
 cmd_bin=$(printf '%s' "$info" | cut -f3)
 cmd_args=$(printf '%s' "$info" | cut -f4)
+docs_dir=$(printf '%s' "$info" | cut -f5)
+project_name=$(printf '%s' "$info" | cut -f6)
+
+# RENDER IS INTERCEPTED HERE, before the backend dispatch, so no backend is
+# ever handed a word the six-command contract does not contain. It still runs
+# inside the same subshell guard everything else here does.
+if [ "$1" = "render" ]; then
+  shift
+  view="$ENTROPY_HOME/lib/tracker-view.py"
+  if [ ! -f "$view" ]; then
+    echo "tracker: REFUSED — bin/tracker render needs $view, which is missing." >&2
+    exit 2
+  fi
+  (
+    cd "$ENTROPY_ROOT" &&
+    ENTROPY_TRACKER_PATH="$file_path" \
+    ENTROPY_TRACKER_BACKEND="$backend" \
+    ENTROPY_DOCS_DIR="$docs_dir" \
+    ENTROPY_PROJECT_NAME="$project_name" \
+    exec python3 "$view" "$@"
+  )
+  exit $?
+fi
 
 case "$backend" in
   file)

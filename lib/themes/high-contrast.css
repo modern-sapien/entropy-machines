@@ -1,0 +1,36 @@
+/* high-contrast — the house style, and the default.
+   VS Code High Contrast: hc-black as the bare :root, hc-light on the toggle.
+   Lifted verbatim from what lib/REPORT-TEMPLATE.html has always shipped; the
+   values are established house style, not up for improvement here.
+
+   A THEME FILE IS TOKENS ONLY. No layout, no component rules, no @font-face
+   and no remote URL of any kind — the structural CSS stays in the templates
+   so both themes get every structural fix for free, and bin/doclint refuses
+   any doc that references something off this machine.
+
+   Selected by docs.theme in entropy.json (see docs/CONFIG.md). bin/serve
+   INLINES this file between a doc's entropy-theme:begin and entropy-theme:end
+   markers, and into its own dashboard. It is never linked to as a stylesheet:
+   a doc is a standalone local file that must still look right when it is
+   opened straight off disk or moved somewhere else. */
+:root{
+  --bg:#000; --panel:#000;
+  --ink:#fff; --dim:rgba(255,255,255,.7);
+  --line:#6FC3DF;            /* contrastBorder */
+  --focus:#F38518;           /* focusBorder / activeContrastBorder */
+  --accent:#21A6FF;          /* textLink.foreground */
+  --ok:#23D18B; --warn:#F5F543; --bad:#F48771; --alt:#D670D6;
+  --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
+  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+}
+/* The toggle stamps data-theme on the root element. hc-black is the bare
+   :root, so only the light state needs restating; [data-theme=dark] matches
+   nothing here and correctly falls through to the default. */
+:root[data-theme=light]{
+  --bg:#fff; --panel:#fff;
+  --ink:#292929; --dim:rgba(41,41,41,.75);
+  --line:#0F4A85; --focus:#006BBD; --accent:#0F4A85;
+  --ok:#0A5C21; --warn:#7A4A00; --bad:#A81C0B; --alt:#6B21A8;
+}

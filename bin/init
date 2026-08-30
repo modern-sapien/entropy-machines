@@ -220,6 +220,13 @@ case "$ENTROPY_HOME" in
   "$project"/?*) cmd_prefix="${ENTROPY_HOME#"$project"/}/bin" ;;
   *) cmd_prefix="$ENTROPY_HOME/bin" ;;
 esac
+# RENDER THE TRACKER, so PRD-001's one nav link resolves on day one. The PRD
+# links to TRACKER.html; nothing else creates it, and a first-run user opening
+# the first document the harness hands them would otherwise hit a 404 — which
+# is exactly the bug that made this necessary.
+"$ENTROPY_HOME/bin/tracker" render >/dev/null 2>&1 || \
+  echo "init: warning — could not render TRACKER.html; run \`$cmd_prefix/tracker render\`" >&2
+
 echo "init: tracker is live and empty — \`$cmd_prefix/tracker ready\` answers."
 echo "init: next — run \`$cmd_prefix/serve\` and answer the PRD it opens."
 echo "      Filing the issues it produces is step one."

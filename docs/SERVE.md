@@ -20,6 +20,55 @@ not for reading state — see `docs/QUICKSTART.md`.
 Anything else 404s. There is no directory listing and no serving of files
 outside the docs directory — this is not a general file server.
 
+## The rule: a doc is a local file, and it can be answered
+
+**No report, plan or PRD is ever published to an external website, and none
+of them may depend on one.** They are HTML files in the project's docs
+directory, served by `bin/serve` on `127.0.0.1`, answered in a browser and
+saved back to disk. Nothing leaves the machine. A doc that pulls a
+stylesheet, a font, a script or an image from someone else's server breaks
+the moment it is opened offline or moved to another machine, and it tells
+that server the doc was opened.
+
+The second half is what makes it a working surface rather than a broadcast:
+every section the owner is asked about has a box to answer in, and the page
+carries the save button and the answer-mirror block that get that answer onto
+disk.
+
+**Enforced by `bin/doclint`**, not by convention:
+
+    bin/doclint                    every *.html in docs.dir
+    bin/doclint <path> [<path>…]   those files (a directory expands to its *.html)
+
+It exits 1 and names the file, the line and the problem for a doc that:
+
+- references an off-machine origin — any `href`, `src`, CSS `url()` or script
+  string literal pointing at `http://`, `https://`, or a protocol-relative
+  `//host/path`. Prose that merely *mentions* a URL fetches nothing and
+  passes; so do `data:` URIs, relative paths and `#anchors`. Embed images as
+  `data:` URIs rather than linking them. A remote webfont is refused because
+  it is remote, not because it is a font.
+- has an `<h2>` with no answer box under it, two boxes sharing one key (the
+  second overwrites the first on save), or a box with no `<textarea>`.
+- is missing `#saveBtn` or the `#responses-data` block — either one means the
+  owner's typing dies in the tab.
+
+A section nobody is meant to answer says so in the markup: `data-informational`
+on its `<h2>` and the answer-box check skips it. Per-section and visible in
+the file; there is no flag and no whole-file exemption, because the failure
+being caught is a doc that *looks* answerable and is not.
+
+`bin/doclint` exits 2 — a refusal, not a pass — when it cannot read its input:
+a missing file, an unreadable or absent docs directory, a docs directory with
+no `.html` in it at all. A gate with no input must not report success.
+
+**What it does not check: the look.** Colours, fonts, type scale, layout, and
+whether there is a theme toggle are the author's. `lib/REPORT-TEMPLATE.html`
+is a good default to copy, not a conformance target — somebody vendoring this
+harness may want a report that looks nothing like ours, and a serif, cream,
+10px doc passes. Local-only and answerable are the rules; the aesthetic is a
+default.
+
 ## Where docs live
 
 `docs.dir` in `entropy.json`, default `entropy-docs/` (relative to the
@@ -32,14 +81,20 @@ refuses any `file` value containing `/`.
 
 ## The document contract
 
-A doc `bin/serve` can usefully serve is built from `lib/doc-template.html`
-— read that file's own header comment for the authoritative contract
+A sprint report starts from `lib/REPORT-TEMPLATE.html` (`Landed` → `Verified`
+→ `Still open`, a citation band linking the issues it delivers and opens, an
+answer box under every section); a multi-page PRD or plan starts from
+`lib/doc-template.html`. Run `bin/doclint` on it before handing over the URL.
+
+Both carry the same machinery, and `lib/doc-template.html`'s header comment
+is the authoritative description of it
 (response-box shape, `data-resp` keys, the `#responses-data` block, page
 structure). The short version: every question lives in
 `<div class="response" data-resp="UNIQUE-KEY">` with a `<textarea>`, and
 `<script type="application/json" id="responses-data">{}</script>` near the
-end of `<body>` mirrors what's been saved. A doc missing that structure
-still gets served, just has zero answerable questions.
+end of `<body>` mirrors what's been saved. `bin/serve` still serves a doc
+missing that structure — it just has zero answerable questions, which is
+what `bin/doclint` refuses before it ever reaches a reader.
 
 ## Saving
 
@@ -139,9 +194,11 @@ section that depends on it says so plainly instead of silently rendering
 empty — an unreadable tracker and an empty one are different facts, the
 same distinction `bin/dispatch` already makes for its own claim list.
 
-Visual standard matches the docs themselves (VS Code hc-black/hc-light):
+The dashboard is styled like the docs' default (VS Code hc-black/hc-light):
 borders separate, never background tints; focus is a ring, never a fill;
-state is weight/case/color+word, never opacity alone; four type steps.
+state is weight/case/color+word, never opacity alone; four type steps. That
+is the house style, not a rule — see "The rule" above for what is actually
+enforced.
 
 ## Port
 

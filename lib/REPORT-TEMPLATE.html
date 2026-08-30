@@ -1,0 +1,413 @@
+<!doctype html>
+<!-- ==================== entropy-machines report template ====================
+  A sprint report, plan, or audit the owner READS AND ANSWERS. Copy this file
+  into the project's docs directory (docs.dir in entropy.json, default
+  entropy-docs/), replace the placeholders, and serve it with bin/serve. The
+  owner answers in the browser and the save button writes those answers back
+  into this file on disk.
+
+  ------------------------------------------------------------------ THE RULE
+  A REPORT IS A LOCAL FILE. It is never published to, and never depends on,
+  an external website. Everything it needs is inside it: no stylesheet link,
+  no script tag, no font, no image loaded from an off-machine origin. A doc
+  that phones out stops working the moment it leaves this machine, or the
+  moment the machine is offline, and it turns a private sprint report into a
+  request to somebody else's server.
+
+  Enforced by bin/doclint, which refuses any reference (an href, a src, a CSS
+  url(), a string literal in a script) pointing at http://, https://, or a
+  protocol-relative //host/path. Prose that merely MENTIONS a URL is fine —
+  text does not fetch anything. Data URIs, relative paths and same-document
+  anchors are fine; embed images as data URIs rather than linking them.
+
+  ------------------------------------------------------ THE OTHER HALF: ANSWERS
+  A report with nowhere to answer is a broadcast, not a dialogue. bin/doclint
+  also refuses a doc that:
+    * has no answer box under some h2 — every section the owner is expected to
+      respond to gets one;
+    * gives two boxes the same key — the second silently overwrites the first
+      on save;
+    * has an answer box with no textarea in it;
+    * is missing the save button or the saved-answers JSON block, either of
+      which means the owner's typing dies in the browser.
+
+  An answer box is a div with class `response` carrying a unique, stable key
+  attribute, and containing a label, a div with class `discuss` posing an
+  actual question, and one textarea. The key is the identity bin/serve uses to
+  write an answer back into this file — renaming one orphans the answer that
+  was already saved under the old name. The saved answers are mirrored into a
+  JSON script block near the end of the body.
+
+  DO NOT PASTE A LIVE ANSWER-BOX ATTRIBUTE INTO A COMMENT. That is why the
+  paragraph above describes the markup instead of showing it. Every tool that
+  reads these docs counts those keys with a regex — bin/serve's dashboard,
+  bin/status, bin/doclint — and a documented example got counted as a real
+  question. Each doc built from a template with a literal example reported one
+  phantom unanswered question nobody could ever answer, so "fully answered"
+  was an unreachable state. The readers strip comments now; not writing the
+  example is still the fix that matters.
+
+  ------------------------------------------------------------------ THE SPINE
+  Landed, then Verified, then Still open, in that order. Put anything you like
+  between them — a decision the owner has to make, a table, a war story. Those
+  three are the ones a reader knows how to look for. Nothing checks the order;
+  it is the convention, and a reader who cannot find "Still open" will assume
+  there is nothing open.
+
+  The citation band under the header carries one link per issue this report
+  DELIVERS and one per issue it OPENS, so a reader can get from the report to
+  the tracker without reading the prose.
+
+  --------------------------------------------------------------- THE LOOK
+  The palette below is VS Code High Contrast (hc-black, with an hc-light
+  override on the theme toggle), the fonts are the system stack, and there are
+  four type steps: 12 / 14 / 16 / 20. That is this project's house style and a
+  reasonable default — it renders identically offline on any machine and needs
+  no font download. IT IS NOT A CONFORMANCE TARGET. Restyle it however you
+  like; bin/doclint does not look at colours, fonts or sizes. Only local-only
+  and answerable are enforced.
+
+  YOU DO NOT HAVE TO EDIT THIS FILE TO CHANGE THE LOOK. The token block below
+  sits between two markers, and bin/serve swaps that span for
+  lib/themes/<name>.css when entropy.json says docs.theme: "<name>" — ships
+  with "high-contrast" (this one, the default) and "daylight", a softer
+  light-first theme for long reading. Everything below the end marker is
+  structure and is shared by every theme, so a layout fix is made once. Adding
+  a third theme is a new file in lib/themes/ defining the same token names; see
+  docs/CONFIG.md.
+
+  If you keep the house style, it holds together on three rules: separate with
+  borders, never background tints; focus and hover are the focus hue as a
+  border, never a fill; state is never carried by opacity alone — use weight,
+  case, or a colour plus a word.
+
+  There is no live-reload poller in here. Add the one from
+  lib/doc-template.html if you want an open tab to pick up an agent's reply.
+========================================================================= -->
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+/* THEME TOKENS. Everything between the two markers below is exactly
+   lib/themes/high-contrast.css, inlined so this file still looks right when
+   it is opened straight off disk. bin/serve REPLACES that span with
+   lib/themes/<docs.theme>.css when docs.theme names another theme (see
+   docs/CONFIG.md) — the markers are what it looks for, so keep them, keep
+   the block between them tokens-only, and put no layout in there. Nothing
+   below the end marker is themed: structural CSS is shared by every theme,
+   which is the point of having themes instead of a second template. */
+/* entropy-theme:begin */
+/* high-contrast — the house style, and the default.
+   VS Code High Contrast: hc-black as the bare :root, hc-light on the toggle.
+   Lifted verbatim from what lib/REPORT-TEMPLATE.html has always shipped; the
+   values are established house style, not up for improvement here.
+
+   A THEME FILE IS TOKENS ONLY. No layout, no component rules, no @font-face
+   and no remote URL of any kind — the structural CSS stays in the templates
+   so both themes get every structural fix for free, and bin/doclint refuses
+   any doc that references something off this machine.
+
+   Selected by docs.theme in entropy.json (see docs/CONFIG.md). bin/serve
+   INLINES this file between a doc's entropy-theme:begin and entropy-theme:end
+   markers, and into its own dashboard. It is never linked to as a stylesheet:
+   a doc is a standalone local file that must still look right when it is
+   opened straight off disk or moved somewhere else. */
+:root{
+  --bg:#000; --panel:#000;
+  --ink:#fff; --dim:rgba(255,255,255,.7);
+  --line:#6FC3DF;            /* contrastBorder */
+  --focus:#F38518;           /* focusBorder / activeContrastBorder */
+  --accent:#21A6FF;          /* textLink.foreground */
+  --ok:#23D18B; --warn:#F5F543; --bad:#F48771; --alt:#D670D6;
+  --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
+  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+}
+/* The toggle stamps data-theme on the root element. hc-black is the bare
+   :root, so only the light state needs restating; [data-theme=dark] matches
+   nothing here and correctly falls through to the default. */
+:root[data-theme=light]{
+  --bg:#fff; --panel:#fff;
+  --ink:#292929; --dim:rgba(41,41,41,.75);
+  --line:#0F4A85; --focus:#006BBD; --accent:#0F4A85;
+  --ok:#0A5C21; --warn:#7A4A00; --bad:#A81C0B; --alt:#6B21A8;
+}
+/* entropy-theme:end */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+h1{font-size:var(--fs-title);font-weight:700;margin:0 0 4px;line-height:1.3}
+h2{font-size:var(--fs-head);font-weight:700;margin:32px 0 8px;letter-spacing:.2px}
+h3{font-size:var(--fs-base);font-weight:700;margin:20px 0 6px}
+p,li,td,th{font-size:var(--fs-base)}
+.sub,.meta,figcaption{font-size:var(--fs-sm);color:var(--ink)}
+.eyebrow{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;margin:0 0 6px}
+code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+  border-radius:2px;padding:0 4px}
+h1 code{font-size:var(--fs-head)}
+pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+  border-radius:4px;padding:10px 12px;overflow-x:auto;line-height:1.5}
+pre code{border:0;padding:0;font-size:inherit}
+
+header{border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:8px;
+  display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header .sub{margin:0}
+#theme{margin-left:auto;background:var(--panel);border:1px solid var(--line);
+  color:var(--ink);border-radius:4px;padding:6px 10px;cursor:pointer;
+  font-family:inherit;font-size:var(--fs-sm);font-weight:600}
+#theme:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+
+.pill{display:inline-block;font-size:var(--fs-sm);font-weight:700;padding:1px 8px;
+  border-radius:10px;border:1px solid var(--line);color:var(--ink)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.warn{color:var(--warn);border-color:var(--warn)}
+.pill.bad{color:var(--bad);border-color:var(--bad)}
+.pill.alt{color:var(--alt);border-color:var(--alt)}
+
+.card{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin:12px 0}
+.card > :first-child{margin-top:0}
+.card > :last-child{margin-bottom:0}
+.card.flag{border-color:var(--focus)}
+table{width:100%;border-collapse:collapse;margin:12px 0;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{font-weight:700}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+ul,ol{padding-left:20px}
+li{margin:3px 0}
+hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+
+nav{border:1px solid var(--line);padding:10px 12px;margin:0 0 22px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em}
+nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--line)}
+nav a:hover{border-bottom-color:var(--focus)}
+
+.links{border:1px solid var(--line);padding:8px 12px;margin:0 0 18px;
+  display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.links .k{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--dim)}
+.links a{font-family:var(--mono);font-size:var(--fs-sm);text-decoration:none;
+  border:1px solid var(--line);padding:1px 6px}
+.links a:hover{border-color:currentColor}
+.links .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
+
+.response{border:1px solid var(--line);padding:12px 14px;margin:16px 0}
+.response label{display:block;font-size:var(--fs-sm);font-weight:700;
+  text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}
+.response .discuss{font-size:var(--fs-base);margin:0 0 10px}
+.response textarea{display:block;width:100%;min-height:76px;padding:8px;
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  font:var(--fs-base)/1.5 var(--mono);resize:vertical}
+.response textarea:focus-visible{outline:none;border-color:var(--focus);
+  box-shadow:inset 0 0 0 1px var(--focus)}
+.savebar{position:fixed;bottom:14px;right:19px;display:flex;align-items:center;
+  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--line);
+  padding:7px 9px 7px 16px}
+.savebar .stat{font-size:var(--fs-sm)}
+.savebar button{font:700 var(--fs-base) inherit;cursor:pointer;
+  border:1px solid var(--line);background:none;color:var(--ink);padding:6px 14px}
+.savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+.savebar button.ghost{padding:6px 10px}
+</style></head>
+<body>
+<main>
+
+<nav aria-label="document">
+  <div class="brand">{{KIND}} · {{DATE}}</div>
+  <a href="#landed">Landed</a>
+  <a href="#verified">Verified</a>
+  <a href="#call">Your call</a>
+  <a href="#open">Still open</a>
+</nav>
+
+<header>
+  <div>
+    <h1>{{HEADLINE — what this sprint was for, in the owner's words}}</h1>
+    <p class="sub">{{N}} commits on <code>{{BRANCH}}</code> · verified by re-running, not by relaying</p>
+  </div>
+  <button id="theme">◐ theme</button>
+</header>
+
+<!-- Citation band: one link per issue DELIVERED, one per issue OPENED. The
+     delivered ones point at the tracker ids; the opened ones point at the
+     anchors in "Still open" below, so a reader can jump straight to them. -->
+<div class="links">
+  <span class="k">delivers</span>
+  <span class="grp">
+    <a href="#i-delivered-one">{{i-delivered-one}}</a>
+    <a href="#i-delivered-two">{{i-delivered-two}}</a>
+  </span>
+  <span class="k">opens</span>
+  <span class="grp">
+    <a href="#i-opened-one">{{i-opened-one}}</a>
+  </span>
+  <span class="k">rulings</span>
+  <span class="grp"><a href="{{SOME-OTHER-DOC}}.html">{{that doc}}</a></span>
+</div>
+
+<p><span class="pill ok">{{one-word verdict}}</span> {{One paragraph: what a
+reader gets out of this sprint, and the single biggest risk in it. Say the risk
+plainly — it does not shrink by being phrased carefully.}}</p>
+
+<h2 id="landed">Landed</h2>
+
+<p>{{What changed and why it was worth doing. Lead with the thing that would
+surprise the owner, not with the chronology.}}</p>
+
+<ul>
+  <li id="i-delivered-one"><code>{{i-delivered-one}}</code> — {{what it does now}}</li>
+  <li id="i-delivered-two"><code>{{i-delivered-two}}</code> — {{what it does now}}</li>
+</ul>
+
+<div class="response" data-resp="s-landed">
+  <label>On what landed</label>
+  <div class="discuss">{{Ask an actual question about a trade you made — not
+  "any thoughts?". A box under a question the owner cannot answer is the same as
+  no box.}}</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2 id="verified">Verified</h2>
+
+<table>
+  <thead><tr><th>Check</th><th>Command</th><th class="num">Result</th></tr></thead>
+  <tbody>
+    <tr><td>{{what was checked}}</td><td><code>{{the command you ran}}</code></td><td class="num">{{result}}</td></tr>
+    <tr><td>{{what was checked}}</td><td><code>{{the command you ran}}</code></td><td class="num">{{result}}</td></tr>
+  </tbody>
+</table>
+
+<p class="meta"><strong>Not run:</strong> {{Name the gaps. An unmentioned gap
+reads as a passing check.}}</p>
+
+<div class="response" data-resp="s-verified">
+  <label>On the verification</label>
+  <div class="discuss">{{What would you have wanted run that was not?}}</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2 id="call">Your call</h2>
+
+<div class="card flag">
+  <p class="eyebrow">Decision needed</p>
+  <p><strong>{{The fork, as a question with two named options.}}</strong></p>
+  <p>{{Which one you would take, and the one-line cost of each. Recommend one
+  unless both are bad.}}</p>
+</div>
+
+<div class="response" data-resp="s-call">
+  <label>On the decision</label>
+  <div class="discuss">{{Option A or option B? Say which and I'll do it.}}</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<h2 id="open">Still open</h2>
+
+<ul>
+  <li id="i-opened-one"><span class="pill bad">open</span>
+  <code>{{i-opened-one}}</code> — {{what is unresolved, and what it blocks}}
+  <span class="meta">{{status · effort · gate if any}}</span></li>
+</ul>
+
+<div class="response" data-resp="s-open">
+  <label>On what is still open</label>
+  <div class="discuss">{{Which of these should jump the queue before anyone
+  else depends on this?}}</div>
+  <textarea placeholder="Type your answer…"></textarea>
+</div>
+
+<hr>
+<pre><code>{{Paste the real output of the suite run and the commit list.
+Numbers, not adjectives.}}</code></pre>
+
+</main>
+
+<div class="savebar">
+  <span class="stat" id="saveStat">Unsaved changes…</span>
+  <button class="ghost" id="clearBtn" title="Clear">✕</button>
+  <button id="saveBtn">💾 Save</button>
+</div>
+
+<!-- Mirrors what has been written to disk. bin/serve rewrites this block on
+     save; it is also what the answer counters read. Leave it as {} in a new
+     doc. -->
+<script type="application/json" id="responses-data">{}</script>
+
+<script>
+  // Autosave to localStorage between saves, so typing survives a reload. The
+  // browser copy is a convenience only — nothing outside this tab can read it,
+  // so the answer is not real until 💾 writes it into the file.
+  (function(){
+    var file=(location.pathname.split('/').pop()||'report').split('?')[0];
+    var KEY='entropy-'+file;
+    var boxes=[].slice.call(document.querySelectorAll('.response[data-resp] textarea'));
+    try{
+      var disk=JSON.parse(document.getElementById('responses-data').textContent||'{}');
+      var saved=JSON.parse(localStorage.getItem(KEY)||'{}');
+      boxes.forEach(function(t){
+        var k=t.closest('.response').getAttribute('data-resp');
+        if(!t.value.trim()) t.value = disk[k] || saved[k] || '';
+      });
+    }catch(e){}
+    function dump(){
+      var o={}; boxes.forEach(function(t){ o[t.closest('.response').getAttribute('data-resp')]=t.value; });
+      try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){}
+    }
+    boxes.forEach(function(t){ t.addEventListener('input', dump); });
+    var clear=document.getElementById('clearBtn');
+    if(clear) clear.addEventListener('click', function(){
+      boxes.forEach(function(t){ t.value=''; }); dump();
+      var st=document.getElementById('saveStat'); if(st) st.textContent='Cleared — press 💾 to write it';
+    });
+  })();
+</script>
+
+<script>
+  const r = document.documentElement;
+  try { if (localStorage.reportTheme) r.dataset.theme = localStorage.reportTheme; } catch(e){}
+  document.getElementById('theme').onclick = () => {
+    const next = r.dataset.theme === 'light' ? 'dark' : 'light';
+    r.dataset.theme = next;
+    try { localStorage.reportTheme = next; } catch(e){}
+  };
+</script>
+
+<script>
+  // 💾 posts to bin/serve, which merges the answers into THIS file on disk.
+  // The endpoint takes the filename in the query string and a flat
+  // {key: answer} body — see docs/SERVE.md. bin/serve also injects its own
+  // copy of this handler on every GET and wins the click, so a doc can never
+  // be served with a Downloads-folder save as the only way to save; this one
+  // is here so the contract is visible in the file the author is reading.
+  (function(){
+    var btn=document.getElementById('saveBtn'), st=document.getElementById('saveStat');
+    if(!btn) return;
+    btn.addEventListener('click', function(){
+      var o={};
+      document.querySelectorAll('.response[data-resp]').forEach(function(el){
+        var t=el.querySelector('textarea'); if(!t) return;
+        var v=(t.value||''); if(v.trim()) o[el.getAttribute('data-resp')]=v;
+      });
+      var file=(location.pathname.split('/').pop()||'').split('?')[0];
+      if(st) st.textContent='Saving…';
+      fetch('/__save?file='+encodeURIComponent(file),
+            {method:'POST',headers:{'Content-Type':'application/json'},
+             body:JSON.stringify(o)})
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(j){
+          if(st) st.textContent='Saved '+j.count+' answer(s) to '+file;
+          var el=document.getElementById('responses-data');
+          if(el) el.textContent=JSON.stringify(o,null,1);
+        })
+        .catch(function(e){ if(st) st.textContent='SAVE FAILED: '+e.message+' — open it through bin/serve'; });
+    });
+  })();
+</script>
+</body></html>
