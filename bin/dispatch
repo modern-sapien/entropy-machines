@@ -612,7 +612,9 @@ echo
 # the work this was meant to remove. The file is gitignored, so the agent
 # cannot accidentally add it to the tree.
 echo "PASTE INTO THE AGENT'S BRIEF:"
-# FIRST LINE OF THE PASTE BLOCK, and the load-bearing one — see the measured
+echo "  BRIEF: $brief"
+echo
+# FIRST LINE after the brief, and the load-bearing one — see the measured
 # numbers in the header. This holds regardless of whether your runner
 # auto-loads a project-instructions file into subagents: proximity to the
 # prompt is what changes behaviour, not presence in context.

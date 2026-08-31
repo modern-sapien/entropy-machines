@@ -51,9 +51,10 @@ into the brief.
    as uncommitted edits in the tree. Do not `git checkout`, `git stash`,
    `git reset`, or `git rebase`; read-only git (`status`, `diff`, `log`,
    `show`, `blame`) is fine and encouraged.
-2. **Stay inside the file scope you were given.** If the fix genuinely needs
-   a file outside it, say so in your report instead of editing — another
-   agent may own that file this round.
+2. **The DENYLIST is the hard constraint, not the advisory scope.** Your brief
+   names files claimed by another agent right now — never write those. The
+   `--files` scope is a prediction, not a boundary; everything outside the
+   denylist is yours if the fix needs it.
 3. **Shared resources may be linked in for you.** A project's `entropy.json`
    can list paths under `worktree.linkPaths` — `node_modules` is the built-in
    default, and a project might add others, like a local gitignored docs

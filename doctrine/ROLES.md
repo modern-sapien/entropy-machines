@@ -11,7 +11,9 @@ something went wrong once.
 | **Orchestrator**<br>the session talking to the owner | Dispatches, folds, lands, reports, files rulings as issues. The **only committer**. | Lands held work without the owner, relays a subagent's verification as its own, or lets its cwd leave the repo root. |
 
 **Worker, hard-won:** write `HANDOFF.md` early — a dead worker otherwise
-leaves only a diff. Check `git rev-parse --show-toplevel` first. Symlink
+leaves only a diff. Check `git rev-parse --git-common-dir` first — not
+`--show-toplevel`, which prints the worktree's own path and cannot confirm
+which repo you branched from. Symlink
 `worktree.linkPaths` before running anything. Report what you did **not** run.
 
 | Job | Agent |
