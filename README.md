@@ -168,6 +168,8 @@ release the claim — `bin/status` goes on reporting the issue in flight. Read
 
 ## License
 
+Copyright (c) 2026 modern-sapien.
+
 [Elastic License 2.0](LICENSE). You may use, copy, modify and distribute it,
 including inside a company. You may not sell it or offer it to third parties as
 a hosted or managed service without permission. This is a source-available
