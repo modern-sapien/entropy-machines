@@ -61,3 +61,27 @@ worker is right.** Dismissing that once hid a fixture set broken at HEAD.
 - **Symlink `worktree.linkPaths` in every worktree.** Unlinked, a runtime walks up
   and resolves a *sibling worktree* — you test someone else's code and report it as
   your own. Green, confident, wrong.
+
+### Isolation is the runner's, and it can silently not happen
+`isolation: worktree` branches the repo the **calling session's cwd** is in, not the
+one the harness is vendored in. Orchestrate project A from a shell sitting in
+project B and every worker gets a worktree of B, without the files it was sent for.
+On 2026-08-30 the fallback from that put every agent in one shared checkout: they
+could see each other's uncommitted edits, and one `git add -A` swept a live lane's
+work into an unrelated commit.
+
+**The worker's check, before it writes anything:** `git rev-parse --git-common-dir`
+must contain the project's directory name; a bare relative `.git` means no worktree
+at all. Not `--show-toplevel` — that prints the *worktree's* path, which never
+equals the main repo's. `dispatch` pastes this into every brief.
+
+**Orchestrating without isolation:** confirm cwd is the project root before every
+dispatch, give concurrent agents strictly disjoint file scopes, and **never `git add
+-A` while a lane is live** — stage explicit paths, every time.
+
+**What enforces it: nothing.** `bin/dispatch` refuses a cwd that is not
+`ENTROPY_ROOT`, which catches a session already drifted *when the brief is written*.
+The runner creates the worktree later, from whatever the cwd is then, so a `cd` in
+between is invisible to every gate — and no shell script can reach inside the
+runner's isolation to check what it actually did. The worker's own check is all
+that is downstream of it.

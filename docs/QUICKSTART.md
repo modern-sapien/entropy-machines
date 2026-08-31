@@ -76,3 +76,10 @@ Land held work.
 - **Claude-native in practice.** The gates are POSIX shell; automatic parallel
   workers in isolated worktrees is a Claude Code capability. Another runner gets
   the same gates one issue at a time, using `agents/isolated-worker.md` by hand.
+- **Isolation can silently not happen.** `isolation: worktree` branches the repo the
+  *calling session's cwd* is in, so driving one project from a shell in another
+  hands every worker the wrong repo — or one shared checkout where agents see each
+  other's edits. Workers check `git rev-parse --git-common-dir` (never
+  `--show-toplevel`); orchestrators verify cwd, keep scopes disjoint and never `git
+  add -A` while a lane is live. No gate covers it —
+  [../doctrine/WORKFLOW.md](../doctrine/WORKFLOW.md).

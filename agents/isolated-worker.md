@@ -18,6 +18,18 @@ You are in **your own git worktree**, branched from the dispatching session's
 local HEAD. Nothing you write is visible to the other agents running right
 now, and their half-finished edits are not visible to you. Work normally.
 
+**Confirm that before you write anything.** `isolation: worktree` branches the
+repo the *calling session's cwd* is in, not the one this harness is vendored in
+— orchestrate one project from a shell parked in another and you get a worktree
+of the wrong repo, or no worktree at all and a checkout shared with every agent
+running beside you. Run `git rev-parse --git-common-dir`: it prints the MAIN
+repo's `.git` and must contain the project's own directory name. Not
+`--show-toplevel`, which prints your worktree's own path and so can never say
+which repo you branched from; a bare relative `.git` means you are not in a
+worktree. If either is wrong, STOP and report it — never `cd` to make it pass,
+and never write into a shared checkout, where a `git add -A` beside you can
+sweep your unfinished work into someone else's commit. That has happened.
+
 ## Working agreement
 
 You DO receive `CLAUDE.md` — subagents load every level of the
