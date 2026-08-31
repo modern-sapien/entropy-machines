@@ -138,9 +138,23 @@ function init(argv) {
   // Vendoring into the package's own tree would have it copy itself over
   // itself — and, in a `npm link`ed clone, that tree is where the `.git`
   // this must never touch actually lives.
-  if (isInside(dest, PKG_ROOT) || isInside(PKG_ROOT, dest)) {
+  //
+  // The REVERSE containment (this package sitting inside the destination) is
+  // NOT that failure when the package is an installed dependency of the
+  // target repo: `npm i -D entropy-machines` + `--dir .` puts PKG_ROOT at
+  // <repo>/node_modules/entropy-machines and dest at <repo>, and the copy is
+  // still PKG_ROOT/<d> -> dest/<d> with no overlap and no `.git` in reach.
+  // Refusing it broke the `--dir .` layout that --help and docs/NPM.md both
+  // advertise, for every local install, with a message telling the user to
+  // run from the project they were already in. A checkout or a linked clone
+  // living inside the repo is a different thing and still refused.
+  const pkgUnderNodeModules = path
+    .relative(dest, PKG_ROOT)
+    .split(path.sep)
+    .includes('node_modules');
+  if (isInside(dest, PKG_ROOT) || (isInside(PKG_ROOT, dest) && !pkgUnderNodeModules)) {
     die([
-      `entropy-machines: REFUSED — ${dest} is inside this package's own directory.`,
+      `entropy-machines: REFUSED — ${dest} and this package's own directory overlap.`,
       `  (${PKG_ROOT})`,
       '  Run this from the project you want the harness in, not from a',
       '  checkout of the harness itself.',
@@ -205,7 +219,14 @@ function init(argv) {
   console.log('entropy-machines: done. Next —');
   // Named paths only, never a guessed docs directory — that one is config
   // (docs.dir), and CONFIG.md rule 1 makes a hardcoded path in bin/ a bug.
-  const addPaths = shown === '.' ? '.' : `${shown} entropy.json`;
+  // NEVER `git add .` for the root layout. This command is reached over npm,
+  // so the repo it just vendored into very likely holds a node_modules/ and a
+  // package-lock.json that init's .gitignore does not cover — `git add .`
+  // commits them. Name the paths the harness actually wrote.
+  const addPaths =
+    shown === '.'
+      ? `${HARNESS_DIRS.join(' ')} LICENSE entropy.json .gitignore`
+      : `${shown} entropy.json .gitignore`;
   console.log(`  1. commit what init just wrote:  git add ${addPaths}`);
   console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'QUICKSTART.md')}`);
   console.log(`  3. ${path.join(shown, 'bin', 'serve')}  — answer the PRD it opens`);

@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Vendors the entropy-machines agent-orchestration harness into your git repository as plain tracked files. A delivery mechanism, not a runtime — the harness is POSIX shell and Python 3 and needs no Node once the files have landed.",
   "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/modern-sapien/entropy-machines.git"
+  },
+  "homepage": "https://github.com/modern-sapien/entropy-machines#readme",
+  "bugs": {
+    "url": "https://github.com/modern-sapien/entropy-machines/issues"
+  },
   "bin": {
     "entropy-machines": "bin/entropy-machines-init"
   },

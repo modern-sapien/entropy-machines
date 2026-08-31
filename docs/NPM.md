@@ -49,7 +49,7 @@ Use `--dir .` if you want the root layout the README describes, and every
 |---|---|
 | Not inside a git repository | Vendored files have to be tracked by something. |
 | The destination already holds any of the six directories | An older harness may have edited doctrine in it; your own `bin/` is not ours to merge into. Pass `--dir <path>`. |
-| The destination is inside the package's own directory | It would copy itself over itself, and in a `npm link`ed checkout that tree is where a real `.git` lives. |
+| The destination is inside the package's own directory, or a checkout of this package is inside the destination | It would copy itself over itself, and in a `npm link`ed checkout that tree is where a real `.git` lives. An *installed* copy at `<repo>/node_modules/entropy-machines` is exempt — that is what `npm i -D entropy-machines` plus `--dir .` looks like, and the two trees never overlap. |
 | The destination is outside the repository | Vendoring means committed alongside your code. |
 
 A `.git` directory is never copied, at any depth — filtered by path segment,
@@ -70,9 +70,21 @@ npm publish
 `files` is a whitelist of the six directories, with `!**/__pycache__` and
 `!**/*.pyc` negations — a `.npmignore` does **not** filter inside a
 whitelisted directory, so the negations are what keeps compiled Python out.
-`planning/`, `.entropy/` and `example/` are excluded by not being listed;
-npm excludes `.git` unconditionally. `LICENSE`, `README.md` and
-`package.json` are always included.
+`planning/`, `.entropy/`, `tests/`, `example/`, `entropy-docs/` and
+`CONTRIBUTING.md` are excluded by not being listed; npm excludes `.git`
+unconditionally. `LICENSE`, `README.md` and `package.json` are always
+included — they ship even though `files` does not name them, so the shipped
+list is the six directories plus those three.
+
+Verified against a real `npm pack` on 2026-08-30: the tarball's file list is
+exactly the six directories' tracked contents plus those three, with every
+executable bit intact (20 of the vendored files land as `100755`).
+`bin/entropy-machines-init` is the one packaged file NOT vendored, because it
+is the npm wrapper rather than part of the harness.
+
+`npm pack` reads the WORKING TREE, not HEAD. An uncommitted or untracked file
+inside one of the six directories ships. Pack from a clean tree, and read the
+`npm notice` file list before publishing rather than trusting `files`.
 
 The package version is the npm artifact's version. It is not a harness
 version and nothing checks it — there is no staleness detection anywhere in
