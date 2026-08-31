@@ -27,6 +27,12 @@ assert_file "$REPO/.gitignore" "init creates .gitignore when the project has non
 run sh -c "grep -qxF '.entropy/' '$REPO/.gitignore'"
 assert_rc 0 ".gitignore carries an exact '.entropy/' line"
 
+# docs.dir TOO. The docs a project answers are its own work and are rewritten
+# on every serve; tracking them once put an owner's answered PRD into a public
+# repository. init ignores the configured docs.dir, not a hardcoded name.
+run sh -c "grep -qxF 'entropy-docs/' '$REPO/.gitignore'"
+assert_rc 0 ".gitignore carries an exact 'entropy-docs/' line for docs.dir"
+
 # The PRD is the point of init: it is what gives the owner something to answer.
 assert_file "$REPO/entropy-docs/PRD-001-orientation.html" "init installs the orientation PRD into docs.dir"
 
