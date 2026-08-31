@@ -12,6 +12,7 @@
     "url": "https://github.com/modern-sapien/entropy-machines/issues"
   },
   "bin": {
+    "entropy": "bin/entropy-machines-init",
     "entropy-machines": "bin/entropy-machines-init"
   },
   "files": [

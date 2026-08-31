@@ -55,10 +55,14 @@ function die(lines) {
 function usage() {
   console.log(`entropy-machines ${PKG.version}
 
-  npx entropy-machines init [--dir <path>]
+  npx entropy start                     # init (if needed) + open the PRD
+  npx entropy init [--dir <path>]       # vendor the harness only
 
-Copies the harness (${HARNESS_DIRS.join(', ')}) into your git repository as
-plain tracked files, then runs the vendored bin/init.
+start: vendors the harness if entropy.json is absent, then launches
+bin/serve — which opens your first PRD in a browser.
+
+init:  copies the harness (${HARNESS_DIRS.join(', ')}) into your git
+repository as plain tracked files, then runs the vendored bin/init.
 
   --dir <path>   where to put them, relative to the current directory.
                  Default: ${DEFAULT_DIR}/ at the repository root.
@@ -228,8 +232,36 @@ function init(argv) {
       ? `${HARNESS_DIRS.join(' ')} LICENSE entropy.json .gitignore`
       : `${shown} entropy.json .gitignore`;
   console.log(`  1. commit what init just wrote:  git add ${addPaths}`);
-  console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'QUICKSTART.md')}`);
+  console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'AGENT-QUICKSTART.md')}`);
   console.log(`  3. ${path.join(shown, 'bin', 'serve')}  — answer the PRD it opens`);
+}
+
+function findServe(root) {
+  // bin/serve lives in the harness directory, which is either at root (--dir .)
+  // or in the DEFAULT_DIR subdirectory. entropy.json is always at root.
+  for (const [dir, label] of [[root, '.'], [path.join(root, DEFAULT_DIR), DEFAULT_DIR]]) {
+    const s = path.join(dir, 'bin', 'serve');
+    if (fs.existsSync(s)) return { serve: s, cwd: dir, shown: label };
+  }
+  return null;
+}
+
+function start(argv) {
+  const root = repoRoot();
+  if (!root) die(['entropy-machines: not inside a git repository.']);
+
+  if (!fs.existsSync(path.join(root, 'entropy.json'))) {
+    console.log('entropy-machines: no entropy.json found, running init first.\n');
+    init(argv);
+  }
+
+  const loc = findServe(root);
+  if (!loc) {
+    die(['entropy-machines: bin/serve not found at root or in ' + DEFAULT_DIR + '/.']);
+  }
+  console.log(`\nentropy-machines: starting serve from ${loc.shown}/\n`);
+  const r = spawnSync('sh', [loc.serve], { cwd: loc.cwd, stdio: 'inherit' });
+  process.exit(r.status ?? 1);
 }
 
 function main(argv) {
@@ -243,6 +275,7 @@ function main(argv) {
     return;
   }
   if (cmd === 'init') return init(argv.slice(1));
+  if (cmd === 'start') return start(argv.slice(1));
   die([`entropy-machines: unknown command: ${cmd}`, 'Run `entropy-machines --help`.']);
 }
 
