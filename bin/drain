@@ -7,7 +7,8 @@
 #   bin/drain now         # run one fire in the foreground, right now
 #   bin/drain at HH:MM    # one detached one-shot fire, today or tomorrow
 #   bin/drain cancel      # cancel a pending one-shot
-#   bin/drain install     # install the scheduled job (launchd, macOS only)
+#   bin/drain install     # install the scheduled job (launchd on macOS,
+#                         #  a systemd --user timer on Linux)
 #
 # WHY A FLAG FILE RATHER THAN LOADING/UNLOADING THE SCHEDULER.
 #
@@ -68,6 +69,57 @@ log="$state/last-run.json"
 
 mkdir -p "$state"
 
+# ---- which scheduler ---------------------------------------------------------
+# Sets $scheduler, $scheduler_source, $have_launchd, $have_systemd. Called by
+# both `status` and `install` so the two cannot disagree about what this machine
+# can do — the previous split (status hardcoded "Darwin or unsupported", install
+# hardcoded a Darwin refusal) is exactly the shape that let `status` claim a
+# platform had no scheduler while an installer for it existed.
+#
+# AVAILABLE means the client binary is reachable, not that the platform sounds
+# right: launchd needs macOS AND launchctl; systemd needs systemctl (present on
+# Linux, and absent on a Linux running some other init, which is the case a
+# uname check gets wrong).
+#
+# An explicit unattended.scheduler always wins, including when it names one this
+# machine cannot run — a wrong value must be a refusal that says so, never a
+# silent fallback to the other scheduler. Only an ABSENT key is detected.
+drain_scheduler_probe() {
+  have_launchd=no
+  have_systemd=no
+  # `if`, not `[ test ] && VAR=value` — see the note in `install` below: as a
+  # bare statement under `set -e` that form EXITS the script when the test is
+  # false, which is how a probe would take the whole command down on Linux.
+  if [ "$os" = Darwin ] && command -v launchctl >/dev/null 2>&1; then
+    have_launchd=yes
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    have_systemd=yes
+  fi
+  scheduler=$(cfg '.unattended.scheduler' '')
+  if [ -n "$scheduler" ]; then
+    scheduler_source=config
+    return 0
+  fi
+  scheduler_source=detected
+  if [ "$have_launchd" = yes ]; then
+    scheduler=launchd
+  elif [ "$have_systemd" = yes ]; then
+    scheduler=systemd
+  else
+    scheduler=none
+  fi
+  return 0
+}
+
+# What the probe looked for, printed verbatim by every refusal so the message
+# names the check rather than the conclusion.
+drain_scheduler_looked_for() {
+  echo "  It looked for:" >&2
+  echo "    launchd — macOS (uname reports '$os') and 'launchctl' on PATH: $have_launchd" >&2
+  echo "    systemd — 'systemctl' on PATH: $have_systemd" >&2
+}
+
 case "${1:-status}" in
   on)
     date -u +%Y-%m-%dT%H:%M:%SZ > "$flag"
@@ -86,23 +138,53 @@ case "${1:-status}" in
     # question: the job can be installed but disarmed (fires, does nothing), or
     # armed but never installed (nothing ever fires). Report both.
     scheduled=no
-    case "$os" in
-      Darwin)
-        if command -v launchctl >/dev/null 2>&1 && launchctl list 2>/dev/null | grep -q "$label"; then
+    drain_scheduler_probe
+    case "$scheduler" in
+      launchd)
+        if [ "$have_launchd" != yes ]; then
+          scheduled=unavailable
+        elif launchctl list 2>/dev/null | grep -q "$label"; then
           scheduled=yes
         fi
         ;;
-      *)
-        # No installer on any other platform, so there is no job of ours to
-        # look for — say that rather than pointing at an install that refuses.
+      systemd)
+        if [ "$have_systemd" != yes ]; then
+          scheduled=unavailable
+        elif systemctl --user is-active --quiet "$label.timer" 2>/dev/null; then
+          # The TIMER is the thing that is loaded and waiting; the .service it
+          # fires is inactive almost all the time and would read as "no".
+          scheduled=yes
+        fi
+        ;;
+      none)
+        # Nothing this installer implements exists on this machine, so there is
+        # no job of ours to look for — say that rather than pointing at an
+        # install that refuses.
         scheduled=unsupported
+        ;;
+      *)
+        # entropy.json names a scheduler this installer does not implement. A
+        # different message: the machine may well be fine, the config is not.
+        scheduled=unknown
         ;;
     esac
     if [ "$scheduled" = yes ]; then
-      echo "scheduled:  yes (hourly, at :07)"
+      echo "scheduled:  yes (hourly, at :07, via $scheduler)"
+    elif [ "$scheduled" = unknown ]; then
+      echo "scheduled:  n/a — entropy.json's unattended.scheduler is '$scheduler',"
+      echo "            which 'bin/drain install' does not implement (launchd, systemd)"
+    elif [ "$scheduled" = unavailable ]; then
+      # The scheduler was NAMED (only entropy.json can name one that is not
+      # here — detection never picks an unusable one), and it is not usable on
+      # this machine. Say which one and which check failed, not "unsupported":
+      # the other scheduler may well be sitting right there.
+      echo "scheduled:  n/a — unattended.scheduler is '$scheduler' ($scheduler_source),"
+      echo "            not usable here (launchctl: $have_launchd, systemctl: $have_systemd, uname: $os);"
+      echo "            'bin/drain install' will refuse and say the same"
     elif [ "$scheduled" = unsupported ]; then
-      echo "scheduled:  n/a — 'bin/drain install' is launchd/macOS only; on $os,"
-      echo "            fire bin/drain-run.sh from your own cron entry or systemd unit"
+      echo "scheduled:  n/a — no scheduler 'bin/drain install' can use is available"
+      echo "            here (launchctl: $have_launchd, systemctl: $have_systemd, uname: $os);"
+      echo "            fire bin/drain-run.sh from your own cron entry instead"
     else
       echo "scheduled:  no — run 'bin/drain install'"
     fi
@@ -236,33 +318,50 @@ PY
     ;;
 
   install)
-    # ONLY THE INSTALLER IS macOS-ONLY. Everything else in this script — on,
-    # off, status, now, at, cancel — is plain POSIX sh and runs anywhere, so
+    # ONLY THE INSTALLER IS PLATFORM-SPECIFIC. Everything else in this script —
+    # on, off, status, now, at, cancel — is plain POSIX sh and runs anywhere, so
     # the platform check belongs here and nowhere higher up.
     #
-    # launchd is the one scheduler this harness has ever actually installed on
-    # a real machine. Refuse the rest outright rather than writing unit files
-    # nobody has ever watched fire: an installer that reports success and
+    # Two schedulers, and nothing else. An installer that reports success and
     # leaves a broken job behind is worse than no installer, because every
-    # surface (`status`, `launchctl list`) then agrees it is armed.
-    if [ "$os" != "Darwin" ]; then
-      echo "bin/drain install: refusing — the scheduled-job installer supports" >&2
-      echo "  launchd (macOS) only, and this machine reports '$os'." >&2
+    # surface (`status`, `launchctl list`, `systemctl --user is-active`) then
+    # agrees it is armed — so anything we cannot write a unit for is a refusal
+    # that installs nothing, and says which check failed.
+    drain_scheduler_probe
+
+    runner="$ENTROPY_HOME/bin/drain-run.sh"
+
+    if [ "$scheduler" = none ]; then
+      echo "bin/drain install: refusing — no scheduler this installer supports is" >&2
+      echo "  available on this machine, and entropy.json's unattended.scheduler" >&2
+      echo "  does not name one." >&2
+      drain_scheduler_looked_for
       echo "  Nothing was installed. Drive the fires yourself instead: put" >&2
-      echo "    $ENTROPY_HOME/bin/drain-run.sh" >&2
-      echo "  on your own cron entry or systemd timer. 'bin/drain on/off' is still" >&2
-      echo "  the arm/disarm switch whatever triggers the fire, and 'bin/drain now'" >&2
+      echo "    $runner" >&2
+      echo "  on your own cron entry or timer. 'bin/drain on/off' is still the" >&2
+      echo "  arm/disarm switch whatever triggers the fire, and 'bin/drain now'" >&2
       echo "  / 'bin/drain at HH:MM' need no scheduler at all." >&2
       exit 3
     fi
 
-    # Explicit config still wins so a wrong value is a refusal, not a surprise.
-    scheduler=$(cfg '.unattended.scheduler' 'launchd')
-
-    runner="$ENTROPY_HOME/bin/drain-run.sh"
-
     case "$scheduler" in
       launchd)
+        # The platform gate that used to sit above the whole command, now
+        # scoped to the path it is actually about. Reached when this is the
+        # DETECTED scheduler (in which case it passes by construction) or when
+        # entropy.json asks for launchd on a machine that has no launchctl.
+        if [ "$have_launchd" != yes ]; then
+          echo "bin/drain install: refusing — unattended.scheduler is 'launchd'" >&2
+          echo "  ($scheduler_source), and launchd is not usable on this machine." >&2
+          drain_scheduler_looked_for
+          if [ "$have_systemd" = yes ]; then
+            echo "  systemd IS available here: set unattended.scheduler to 'systemd'" >&2
+            echo "  in entropy.json, or remove the key and let this detect it." >&2
+          fi
+          echo "  Nothing was installed. 'bin/drain now' / 'bin/drain at HH:MM'" >&2
+          echo "  need no scheduler at all." >&2
+          exit 3
+        fi
         # TCC (Transparency, Consent and Control) — a macOS-only OS security
         # subsystem — refuses a LaunchAgent filesystem access to ~/Desktop,
         # ~/Documents and ~/Downloads. Installing a job that is denied before
@@ -326,11 +425,74 @@ PY
         echo "    sudo pmset repeat wakeorpoweron MTWRFSU 02:00:00"
         ;;
 
+      systemd)
+        if [ "$have_systemd" != yes ]; then
+          echo "bin/drain install: refusing — unattended.scheduler is 'systemd'" >&2
+          echo "  ($scheduler_source), and there is no 'systemctl' on PATH here." >&2
+          drain_scheduler_looked_for
+          if [ "$have_launchd" = yes ]; then
+            echo "  launchd IS available here: set unattended.scheduler to 'launchd'" >&2
+            echo "  in entropy.json, or remove the key and let this detect it." >&2
+          fi
+          echo "  Nothing was installed. 'bin/drain now' / 'bin/drain at HH:MM'" >&2
+          echo "  need no scheduler at all." >&2
+          exit 3
+        fi
+        # systemctl EXISTS is not the same as a user manager we can talk to: in
+        # an ssh session or a container with no per-user systemd instance,
+        # `--user` fails on a missing DBUS_SESSION_BUS_ADDRESS/XDG_RUNTIME_DIR.
+        # Ask before writing anything, so the failure mode is a refusal rather
+        # than two unit files on disk that no daemon-reload ever picked up.
+        if ! systemctl --user show-environment >/dev/null 2>&1; then
+          echo "bin/drain install: refusing — 'systemctl --user' cannot reach a user" >&2
+          echo "  manager for $(id -un) (no session bus; XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset})." >&2
+          echo "  This is usually an ssh or container session with no logind seat." >&2
+          echo "  Nothing was installed. Either run this from a full login session," >&2
+          echo "  or enable a lingering one first:" >&2
+          echo "    sudo loginctl enable-linger $(id -un)" >&2
+          exit 3
+        fi
+        # No TCC equivalent to check: the macOS branch above refuses a repo
+        # under ~/Desktop, ~/Documents or ~/Downloads because a LaunchAgent is
+        # denied those paths by the OS before it runs a line. Linux has no such
+        # per-directory grant for a user unit — a user timer reads whatever the
+        # user can read — so there is nothing here to refuse for.
+        #
+        # A user unit, so no sudo and no system-wide state: everything lands
+        # under the operator's own XDG config dir and is undone by deleting two
+        # files. Same substitution as the plist, from templates beside it.
+        unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+        service="$unit_dir/$label.service"
+        timer="$unit_dir/$label.timer"
+        mkdir -p "$unit_dir"
+        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g; s|__LABEL__|$label|g" \
+          "$ENTROPY_HOME/lib/entropy-drain.service.in" > "$service"
+        sed "s|__RUNNER__|$runner|g; s|__STATE__|$state|g; s|__LABEL__|$label|g" \
+          "$ENTROPY_HOME/lib/entropy-drain.timer.in" > "$timer"
+        systemctl --user daemon-reload
+        # --now starts the timer as well as enabling it, so the first fire does
+        # not wait for the next login. The TIMER is enabled, never the service:
+        # enabling a oneshot service would run it at boot instead of on
+        # schedule. It is still inert until `bin/drain on`.
+        systemctl --user enable --now "$label.timer"
+        echo "drain: systemd user timer installed and started (hourly probe)"
+        echo "  it is INERT until you run 'bin/drain on'."
+        echo "  to check:  systemctl --user list-timers $label.timer"
+        echo "  to remove: systemctl --user disable --now $label.timer &&"
+        echo "             rm $timer $service && systemctl --user daemon-reload"
+        echo
+        echo "  One step left, and it needs sudo so it is yours to run — without it"
+        echo "  the timer is torn down when your last session logs out, and never"
+        echo "  fires on a machine you are not sitting at:"
+        echo "    sudo loginctl enable-linger $(id -un)"
+        ;;
+
       *)
         echo "bin/drain install: unknown scheduler '$scheduler' (unattended.scheduler" >&2
-        echo "  in entropy.json) — the only scheduler this installer supports is" >&2
-        echo "  launchd. On any other platform, call bin/drain-run.sh from a timer" >&2
-        echo "  you write yourself (cron, a systemd unit, a CI schedule)." >&2
+        echo "  in entropy.json) — the schedulers this installer supports are" >&2
+        echo "  'launchd' (macOS) and 'systemd' (a systemd --user timer). Remove the" >&2
+        echo "  key to have it detect one. On anything else, call bin/drain-run.sh" >&2
+        echo "  from a timer you write yourself (cron, a CI schedule)." >&2
         exit 2
         ;;
     esac

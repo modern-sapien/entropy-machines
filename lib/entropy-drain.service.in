@@ -1,0 +1,53 @@
+# Template. `bin/drain install` substitutes __RUNNER__ / __STATE__ / __LABEL__
+# — the same three placeholders, substituted by the same sed, as
+# lib/entropy-drain.plist.in — and writes the result to
+# ${XDG_CONFIG_HOME:-~/.config}/systemd/user/<unattended.label>.service.
+#
+# A USER unit, not a system one. The fire runs the operator's own agent CLI
+# against the operator's own checkout and credentials; a system unit would run
+# it as root out of a different HOME and read none of that. `systemctl --user`
+# also needs no sudo, which keeps the installer non-privileged the way the
+# launchd LaunchAgent is.
+#
+# THIS UNIT IS NOT SCHEDULED. It is oneshot, and the .timer beside it is what
+# fires it hourly — the split is systemd's, and it is why the schedule lives in
+# entropy-drain.timer.in rather than here.
+#
+# The job is INERT until `bin/drain on` — the timer fires, drain-run.sh reads
+# the armed flag, and exits 2. Keeping the on/off switch out of the unit is
+# deliberate: arming must not require a daemon-reload.
+
+[Unit]
+Description=entropy-machines unattended drain (__LABEL__)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh __RUNNER__
+
+# NOT AN ERROR, JUST NOTHING TO DO. Unlike launchd, systemd records a non-zero
+# exit as a FAILED unit and shows it in `systemctl --user status` until the next
+# success — so drain-run.sh's benign guard codes would leave a permanently
+# alarming unit for the ordinary case of "disarmed" or "nothing eligible". The
+# codes listed here are drain-run.sh's documented guards, in its own order:
+#   2 disarmed  3 wrong branch  4 tree not clean
+#   5 quota wall  6 nothing eligible  7 timed out
+# 1 (internal error) and 8 (touched a protected path) are deliberately NOT
+# listed: those two are real failures and should surface as failures.
+SuccessExitStatus=2 3 4 5 6 7
+
+# A systemd unit does not inherit a login shell's PATH. Whatever agent CLI,
+# runtime, and VCS tools this project's suites need all have to be reachable
+# from here — adjust if your toolchain does not live under /usr/local or /usr.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+# Logged to files beside the launchd job's, rather than to the journal, so that
+# `__STATE__` is the one place to look whichever scheduler installed the job.
+# The journal still has a copy of everything by default; `journalctl --user -u
+# __LABEL__.service` is the other way to read it. `append:` needs systemd 240+
+# (Dec 2018); on anything older, delete these two lines and use journalctl.
+StandardOutput=append:__STATE__/systemd.out.log
+StandardError=append:__STATE__/systemd.err.log
+
+# The launchd job runs as ProcessType=Background, which deprioritises it against
+# whatever the operator is doing. Nice is the closest user-unit equivalent.
+Nice=10

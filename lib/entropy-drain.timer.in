@@ -1,0 +1,36 @@
+# Template. `bin/drain install` substitutes __LABEL__ (and passes __RUNNER__ /
+# __STATE__ through the same sed, which this file simply does not use) and
+# writes the result to
+# ${XDG_CONFIG_HOME:-~/.config}/systemd/user/<unattended.label>.timer.
+#
+# HOURLY, not pinned to a boundary. There is generally no API for an agent
+# CLI's own rate-limit window, so predicting the reset means guessing, and a
+# job pinned to one fixed time sits idle through a window that opened hours
+# earlier. An hourly probe that exits in milliseconds when disarmed, dirty, or
+# walled costs effectively nothing and catches every window within an hour of
+# it opening. Same reasoning, same schedule, as the launchd plist beside this.
+
+[Unit]
+Description=Hourly entropy-machines drain probe (__LABEL__)
+
+[Timer]
+# Top of every hour. Minute 7 rather than 0: every scheduled job on the planet
+# fires at :00, and nothing here needs the boundary.
+OnCalendar=*-*-* *:07:00
+
+# ONE catch-up run for however many fires were missed while the machine was
+# off or asleep, which is what we want: waking to six queued fires would run
+# six sessions. This is the systemd spelling of launchd's own coalescing.
+Persistent=true
+
+# systemd's default is already 1 minute; stated so the schedule does not change
+# if that default ever does. Nothing here needs second accuracy.
+AccuracySec=1m
+
+# Implied by the name (<x>.timer activates <x>.service), stated because the
+# name is substituted rather than written, and a __LABEL__ that ever picked up
+# a suffix would otherwise activate a unit nobody wrote.
+Unit=__LABEL__.service
+
+[Install]
+WantedBy=timers.target

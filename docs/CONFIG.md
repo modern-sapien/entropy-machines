@@ -39,7 +39,7 @@ Every key is optional — deep-merged over `lib/config.py`'s `DEFAULTS`.
 | `changelog` | Whether a fragment is required per commit. Defaults on. |
 | `guards` | How fail-first classifies a revert, and tells a build failure from a test failure. |
 | `worktree.linkPaths` | Symlinked into every worktree. Without `node_modules` a runtime resolves out of a SIBLING worktree and the agent verifies someone else's code. |
-| `unattended` | The drain loop. `launchd` is the only scheduler `bin/drain install` implements, macOS-only; `on/off/status/now/at` work anywhere. |
+| `unattended` | The drain loop. `scheduler` is `launchd` (macOS) or `systemd` (a `systemctl --user` timer); omit the key and `bin/drain install` detects one, refusing if neither is present. `on/off/status/now/at` work anywhere. |
 
 ## Themes and root
 
