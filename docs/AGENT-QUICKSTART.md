@@ -1,6 +1,7 @@
-# Quickstart — for agents
+# Agent quickstart
 
-For a coding agent that just found this harness. Humans: [../README.md](../README.md).
+This doc is for the coding agent bootstrapping and running the harness.
+If you are the project owner (a human), start at [../README.md](../README.md).
 The *why*: [../doctrine/](../doctrine/).
 
 Four roles move one issue through a fixed cycle — dispatch, work, verify, fold —

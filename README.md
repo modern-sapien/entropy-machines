@@ -1,78 +1,64 @@
 # entropy-machines
 
-A workflow for running coding agents on a real codebase without letting them
-corrupt each other's work or land things nobody proved. Four roles, a handful of
-gates that refuse mistakes that actually happened, and one idea: **an agent's
-claim that a test passes is not evidence, and the harness should be built as if
-you know that.**
+You answer questions in a browser. Those answers become tracked issues. Agents
+build what you decided, in isolated worktrees, and nothing lands until it is
+independently verified. That is the whole loop.
 
 ```
-ISSUES ──▶ WORKED ──▶ VERIFIED ──▶ FOLDED ──▶ SPRINT REPORT ──┐
-   ▲                                                          │
-   └──────────────────────────────────────────────────────────┘
+  YOU ANSWER A PRD
+        │
+        ▼
+  ISSUES FILED ──▶ WORKED ──▶ VERIFIED ──▶ FOLDED ──▶ SPRINT REPORT
+        ▲                                                     │
+        └─────────────────────────────────────────────────────┘
 ```
 
-**Workers** implement one scoped issue each, in isolated git worktrees, and
-commit nothing. **A verifier** sweeps all their finished output together, once,
-on a clean tree. **An orchestrator** folds verified work in, re-proving anything
-risky by its own mutation, and is the only committer. The **owner** rules on
-decisions and closes the sprint — the one step with no command behind it.
-[WORKFLOW.md](doctrine/WORKFLOW.md) has the cycle stage by stage;
-[ROLES.md](doctrine/ROLES.md), who may do what.
+## How it works
 
-## What's different
+1. **`bin/init`** writes a starter config and opens a PRD — a local HTML doc
+   with questions only you can answer.
+2. **`bin/serve`** serves it at localhost. You open the URL, read the options,
+   type your answers, hit 💾. Your answers are saved to disk, not to a server.
+3. Your answers become **tracker issues** — each one scoped, dispatchable.
+4. An **orchestrator** (your coding agent) dispatches issues to **workers** —
+   each in its own git worktree, unable to see or corrupt the others.
+5. A **verifier** sweeps all finished work on a clean tree. The orchestrator
+   folds verified work in and is the only committer.
+6. A **sprint report** (another served HTML doc) is where you review what
+   landed and what is still open.
 
-**Verification is a sprint-level sweep, not a per-agent gate** — cheaper, and
-the only vantage point that can see two changes interacting.
+**A PRD creates issues, not the other way round.** The questions in a PRD are
+the decisions only you can make. Everything downstream — the issues, the scoping,
+the agent work — follows from your answers.
 
-**Proof is by mutation, not re-running.** Replaying a worker's own revert only
-shows the test noticed *that* revert; blinding one half of a fix and checking
-the failure set is the one that half owns is what shows a test is pinned to
-behaviour. `lib/fail-first.mjs` does it and CI can require it.
+Four roles: [ROLES.md](doctrine/ROLES.md). The cycle stage by stage:
+[WORKFLOW.md](doctrine/WORKFLOW.md).
 
-**The surface is a local server, not a CLI** — decisions happen in served HTML
-docs the owner answers in a browser. **A PRD creates issues, not the other way
-round.**
+## Getting started
 
-Every rule exists because something went wrong once, and a rule with nothing
-enforcing it is a note. So `bin/dispatch` refuses a non-root cwd (a drifted
-session silently gets the *wrong repo's* worktree), uncommitted edits in the
-files being handed out, and a missing `commit-msg` hook; `bin/handoff` refuses
-`--verified` text that merely relays the worker.
+    npx entropy-machines init          # writes entropy.json + your first PRD
+    bin/serve                          # open the URL it prints, answer the PRD
 
-## Getting it into your project
+Or clone this repo, copy the six directories (`bin/ lib/ docs/ doctrine/ hooks/
+agents/`) into your project, and commit. No Node after the initial copy.
 
-Vendored as **plain tracked files** — `bin/ lib/ docs/ doctrine/ hooks/ agents/`
-— committed alongside your code the way a repo carries `scripts/`. No nested
-checkout, no submodule, one git root.
+Point your coding agent at [AGENT-QUICKSTART.md](docs/AGENT-QUICKSTART.md) —
+it handles the bootstrap (wiring up CLAUDE.md, running init, starting serve,
+handing you the URL).
 
-    npx entropy-machines init [--dir <path>]     # Node for this step, never again
+## Reference
 
-Or clone this repo, copy those six directories in, and commit — no Node.
+[CONFIG.md](docs/CONFIG.md) — every knob ·
+[SERVE.md](docs/SERVE.md) — the server contract ·
+[TRACKER-ADAPTER.md](docs/TRACKER-ADAPTER.md) — bring your own tracker ·
+[NPM.md](docs/NPM.md) — the npm wrapper
 
-Then tell your coding agent to read [QUICKSTART.md](docs/QUICKSTART.md) and
-bootstrap. It points your `CLAUDE.md` / `AGENTS.md` at the harness, runs
-`bin/init` (starter [`entropy.json`](docs/CONFIG.md) plus the orientation PRD),
-starts `bin/serve`, and hands you a URL. The PRD's questions are yours;
-`bin/status` is the read-only view later.
+## Requirements
 
-[CONFIG.md](docs/CONFIG.md) — every knob · [SERVE.md](docs/SERVE.md) — the
-server's contract · [TRACKER-ADAPTER.md](docs/TRACKER-ADAPTER.md) — bring your
-own tracker · [NPM.md](docs/NPM.md) — the wrapper.
-
-## Requirements and limits
-
-Git, a POSIX shell, Python 3; your *project* can be written in anything. The
-gates work with any agent that can run a shell command, but **automatic parallel
-workers in isolated worktrees is a [Claude Code](https://claude.com/claude-code)
-capability in v1** — another runner gets the same gates one issue at a time.
-
-**One known gap**, since a gate that reads as enforced and isn't is the failure
-this project is about: `bin/dispatch` writes structured JSON notes, `bin/handoff`
-still parses the older free-text form, so `--lift` doesn't refuse a held file and
-a recorded handoff doesn't release the claim. Read dispatch's overlap warning
-yourself. Extracted from a private repo where it was in daily use; the incidents
-are real, the project they happened to is not described.
+Git, a POSIX shell, Python 3. Your project can be written in anything. Automatic
+parallel workers in isolated worktrees is a
+[Claude Code](https://claude.com/claude-code) capability — another runner gets
+the same gates one issue at a time.
 
 ## License
 

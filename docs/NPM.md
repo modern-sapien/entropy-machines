@@ -32,7 +32,7 @@ has under those names, and those are three of the most commonly taken
 directory names there are. A subdirectory has none of that: it is one
 directory to add, one to `rm -rf`, and `git log` on it shows only harness
 changes. `lib/roots.sh` derives `ENTROPY_HOME` from each script's own `$0`,
-so both layouts work; `docs/QUICKSTART.md` already tells the agent to prefix
+so both layouts work; `docs/AGENT-QUICKSTART.md` already tells the agent to prefix
 every `bin/…` command with the vendored path.
 
 This is **not** the old nested clone. There is no `.git` in the vendored
