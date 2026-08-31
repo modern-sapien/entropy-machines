@@ -6,13 +6,24 @@
 #   tests/run -v               print each case's output even when it passes
 #   tests/run -k               keep the temp directories (they are printed)
 #   tests/run -l               list the cases and exit
+#   tests/run -j N             run N cases at a time (default: half the CPUs,
+#                              capped at 8; -j1 is fully serial)
 #
 # Exits 0 only if every case passed.
 #
 # A case is tests/cases/<name>.sh, run as a separate `sh` process in its own
-# temp directory. Nothing is shared between cases and nothing is ordered: each
-# one builds the git repository it needs from scratch and the runner deletes
-# it afterwards. See tests/README.md.
+# temp directory AND its own $HOME. Nothing is shared between cases and nothing
+# is ordered: each one builds the git repository it needs from scratch and the
+# runner deletes it afterwards. See tests/README.md.
+#
+# THAT INDEPENDENCE IS WHY CASES RUN CONCURRENTLY. Each case spends almost all
+# of its wall time waiting on processes it spawned — `git`, `python3`, the
+# harness's own entry points — at single-digit CPU utilisation, so running them
+# one at a time leaves the machine idle. Concurrency does not change what any
+# case does or asserts; the only thing it changes is how long the suite takes.
+# Output is still printed in case-name order, and a failure still prints that
+# case's whole log. If you are debugging one case, `-j1` restores the old
+# strictly-serial behaviour.
 #
 # ENTROPY_SRC points at the harness under test and defaults to this file's
 # parent — the checkout tests/ lives in. Override it to run the suite against
@@ -32,20 +43,46 @@ verbose=0
 keep=0
 list=0
 patterns=""
-for arg in "$@"; do
-  case "$arg" in
+jobs=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
     -v|--verbose) verbose=1 ;;
     -k|--keep)    keep=1 ;;
     -l|--list)    list=1 ;;
+    -j|--jobs)
+      shift
+      [ $# -gt 0 ] || { echo "tests/run: -j needs a number" >&2; exit 2; }
+      jobs="$1" ;;
+    -j*)          jobs=${1#-j} ;;
+    --jobs=*)     jobs=${1#--jobs=} ;;
     -h|--help)
-      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     -*)
-      echo "tests/run: unknown option $arg" >&2
+      echo "tests/run: unknown option $1" >&2
       exit 2 ;;
-    *) patterns="$patterns $arg" ;;
+    *) patterns="$patterns $1" ;;
   esac
+  shift
 done
+
+# How many at once. Default is half the CPUs capped at 8 — enough to cover the
+# spawn latency the cases are actually blocked on, low enough to leave the
+# machine usable and to keep several concurrent git/python trees off a laptop's
+# disk. TESTS_JOBS is the env form, -j wins over it.
+: "${TESTS_JOBS:=}"
+[ -n "$jobs" ] || jobs="$TESTS_JOBS"
+if [ -z "$jobs" ]; then
+  ncpu=$( { sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null; } | head -1 )
+  case "${ncpu:-}" in
+    ''|*[!0-9]*) jobs=4 ;;
+    *) jobs=$(( ncpu / 2 )); [ "$jobs" -lt 1 ] && jobs=1; [ "$jobs" -gt 8 ] && jobs=8 ;;
+  esac
+fi
+case "$jobs" in
+  ''|*[!0-9]*|0) echo "tests/run: -j wants a positive integer, got '$jobs'" >&2; exit 2 ;;
+esac
 
 if [ ! -x "$ENTROPY_SRC/bin/tracker" ]; then
   echo "tests/run: REFUSED — $ENTROPY_SRC does not look like the harness" >&2
@@ -63,13 +100,31 @@ cleanup() {
     rm -rf "$TMP_ROOT"
   fi
 }
+# Every case pid this run has started, so an interrupt can kill exactly them.
+# NOT `kill 0`: without job control (a CI runner, a script) this process shares
+# its process group with whatever invoked it, and `kill 0` would take that down
+# too.
+all_pids=""
+cleanup_interrupted() {
+  # Cases run in the background; without this an interrupt leaves them writing
+  # into a directory cleanup is deleting.
+  for _p in $all_pids; do kill "$_p" 2>/dev/null; done
+  cleanup
+  exit 130
+}
 trap 'cleanup' EXIT
-trap 'cleanup; exit 130' INT TERM
+trap 'cleanup_interrupted' INT TERM
 
 # ISOLATE THE ENVIRONMENT. A case's fixture is only throwaway if nothing
 # outside it can steer the run: an ENTROPY_ROOT left over from a real session
 # would point the tools at the developer's actual project, and bin/drain writes
 # under $HOME by default.
+#
+# HOME is set twice on purpose. Once here, so nothing this runner itself spawns
+# can reach the developer's home; and again PER CASE, next to TEST_TMP, so one
+# case's leftover git config or drain flag file cannot steer another. The
+# second was a hole even when the suite was serial; with cases running
+# concurrently it would be a race.
 HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
 export HOME
@@ -108,38 +163,100 @@ if [ "$list" -eq 1 ]; then
   exit 0
 fi
 
+# Per-case wall time, in milliseconds. GNU date has %N; BSD date prints the
+# literal "%N", so fall back to python3 — already a hard dependency of the
+# harness under test, so this adds no dependency the suite did not have.
+if [ "$(date +%N 2>/dev/null)" = "%N" ]; then
+  _now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
+else
+  _now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
+fi
+
 echo "tests/run: harness under test = $ENTROPY_SRC"
+[ "$jobs" -gt 1 ] && echo "tests/run: $jobs cases at a time (-j1 for serial)"
 echo
 
 pass=0
 fail=0
 failed_names=""
+timings=""
 started=$(date +%s)
 
-for name in $selected; do
-  case_file="$TESTS_DIR/cases/$name.sh"
-  case_tmp="$TMP_ROOT/$name"
-  mkdir -p "$case_tmp"
-  log="$TMP_ROOT/$name.log"
+# start_case <name> — run one case in the background. It writes its own log and
+# a one-line result file; nothing is printed from the child, so concurrent
+# cases cannot interleave output.
+start_case() {
+  _name="$1"
+  (
+    _case_file="$TESTS_DIR/cases/$_name.sh"
+    _case_tmp="$TMP_ROOT/$_name"
+    mkdir -p "$_case_tmp/home"
+    _t0=$(_now_ms)
+    HOME="$_case_tmp/home" TEST_TMP="$_case_tmp" TEST_NAME="$_name" \
+      sh "$_case_file" >"$TMP_ROOT/$_name.log" 2>&1
+    _rc=$?
+    printf '%s %s\n' "$_rc" "$(( $(_now_ms) - _t0 ))" > "$TMP_ROOT/$_name.result"
+  ) &
+}
 
-  TEST_TMP="$case_tmp" TEST_NAME="$name" \
-    sh "$case_file" >"$log" 2>&1
-  rc=$?
-
-  if [ "$rc" -eq 0 ]; then
+# report_case <name> — print the verdict for a case that has finished.
+report_case() {
+  _rname="$1"
+  read -r _rrc _rms < "$TMP_ROOT/$_rname.result" 2>/dev/null || { _rrc=127; _rms=0; }
+  case "${_rrc:-}${_rms:-}" in '') _rrc=127; _rms=0 ;; esac
+  timings="$timings$_rms $_rname
+"
+  if [ "$_rrc" -eq 0 ]; then
     pass=$((pass + 1))
-    printf 'ok    %s\n' "$name"
-    [ "$verbose" -eq 1 ] && sed 's/^/      /' "$log"
+    printf 'ok    %-52s %6s ms\n' "$_rname" "$_rms"
+    [ "$verbose" -eq 1 ] && sed 's/^/      /' "$TMP_ROOT/$_rname.log"
   else
     fail=$((fail + 1))
-    failed_names="$failed_names $name"
-    printf 'FAIL  %s  (exit %s)\n' "$name" "$rc"
-    sed 's/^/      /' "$log"
+    failed_names="$failed_names $_rname"
+    printf 'FAIL  %-52s %6s ms  (exit %s)\n' "$_rname" "$_rms" "$_rrc"
+    sed 's/^/      /' "$TMP_ROOT/$_rname.log"
   fi
+}
+
+# A sliding window over the case list, oldest-first. `wait <pid>` on the oldest
+# child is what bounds concurrency AND what keeps the report in case-name
+# order: results are printed as the window advances, not as cases happen to
+# finish. POSIX sh has no `wait -n`, and reaching for one would only buy back
+# the sliver of time the window spends behind a slow case.
+window=""
+in_flight=0
+
+for name in $selected; do
+  start_case "$name"
+  window="$window $!:$name"
+  all_pids="$all_pids $!"
+  in_flight=$((in_flight + 1))
+  while [ "$in_flight" -ge "$jobs" ]; do
+    set -- $window
+    entry="$1"; shift; window="$*"
+    wait "${entry%%:*}" 2>/dev/null
+    report_case "${entry#*:}"
+    in_flight=$((in_flight - 1))
+  done
+done
+
+while [ "$in_flight" -gt 0 ]; do
+  set -- $window
+  entry="$1"; shift; window="$*"
+  wait "${entry%%:*}" 2>/dev/null
+  report_case "${entry#*:}"
+  in_flight=$((in_flight - 1))
 done
 
 elapsed=$(( $(date +%s) - started ))
 
+echo
+# Slowest first. A suite that has got slower says so here, where someone is
+# already looking, instead of only in a total nobody remembers.
+echo "tests/run: slowest cases"
+printf '%s' "$timings" | sort -rn | head -5 | while read -r _ms _name; do
+  printf '  %6s ms  %s\n' "$_ms" "$_name"
+done
 echo
 echo "tests/run: $pass passed, $fail failed, in ${elapsed}s"
 if [ "$fail" -ne 0 ]; then

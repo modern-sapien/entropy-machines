@@ -6,10 +6,31 @@ tests/run tracker serve      # only cases whose name contains "tracker" or "serv
 tests/run -v                 # print each case's output even when it passes
 tests/run -k                 # keep the temp directories, and print where they are
 tests/run -l                 # list the cases
+tests/run -j 4               # 4 cases at a time (default: half the CPUs, max 8)
 ```
 
 Exit 0 means every case passed. No install step, no dependencies beyond what
 the harness itself already requires: POSIX `sh`, `git`, and Python 3.
+
+**Cases run concurrently.** Each one has its own temp directory, its own
+`$HOME` and its own throwaway git repo, and none of them is ordered against
+another — so the only thing concurrency changes is how long the suite takes.
+Results are still printed in case-name order and a failure still prints that
+case's whole log. `-j1` is strictly serial, which is what you want when you are
+debugging a single case.
+
+The suite is worth running concurrently because almost none of its time is
+spent computing. A case spends its wall clock waiting on processes it spawned —
+`git`, `python3`, the harness's own entry points — at single-digit CPU. The
+runner prints each case's wall time and the slowest five at the end, so a case
+that starts costing seconds says so where someone is already looking. The
+per-case *fixture* is not the expensive part and optimising it is mostly wasted
+effort: building the throwaway repo is ~140ms, while `bin/init` alone is ~700ms
+and a single `bin/tracker` call is ~80ms — of which about 60ms is the shell
+prologue every entry point pays (`lib/roots.sh` resolving the root through
+`git rev-parse`, then a second `python3` just to read `entropy.json`). The
+number of processes the harness spawns per command is the lever, not the
+fixture.
 
 ## Adding a case
 
