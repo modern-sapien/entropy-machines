@@ -53,9 +53,7 @@ orchestrator, on the risky changes only. A subagent's proof can be vacuous in a
 way that re-running it cannot reveal; only an independent mutation shows what a
 test is actually pinned to.
 
-**Nothing lands eagerly.** Finished work is held until the owner says merge,
-because other workstreams may need to land first and an eager merge creates
-exactly the collision the worktrees exist to prevent.
+**Work is landed at the behest of the owner** If they're working wtith you directly likely they'll indicate what to do, to be mindful of other agents, when pulling work in. You should also be intentional about surfacing risks of collission and surfacing what you can in advance of merging work.
 
 **The clean tree is the source of truth.** The orchestrator's checkout is
 usually dirty with other sessions' work. A worker's worktree branches from
