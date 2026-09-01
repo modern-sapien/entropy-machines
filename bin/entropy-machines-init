@@ -21,9 +21,15 @@
 // against a clone does).
 //
 // Deliberately NOT here, because the owner deleted a 1072-line installer to
-// get rid of them: managed blocks, hash fences, install receipts, staleness
-// or version checking, an uninstall path, and any write into the user's
-// .claude/ or CLAUDE.md. Undoing this is `rm -rf` of one directory.
+// get rid of them: managed blocks, hash fences, install receipts, an
+// uninstall path, and any write into the user's .claude/ or CLAUDE.md.
+// Undoing this is `rm -rf` of one directory.
+//
+// VERSION STAMPING is the one piece that came back: a .version file in the
+// vendored directory lets `start` detect a stale copy and auto-update the
+// harness code (bin/, lib/, etc.) without re-running bin/init or touching
+// config.json. Without it, `npx entropy-machines start` after a version bump
+// silently ran the old code and the user had to know to delete and re-vendor.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -204,6 +210,9 @@ function init(argv) {
     fs.copyFileSync(path.join(PKG_ROOT, 'LICENSE'), licenseDst);
   }
 
+  // Stamp the version so `start` can detect a stale vendored copy.
+  fs.writeFileSync(path.join(dest, '.version'), PKG.version + '\n');
+
   const shown = path.relative(root, dest) || '.';
   console.log(`${GREEN}entropy-machines ${PKG.version}: vendored into ${dest}${RESET}`);
   for (const d of HARNESS_DIRS) console.log(`  ${DIM}${path.join(shown, d)}/${RESET}`);
@@ -257,6 +266,22 @@ function findHarness(root) {
   return null;
 }
 
+// Re-copy harness code (bin/, lib/, etc.) without re-running bin/init or
+// touching config.json. Called by start() when the vendored .version is older
+// than the running package.
+function updateHarness(loc) {
+  const dest = loc.dir;
+  for (const d of HARNESS_DIRS) {
+    fs.cpSync(path.join(PKG_ROOT, d), path.join(dest, d), {
+      recursive: true,
+      filter: copyFilter,
+    });
+  }
+  // LICENSE: overwrite — it's ours, not user-edited.
+  fs.copyFileSync(path.join(PKG_ROOT, 'LICENSE'), path.join(dest, 'LICENSE'));
+  fs.writeFileSync(path.join(dest, '.version'), PKG.version + '\n');
+}
+
 function start(argv) {
   const root = repoRoot();
   if (!root) die(['entropy-machines: not inside a git repository.']);
@@ -270,6 +295,19 @@ function start(argv) {
   if (!loc) {
     die(['entropy-machines: config.json not found at root or in ' + DEFAULT_DIR + '/.']);
   }
+
+  // AUTO-UPDATE: if the vendored copy is older than this package, re-copy
+  // the harness code. config.json and the docs directory are untouched.
+  const versionFile = path.join(loc.dir, '.version');
+  let vendored = '';
+  try { vendored = fs.readFileSync(versionFile, 'utf8').trim(); } catch {}
+  if (vendored !== PKG.version) {
+    const from = vendored || 'unknown';
+    console.log(`${GREEN}entropy-machines: updating ${loc.shown}/ from ${from} → ${PKG.version}${RESET}`);
+    updateHarness(loc);
+    console.log(`${DIM}  (config.json and docs left alone)${RESET}\n`);
+  }
+
   const serve = path.join(loc.dir, 'bin', 'serve');
   if (!fs.existsSync(serve)) {
     die([`entropy-machines: ${path.join(loc.shown, 'bin', 'serve')} not found.`]);
