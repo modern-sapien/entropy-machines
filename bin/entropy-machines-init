@@ -55,8 +55,8 @@ function die(lines) {
 function usage() {
   console.log(`entropy-machines ${PKG.version}
 
-  npx entropy start                     # init (if needed) + open the PRD
-  npx entropy init [--dir <path>]       # vendor the harness only
+  npx entropy-machines start                     # init (if needed) + open the PRD
+  npx entropy-machines init [--dir <path>]       # vendor the harness only
 
 start: vendors the harness if config.json is absent, then launches
 bin/serve — which opens your first PRD in a browser.

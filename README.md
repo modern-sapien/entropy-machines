@@ -24,7 +24,7 @@ the decisions only you can make. Everything downstream follows from your answers
 ## Get started
 
 ```sh
-npx entropy start
+npx entropy-machines start
 ```
 
 This vendors the harness into your git repo (if it hasn't been already) and
