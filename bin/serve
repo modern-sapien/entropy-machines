@@ -153,6 +153,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -634,6 +636,16 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/":
+            # When the tracker is empty (first contact), go straight to the PRD.
+            ready = ready_issues()
+            if not ready:
+                import glob
+                prds = sorted(glob.glob(os.path.join(DOCS_PATH, "PRD-*.html")))
+                if prds:
+                    self.send_response(302)
+                    self.send_header("Location", "/%s" % os.path.basename(prds[0]))
+                    self.end_headers()
+                    return
             self._send(200, render_dashboard().encode("utf-8"), "text/html; charset=utf-8")
             return
 
@@ -726,6 +738,17 @@ def main():
     print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, port), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
+    # Auto-open: find the first PRD in the docs directory and open it.
+    # If no doc found, open the dashboard. Threaded so it doesn't block startup.
+    def _open_browser():
+        import glob
+        prds = sorted(glob.glob(os.path.join(DOCS_PATH, "PRD-*.html")))
+        if prds:
+            target = "http://localhost:%d/%s" % (port, os.path.basename(prds[0]))
+        else:
+            target = "http://localhost:%d/" % port
+        webbrowser.open(target)
+    threading.Thread(target=_open_browser, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

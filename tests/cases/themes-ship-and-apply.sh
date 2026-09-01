@@ -263,6 +263,11 @@ start_server() {
 
 cp "$TPL" "$DOCS/$DOC"
 
+# The dashboard redirects to the first PRD when the tracker is empty (first-
+# contact redirect, bin/serve change 2026-09). This test needs the dashboard
+# to render, so seed one issue to keep the dashboard path.
+( cd "$REPO" && "$HARNESS/bin/tracker" set test-theme-issue status=notstarted title="Theming test fixture" ) >/dev/null 2>&1
+
 # ---------------------------------------------------------------------------
 # DEFAULT: no docs.theme at all — high-contrast, the house style.
 # ---------------------------------------------------------------------------

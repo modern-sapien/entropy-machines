@@ -312,6 +312,20 @@ function start(argv) {
   if (!fs.existsSync(serve)) {
     die([`entropy-machines: ${path.join(loc.shown, 'bin', 'serve')} not found.`]);
   }
+  // Agent onboarding notice — only if the agent hasn't been pointed at the
+  // quickstart yet. If CLAUDE.md mentions entropy-machines, it's done.
+  const claudeMdPaths = [
+    path.join(root, 'CLAUDE.md'),
+    path.join(root, '.claude', 'CLAUDE.md'),
+  ];
+  const agentOnboarded = claudeMdPaths.some((p) => {
+    try { return fs.readFileSync(p, 'utf8').includes('entropy-machines'); } catch { return false; }
+  });
+  if (!agentOnboarded) {
+    console.log(`\n${BOLD}${YELLOW}  ⚠ your coding agent doesn't know about entropy-machines yet.${RESET}`);
+    console.log(`    Point it at ${CYAN}${path.join(loc.shown, 'docs', 'AGENT-QUICKSTART.md')}${RESET} before answering the PRD.\n`);
+  }
+
   console.log(`\n${BOLD}entropy-machines: starting serve from ${loc.shown}/${RESET}\n`);
   const r = spawnSync('sh', [serve], { cwd: loc.dir, stdio: 'inherit' });
   process.exit(r.status ?? 1);
