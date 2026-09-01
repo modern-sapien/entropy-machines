@@ -1,6 +1,6 @@
 {
   "name": "entropy-machines",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Vendors the entropy-machines agent-orchestration harness into your git repository as plain tracked files. A delivery mechanism, not a runtime — the harness is POSIX shell and Python 3 and needs no Node once the files have landed.",
   "license": "Elastic-2.0",
   "repository": {
