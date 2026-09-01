@@ -85,7 +85,7 @@ list_themes() {
 if theme=$(python3 "$CONFIG_PY" get docs.theme 2>/dev/null); then
   theme_source="docs.theme in config.json"
 else
-  theme="high-contrast"
+  theme="janus"
   theme_source="the default (docs.theme is not set)"
 fi
 

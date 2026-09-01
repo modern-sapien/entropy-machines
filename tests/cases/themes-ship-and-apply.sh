@@ -29,7 +29,11 @@ TPL="$HARNESS/lib/REPORT-TEMPLATE.html"
 DOCS="$REPO/entropy-machines-docs"
 DOC="BUILD-REPORT-THEMED.html"
 
-# High-contrast, verbatim from the template that has always shipped it.
+# Janus — the default theme, violet-accented high contrast.
+JN_BG="--bg:#0a0a0d;"
+JN_LINE="--line:#a78bfa;"
+JN_STEP="--fs-base:14px;"
+# High-contrast — the original house style.
 HC_BG="--bg:#000;"
 HC_LINE="--line:#6FC3DF;"
 HC_STEP="--fs-base:14px;"
@@ -40,10 +44,11 @@ DL_LINE="--line:#8E8A7E;"
 DL_STEP="--fs-base:16px;"
 
 # ---------------------------------------------------------------------------
-# both themes ship
+# all themes ship
 # ---------------------------------------------------------------------------
-assert_file "$THEMES/high-contrast.css" "the default theme ships as a file"
-assert_file "$THEMES/daylight.css" "and so does the second one"
+assert_file "$THEMES/janus.css" "the default theme ships as a file"
+assert_file "$THEMES/high-contrast.css" "and so does the original"
+assert_file "$THEMES/daylight.css" "and the light one"
 
 # ---------------------------------------------------------------------------
 # the token NAMES are the contract: identical sets, every one with a value in
@@ -114,13 +119,14 @@ for path in sys.argv[1:]:
         bad.append("%s: no value for %s in the bare :root" % (path, " ".join(empty)))
 
 paths = list(sets)
-if len(paths) == 2:
-    a, b = paths
-    only_a = sorted(sets[a] - sets[b])
-    only_b = sorted(sets[b] - sets[a])
-    if only_a or only_b:
-        bad.append("token name sets DIFFER: only in %s: %s | only in %s: %s"
-                   % (a, " ".join(only_a) or "-", b, " ".join(only_b) or "-"))
+if len(paths) >= 2:
+    ref = paths[0]
+    for other in paths[1:]:
+        only_ref = sorted(sets[ref] - sets[other])
+        only_other = sorted(sets[other] - sets[ref])
+        if only_ref or only_other:
+            bad.append("token name sets DIFFER: only in %s: %s | only in %s: %s"
+                       % (ref, " ".join(only_ref) or "-", other, " ".join(only_other) or "-"))
 
 if bad:
     for line in bad:
@@ -131,8 +137,8 @@ print("token name sets are identical: %d names, all with a value in the bare :ro
       % len(sets[paths[0]]))
 PY
 
-run python3 "$TEST_TMP/tokens.py" "$THEMES/high-contrast.css" "$THEMES/daylight.css"
-assert_rc 0 "the two themes define the same token names, every one valued in :root"
+run python3 "$TEST_TMP/tokens.py" "$THEMES/janus.css" "$THEMES/high-contrast.css" "$THEMES/daylight.css"
+assert_rc 0 "all themes define the same token names, every one valued in :root"
 assert_out "token name sets are identical" "and the comparison says so"
 assert_no_traceback
 
@@ -153,13 +159,13 @@ if b == -1 or e == -1:
     sys.exit(1)
 span = doc[b + len(BEGIN):e]
 if span != theme:
-    print("the template's inlined block is NOT lib/themes/high-contrast.css")
+    print("the template's inlined block is NOT the default theme file")
     print("  inlined: %d chars, file: %d chars" % (len(span), len(theme)))
     sys.exit(1)
-print("the template inlines lib/themes/high-contrast.css verbatim")
+print("the template inlines the default theme file verbatim")
 PY
 
-run python3 "$TEST_TMP/inline.py" "$TPL" "$THEMES/high-contrast.css"
+run python3 "$TEST_TMP/inline.py" "$TPL" "$THEMES/janus.css"
 assert_rc 0 "the template's own token block is the default theme file, byte for byte"
 assert_out "verbatim" "and says so"
 
@@ -269,7 +275,7 @@ cp "$TPL" "$DOCS/$DOC"
 ( cd "$REPO" && "$HARNESS/bin/tracker" set test-theme-issue status=notstarted title="Theming test fixture" ) >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
-# DEFAULT: no docs.theme at all — high-contrast, the house style.
+# DEFAULT: no docs.theme at all — janus, the brand theme.
 # ---------------------------------------------------------------------------
 set_theme __unset__
 PORT=$(free_port)
@@ -277,17 +283,17 @@ start_server "$PORT" "$TEST_TMP/serve-default.log"
 
 OUT=$(cat "$TEST_TMP/serve-default.log"); ERR=""; ALL="$OUT"; RC=0
 LAST_CMD="bin/serve $PORT (no docs.theme set)"
-assert_out "theme: high-contrast" "with no docs.theme it names the default it fell back to"
+assert_out "theme: janus" "with no docs.theme it names the default it fell back to"
 
 run python3 "$TEST_TMP/fetch.py" "http://127.0.0.1:$PORT/$DOC" "$TEST_TMP/default.html"
 assert_rc 0 "the doc is served"
 assert_out "200" "with a 200"
 
-run grep -F -- "$HC_BG" "$TEST_TMP/default.html"
-assert_rc 0 "the default serves the high-contrast ground"
-run grep -F -- "$HC_LINE" "$TEST_TMP/default.html"
-assert_rc 0 "and its border hue"
-run grep -F -- "$HC_STEP" "$TEST_TMP/default.html"
+run grep -F -- "$JN_BG" "$TEST_TMP/default.html"
+assert_rc 0 "the default serves the janus ground"
+run grep -F -- "$JN_LINE" "$TEST_TMP/default.html"
+assert_rc 0 "and its violet border"
+run grep -F -- "$JN_STEP" "$TEST_TMP/default.html"
 assert_rc 0 "and its type scale"
 run grep -F -- "$DL_BG" "$TEST_TMP/default.html"
 assert_rc 1 "and nothing of daylight's"
@@ -295,7 +301,7 @@ assert_rc 1 "and nothing of daylight's"
 # The dashboard is a viewable interface too and wears the same theme.
 run python3 "$TEST_TMP/fetch.py" "http://127.0.0.1:$PORT/" "$TEST_TMP/dash-default.html"
 assert_rc 0 "the dashboard is served"
-run grep -F -- "$HC_BG" "$TEST_TMP/dash-default.html"
+run grep -F -- "$JN_BG" "$TEST_TMP/dash-default.html"
 assert_rc 0 "the dashboard is themed too, not left on a second private palette"
 
 stop_server
@@ -324,16 +330,16 @@ run grep -F -- "[data-theme=dark]" "$TEST_TMP/daylight.html"
 assert_rc 0 "including the dark state, so the toggle still works both ways"
 
 # The half that a swap applying nothing would also satisfy.
-run grep -F -- "$HC_BG" "$TEST_TMP/daylight.html"
-assert_rc 1 "and the high-contrast ground it replaced is GONE"
-run grep -F -- "$HC_LINE" "$TEST_TMP/daylight.html"
-assert_rc 1 "along with its border hue"
+run grep -F -- "$JN_BG" "$TEST_TMP/daylight.html"
+assert_rc 1 "and the janus ground it replaced is GONE"
+run grep -F -- "$JN_LINE" "$TEST_TMP/daylight.html"
+assert_rc 1 "along with its violet border"
 run grep -F -- ":root[data-theme=light]" "$TEST_TMP/daylight.html"
-assert_rc 1 "and the hc-light override, which would out-specify daylight on the toggle"
+assert_rc 1 "and the janus-light override, which would out-specify daylight on the toggle"
 
 # The file on disk is untouched — the theme is applied in flight, so the doc
 # stays the author's and switching themes rewrites nothing.
-run grep -F -- "$HC_BG" "$DOCS/$DOC"
+run grep -F -- "$JN_BG" "$DOCS/$DOC"
 assert_rc 0 "the doc ON DISK still carries its own tokens; serving rewrote nothing"
 
 # Structure is shared, not duplicated: the parts a theme does not own survive.
@@ -350,16 +356,16 @@ run "$HARNESS/bin/doclint" "$DOCS/SERVED-DAYLIGHT.html"
 assert_rc 0 "doclint passes a doc as served under daylight"
 assert_out "all local and answerable" "with no external reference introduced"
 
-cp "$TEST_TMP/default.html" "$DOCS/SERVED-HC.html"
-run "$HARNESS/bin/doclint" "$DOCS/SERVED-HC.html"
-assert_rc 0 "and one as served under high-contrast"
+cp "$TEST_TMP/default.html" "$DOCS/SERVED-JN.html"
+run "$HARNESS/bin/doclint" "$DOCS/SERVED-JN.html"
+assert_rc 0 "and one as served under janus"
 assert_no_traceback
 
 run "$HARNESS/bin/doclint" "$THEMES/daylight.css"
 assert_rc_nonzero "a theme file is not a doc — doclint has no business passing one"
 
 stop_server
-rm -f "$DOCS/SERVED-DAYLIGHT.html" "$DOCS/SERVED-HC.html"
+rm -f "$DOCS/SERVED-DAYLIGHT.html" "$DOCS/SERVED-JN.html"
 
 # ---------------------------------------------------------------------------
 # REFUSED: a theme that does not exist. Named, with the real options listed,
@@ -373,7 +379,8 @@ assert_rc_nonzero "an unknown docs.theme is refused"
 assert_out "REFUSED" "loudly"
 assert_out "midnight" "naming the theme that does not exist"
 assert_out "daylight" "and listing the ones that do"
-assert_out "high-contrast" "all of them, not just the first"
+assert_out "high-contrast" "all of them"
+assert_out "janus" "including the new default"
 assert_out_words "Nothing was served" "saying explicitly that it did not serve anyway"
 assert_no_traceback
 

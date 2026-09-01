@@ -36,7 +36,7 @@ checked** — `lib/REPORT-TEMPLATE.html` is a default, not a conformance target.
 it, since the save-path check refuses any `file` containing `/`. Reports start
 from `lib/REPORT-TEMPLATE.html`, PRDs from `lib/doc-template.html`, whose header
 comment authoritatively describes the response-box machinery. `docs.theme` picks
-a stylesheet from `lib/themes/` (`high-contrast`, `daylight`), inlined on each
+a stylesheet from `lib/themes/` (`janus`, `high-contrast`, `daylight`), inlined on each
 `GET` between the `entropy-machines-theme` markers; an unknown name is refused by name.
 
 ## Saving

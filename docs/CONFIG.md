@@ -12,7 +12,7 @@ harness report a broken command as a broken project.
 {
   "project":    { "name": "my-project", "protectedPaths": [] },
   "tracker":    { "backend": "file", "file": { "path": ".entropy-machines/issues.json" } },
-  "docs":       { "dir": "entropy-machines-docs", "theme": "high-contrast" },
+  "docs":       { "dir": "entropy-machines-docs", "theme": "janus" },
   "suites":     [ { "name": "unit", "cmd": ["npm", "test"] },
                   { "name": "e2e",  "cmd": ["npm", "run", "e2e"], "tag": "slow" } ],
   "generate":   { "cmd": ["npm", "run", "gen"], "outputs": [] },
@@ -43,8 +43,9 @@ Every key is optional — deep-merged over `lib/config.py`'s `DEFAULTS`.
 
 ## Themes and root
 
-`docs.theme` resolves to `lib/themes/<name>.css` — `high-contrast` (default,
-dark-first) or `daylight` (light-first). A theme is a `:root` token block and
+`docs.theme` resolves to `lib/themes/<name>.css` — `janus` (default,
+dark-first, violet-accented), `high-contrast` (dark-first, blue-accented),
+or `daylight` (light-first). A theme is a `:root` token block and
 nothing else, so layout stays in the templates; every theme must define the same
 names with a real value in the bare `:root`, since one defined only under
 `[data-theme=…]` renders unstyled by default.

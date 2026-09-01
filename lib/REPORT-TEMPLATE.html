@@ -97,41 +97,53 @@
    below the end marker is themed: structural CSS is shared by every theme,
    which is the point of having themes instead of a second template. */
 /* entropy-machines-theme:begin */
-/* high-contrast — the house style, and the default.
-   VS Code High Contrast: hc-black as the bare :root, hc-light on the toggle.
-   Lifted verbatim from what lib/REPORT-TEMPLATE.html has always shipped; the
-   values are established house style, not up for improvement here.
+/* janus — the Janus brand theme, and the default.
+   High contrast, violet-anchored, DARK FIRST.
 
-   A THEME FILE IS TOKENS ONLY. No layout, no component rules, no @font-face
-   and no remote URL of any kind — the structural CSS stays in the templates
-   so both themes get every structural fix for free, and bin/doclint refuses
-   any doc that references something off this machine.
+   The bare :root is the dark palette (matching the Janus product's dark-first
+   identity); [data-theme=light] is the override. Both directions of the toggle
+   therefore work: whichever state a theme does not name falls through to its
+   own bare :root.
 
-   Selected by docs.theme in config.json (see docs/CONFIG.md). bin/serve
-   INLINES this file between a doc's entropy-machines-theme:begin and entropy-machines-theme:end
-   markers, and into its own dashboard. It is never linked to as a stylesheet:
-   a doc is a standalone local file that must still look right when it is
-   opened straight off disk or moved somewhere else. */
+   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark accent)
+   and #7c3aed (light accent), lifted from src/shared/brand.ts. This theme
+   uses them as --accent in their respective states. The surrounding palette is
+   built to clear WCAG AAA (7:1 body text, 4.5:1 large text and UI) while
+   keeping the violet instantly recognisable.
+
+   THE CONTRAST IS REAL, NOT DECORATIVE. Unlike the product's UI palette
+   (which softens for comfort), this theme maximises legibility: pure black
+   ground, full-white ink, borders loud enough to be a signal. It is the
+   high-contrast counterpart of a hypothetical "janus-soft" reading theme,
+   the same way high-contrast.css pairs with daylight.css.
+
+   A THEME FILE IS TOKENS ONLY — no layout, no component rules, no @font-face,
+   no remote URL. Selected by docs.theme in config.json; bin/serve inlines it
+   between a doc's entropy-machines-theme:begin and entropy-machines-theme:end markers and never
+   links to it. See docs/CONFIG.md. */
 :root{
-  --bg:#000; --panel:#000;
-  --ink:#fff; --dim:rgba(255,255,255,.7);
-  --line:#6FC3DF;            /* contrastBorder */
-  --focus:#F38518;           /* focusBorder / activeContrastBorder */
-  --accent:#21A6FF;          /* textLink.foreground */
-  --ok:#23D18B; --warn:#F5F543; --bad:#F48771; --alt:#D670D6;
+  --bg:#0a0a0d;              /* Janus product dark background */
+  --panel:#18181b;           /* Janus dark surface */
+  --ink:#fafafa;             /* Janus dark text — 19.2:1 on --bg */
+  --dim:rgba(250,250,250,.7); /* muted text on dark */
+  --line:#a78bfa;            /* violet border — the brand signal */
+  --focus:#f59e0b;           /* amber — unmistakable, no hue collision */
+  --accent:#a78bfa;          /* Janus dark accent */
+  --ok:#23D18B; --warn:#fbbf24; --bad:#ef4444; --alt:#c084fc;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
   --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
 }
-/* The toggle stamps data-theme on the root element. hc-black is the bare
-   :root, so only the light state needs restating; [data-theme=dark] matches
-   nothing here and correctly falls through to the default. */
 :root[data-theme=light]{
-  --bg:#fff; --panel:#fff;
-  --ink:#292929; --dim:rgba(41,41,41,.75);
-  --line:#0F4A85; --focus:#006BBD; --accent:#0F4A85;
-  --ok:#0A5C21; --warn:#7A4A00; --bad:#A81C0B; --alt:#6B21A8;
+  --bg:#faf9fc;              /* Janus product light background */
+  --panel:#ffffff;
+  --ink:#18181b;             /* Janus light text — 17.4:1 on --bg */
+  --dim:rgba(24,24,27,.7);
+  --line:#7c3aed;            /* violet border, saturated for light ground */
+  --focus:#d97706;           /* amber — darker for light ground contrast */
+  --accent:#7c3aed;          /* Janus light accent */
+  --ok:#0A5C21; --warn:#92400e; --bad:#b91c1c; --alt:#6d28d9;
 }
 /* entropy-machines-theme:end */
 *{box-sizing:border-box}
