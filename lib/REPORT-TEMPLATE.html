@@ -1,8 +1,8 @@
 <!doctype html>
 <!-- ==================== entropy-machines report template ====================
   A sprint report, plan, or audit the owner READS AND ANSWERS. Copy this file
-  into the project's docs directory (docs.dir in entropy.json, default
-  entropy-docs/), replace the placeholders, and serve it with bin/serve. The
+  into the project's docs directory (docs.dir in config.json, default
+  entropy-machines-docs/), replace the placeholders, and serve it with bin/serve. The
   owner answers in the browser and the save button writes those answers back
   into this file on disk.
 
@@ -69,7 +69,7 @@
 
   YOU DO NOT HAVE TO EDIT THIS FILE TO CHANGE THE LOOK. The token block below
   sits between two markers, and bin/serve swaps that span for
-  lib/themes/<name>.css when entropy.json says docs.theme: "<name>" — ships
+  lib/themes/<name>.css when config.json says docs.theme: "<name>" — ships
   with "high-contrast" (this one, the default) and "daylight", a softer
   light-first theme for long reading. Everything below the end marker is
   structure and is shared by every theme, so a layout fix is made once. Adding
@@ -96,7 +96,7 @@
    the block between them tokens-only, and put no layout in there. Nothing
    below the end marker is themed: structural CSS is shared by every theme,
    which is the point of having themes instead of a second template. */
-/* entropy-theme:begin */
+/* entropy-machines-theme:begin */
 /* high-contrast — the house style, and the default.
    VS Code High Contrast: hc-black as the bare :root, hc-light on the toggle.
    Lifted verbatim from what lib/REPORT-TEMPLATE.html has always shipped; the
@@ -107,8 +107,8 @@
    so both themes get every structural fix for free, and bin/doclint refuses
    any doc that references something off this machine.
 
-   Selected by docs.theme in entropy.json (see docs/CONFIG.md). bin/serve
-   INLINES this file between a doc's entropy-theme:begin and entropy-theme:end
+   Selected by docs.theme in config.json (see docs/CONFIG.md). bin/serve
+   INLINES this file between a doc's entropy-machines-theme:begin and entropy-machines-theme:end
    markers, and into its own dashboard. It is never linked to as a stylesheet:
    a doc is a standalone local file that must still look right when it is
    opened straight off disk or moved somewhere else. */
@@ -133,7 +133,7 @@
   --line:#0F4A85; --focus:#006BBD; --accent:#0F4A85;
   --ok:#0A5C21; --warn:#7A4A00; --bad:#A81C0B; --alt:#6B21A8;
 }
-/* entropy-theme:end */
+/* entropy-machines-theme:end */
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -346,7 +346,7 @@ Numbers, not adjectives.}}</code></pre>
   // so the answer is not real until 💾 writes it into the file.
   (function(){
     var file=(location.pathname.split('/').pop()||'report').split('?')[0];
-    var KEY='entropy-'+file;
+    var KEY='entropy-machines-'+file;
     var boxes=[].slice.call(document.querySelectorAll('.response[data-resp] textarea'));
     try{
       var disk=JSON.parse(document.getElementById('responses-data').textContent||'{}');

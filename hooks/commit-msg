@@ -6,7 +6,7 @@
 #
 # ONE ROOT. lib/handoff-guard.sh is a harness file living one directory up from
 # this one, inside the same repository as the commit being made. The shim
-# exports ENTROPY_HOME (it lives in .git/hooks and cannot find lib/
+# exports ENTROPY_MACHINES_HOME (it lives in .git/hooks and cannot find lib/
 # relatively); the fallback below only matters when this file is run directly.
 # $1, the message file path git passes in, is already project-relative or
 # absolute as git gives it — nothing here needs to touch it.
@@ -17,8 +17,8 @@ set -euo pipefail
 
 . "$(dirname "$0")/../lib/roots.sh"
 
-: "${ENTROPY_HOME:=$(entropy_home "$0")}"
-export ENTROPY_HOME
-entropy_require_root commit-msg
+: "${ENTROPY_MACHINES_HOME:=$(entropy_machines_home "$0")}"
+export ENTROPY_MACHINES_HOME
+entropy_machines_require_root commit-msg
 
-exec "$ENTROPY_HOME/lib/handoff-guard.sh" --message "$1"
+exec "$ENTROPY_MACHINES_HOME/lib/handoff-guard.sh" --message "$1"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # changelog-guard — a commit that touches a watched path must add a fragment
-# under `changelog.fragmentDir`. What counts as "watched" is entropy.json's
+# under `changelog.fragmentDir`. What counts as "watched" is config.json's
 # `changelog.watchedPathPatterns`; the default is `["**"]`, i.e. every path,
 # until a project narrows it.
 #
@@ -31,13 +31,13 @@
 # `git commit --no-verify` is NOT an escape hatch. It skips the hook and
 # leaves nothing behind, so CI fails and there is no record of the intent.
 #
-# The whole feature is optional: `changelog.enabled: false` in entropy.json
+# The whole feature is optional: `changelog.enabled: false` in config.json
 # turns this script into a no-op. A consuming project may not want a
 # fragment-per-commit changelog at all.
 
 set -euo pipefail
 
-# ENTROPY_HOME is the harness DIRECTORY — where config.py sits — which may be
+# ENTROPY_MACHINES_HOME is the harness DIRECTORY — where config.py sits — which may be
 # the repo root or a subdirectory of it. It is not a root and not a separate
 # repo (see lib/roots.sh). The shim installed by lib/install-hooks.sh exports
 # it; the fallback is for direct invocation, by hand or from a test.
@@ -45,16 +45,16 @@ set -euo pipefail
 # There is deliberately NO root variable here. Everything this guard reads is
 # `git diff --cached` against whatever working tree git put us in, which is
 # the tree the commit belongs to — the right answer in a linked worktree as
-# well as the main checkout. config.py finds entropy.json from cwd the same
-# way, and entropy.json is a TRACKED file, so it is present in every worktree.
-if [ -z "${ENTROPY_HOME:-}" ]; then
-  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+# well as the main checkout. config.py finds config.json from cwd the same
+# way, and config.json is a TRACKED file, so it is present in every worktree.
+if [ -z "${ENTROPY_MACHINES_HOME:-}" ]; then
+  ENTROPY_MACHINES_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
 fi
-CONFIG_PY="$ENTROPY_HOME/lib/config.py"
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
 
 ENABLED="$(python3 "$CONFIG_PY" get changelog.enabled)"
 if [ "$ENABLED" != "true" ]; then
-  echo "changelog-guard: changelog.enabled is false in entropy.json — skipped."
+  echo "changelog-guard: changelog.enabled is false in config.json — skipped."
   exit 0
 fi
 
@@ -66,7 +66,7 @@ SKIP_MARKER='[skip changelog]'
 
 fail() {
   cat >&2 <<EOF
-changelog-guard: $1 touches a watched path (entropy.json changelog.watchedPathPatterns) but adds no fragment under ${FRAGMENT_DIR}/.
+changelog-guard: $1 touches a watched path (config.json changelog.watchedPathPatterns) but adds no fragment under ${FRAGMENT_DIR}/.
 
   ${NEW_FRAGMENT_CMD} "type(scope): what changed" [issue-id]
 

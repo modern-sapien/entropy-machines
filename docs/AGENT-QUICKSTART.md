@@ -9,7 +9,7 @@ enforced by shell gates, not convention. Decisions happen in served HTML docs wi
 response boxes, not in chat. Plain tracked files, one git root; prefix the commands
 below if they sit in a subdirectory.
 
-## Step 0 — no `entropy.json` yet
+## Step 0 — no `config.json` yet
 
 Your first job and the whole job. Don't stop for permission between steps.
 
@@ -26,7 +26,7 @@ Your first job and the whole job. Don't stop for permission between steps.
    work lands. Doctrine: `<path>/doctrine/`.
    ```
 
-2. **`bin/init`** — writes `entropy.json`, gitignores `.entropy/`, copies the
+2. **`bin/init`** — writes `config.json`, gitignores `.entropy-machines/`, copies the
    orientation PRD into `docs.dir`. A second run exits 2; that refusal is working.
 
 3. **Baseline discovery — record only what you RAN.** `init` writes `suites: []`

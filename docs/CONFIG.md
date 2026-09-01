@@ -1,4 +1,4 @@
-# entropy.json — the project contract
+# config.json — the project contract
 
 Everything the harness would otherwise hardcode about its host project, at the
 repo root. Nothing in `bin/` or `lib/` may name a language, package manager or
@@ -11,8 +11,8 @@ harness report a broken command as a broken project.
 ```json
 {
   "project":    { "name": "my-project", "protectedPaths": [] },
-  "tracker":    { "backend": "file", "file": { "path": ".entropy/issues.json" } },
-  "docs":       { "dir": "entropy-docs", "theme": "high-contrast" },
+  "tracker":    { "backend": "file", "file": { "path": ".entropy-machines/issues.json" } },
+  "docs":       { "dir": "entropy-machines-docs", "theme": "high-contrast" },
   "suites":     [ { "name": "unit", "cmd": ["npm", "test"] },
                   { "name": "e2e",  "cmd": ["npm", "run", "e2e"], "tag": "slow" } ],
   "generate":   { "cmd": ["npm", "run", "gen"], "outputs": [] },
@@ -55,7 +55,7 @@ The harness is vendored as **plain tracked files**, never a git repository of
 its own — a nested `.git` shadows the enclosing repo, so commands operate on the
 wrong one; `git clone` and `git submodule` are refused by name. **Root** is
 always the MAIN CHECKOUT, via `--git-common-dir`, never `--show-toplevel`: they
-differ inside a linked worktree, and `.entropy/` lives in the main checkout.
+differ inside a linked worktree, and `.entropy-machines/` lives in the main checkout.
 `lib/roots.sh` is canonical; `lib/config.py` and `lib/config.mjs` mirror it.
 
 ## Rules for contributors

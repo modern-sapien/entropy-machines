@@ -50,7 +50,7 @@ CLAUDE.md" — which was false and shaped how every brief in this project was wr
 3. **Do not run the project's build.** In a repo with a changelog convention
    it rewrites the collated changelog and the QA checkpoint, so a build turns
    your read-only sweep into an edit nobody asked for. Run the suites in
-   `entropy.json`, not the build.
+   `config.json`, not the build.
 4. **The paths in `worktree.linkPaths` are linked in for you** by
    `hooks/post-checkout` at worktree creation. Hooks are per-clone, so if
    nobody ran `bash lib/install-hooks.sh` here they are absent — link those
@@ -74,18 +74,18 @@ that is itself the report.
 given. Note any that conflict, and with which. Two workers editing one function
 is the single most expensive thing for the orchestrator to discover late.
 
-**2. Does it build?** Run the suites in `entropy.json` that carry no `tag` —
+**2. Does it build?** Run the suites in `config.json` that carry no `tag` —
 those are the fast, always-run ones. If the project has a separate build for a
 subdirectory, it is configured there too; nothing about the toolchain is
 assumed here.
 
 **3. Are the generated files honest?** If any source that feeds a generated
-artefact changed, run `generate.cmd` from `entropy.json` and check that NOTHING
+artefact changed, run `generate.cmd` from `config.json` and check that NOTHING
 moves. A generated file that
 differs after regeneration means the committed bundle does not match the
 committed source, and whatever is landed will be wrong on the next `gen`.
 
-**4. Do the suites pass?** Every suite in `entropy.json`, including the ones
+**4. Do the suites pass?** Every suite in `config.json`, including the ones
 tagged slow. Two traps, both of which have shipped a false green:
 
 - **A suite that is not run by the others.** If the config declares a suite as

@@ -10,7 +10,7 @@
   "tracker": {
     "backend": "file",
     "file": {
-      "path": ".entropy/issues.json"
+      "path": ".entropy-machines/issues.json"
     }
   },
   "suites": [
@@ -28,6 +28,6 @@
     "linkPaths": []
   },
   "docs": {
-    "dir": "entropy-docs"
+    "dir": "entropy-machines-docs"
   }
 }

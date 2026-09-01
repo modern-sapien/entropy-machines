@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""config — load entropy.json once per process, fill in defaults, and refuse
+"""config — load config.json once per process, fill in defaults, and refuse
 with a named key when a key has no safe default and the project did not
 supply one.
 
 Mirrors lib/config.mjs. Two implementations exist because this harness's own
-tooling is a mix of Node and Python; both read the same entropy.json and
+tooling is a mix of Node and Python; both read the same config.json and
 apply the same defaults independently, so a consuming project edits exactly
 one file and either loader sees it the same way. Neither reads the file more
 than once per process (docs/CONFIG.md rule 3) — call load_config() once at
@@ -16,7 +16,7 @@ import re as _re
 import subprocess
 import sys
 
-CONFIG_FILENAME = "entropy.json"
+CONFIG_FILENAME = "config.json"
 
 # Defaults for every key that has a safe one. A default here must be inert —
 # "do nothing" or "match everything" — never a guess at a project's
@@ -25,7 +25,7 @@ DEFAULTS = {
     "project": {"name": None, "protectedPaths": []},
     "tracker": {
         "backend": "file",
-        "file": {"path": ".entropy/issues.json"},
+        "file": {"path": ".entropy-machines/issues.json"},
         "command": {"bin": None},
     },
     "suites": [],
@@ -54,9 +54,9 @@ DEFAULTS = {
     "worktree": {"linkPaths": ["node_modules"]},
     "unattended": {
         "enabled": False,
-        "stateHome": "~/.entropy",
+        "stateHome": "~/.entropy-machines",
         "scheduler": "launchd",
-        "label": "com.entropy.drain",
+        "label": "com.entropy-machines.drain",
         "agent": {"cmd": ["claude", "-p"]},
     },
 }
@@ -82,11 +82,11 @@ def _git_root(start):
     """The main checkout of the git repository containing `start`, or None.
 
     `--git-common-dir`, NOT `--show-toplevel`. Mirrors lib/roots.sh's
-    entropy_root(), which is canonical — read its header for why. The short
+    entropy_machines_root(), which is canonical — read its header for why. The short
     version: from inside a LINKED WORKTREE --show-toplevel prints the
     worktree, --git-common-dir names the main checkout, and the main checkout
-    is where entropy.json and .entropy/ live. This loader used to say
-    --show-toplevel, so from a worktree it read a DIFFERENT entropy.json than
+    is where config.json and .entropy-machines/ live. This loader used to say
+    --show-toplevel, so from a worktree it read a DIFFERENT config.json than
     the shell scripts calling it did; that was invisible only because the
     file is tracked and the two copies were identical.
     """
@@ -112,13 +112,13 @@ def _git_root(start):
 def refuse_nested_clone(tool, harness_dir=None):
     """Exit 2 if the harness is a git repo nested inside another git repo.
 
-    The Python mirror of lib/roots.sh's entropy_refuse_nested_clone(). The
+    The Python mirror of lib/roots.sh's entropy_machines_refuse_nested_clone(). The
     harness is meant to be VENDORED as plain tracked files; a nested .git
     shadows the enclosing repo for every git query, so commands run from
     inside it resolve to the harness and silently operate on the wrong
     repository.
 
-    Every shell entry point gets this through entropy_require_root(). The
+    Every shell entry point gets this through entropy_machines_require_root(). The
     Python ones resolve the root themselves and so have to ask explicitly --
     which is exactly how bin/init came to be the one command exempt from a
     refusal whose whole purpose is to stop it writing into the harness.
@@ -150,18 +150,18 @@ def find_repo_root(start=None):
       1. an explicit `start` — resolved with git from there. This is a seam
          (lib/fail-first.mjs's FAIL_FIRST_REPO is the Node twin) for pointing
          the loader at a repo other than the ambient one, so it must win.
-      2. $ENTROPY_ROOT — already resolved by lib/roots.sh's
-         entropy_require_root(), which exports it. Honouring it is what makes
+      2. $ENTROPY_MACHINES_ROOT — already resolved by lib/roots.sh's
+         entropy_machines_require_root(), which exports it. Honouring it is what makes
          the shell entry points and this loader agree BY CONSTRUCTION rather
          than by two implementations happening to compute the same path. It
          is not a user knob and not the deleted ENTROPY_PROJECT override:
          nothing sets it but roots.sh, and it is ignored unless it names an
          existing directory.
       3. the process cwd.
-    Falls back to walking up for entropy.json when there is no git.
+    Falls back to walking up for config.json when there is no git.
     """
     if start is None:
-        env_root = os.environ.get("ENTROPY_ROOT")
+        env_root = os.environ.get("ENTROPY_MACHINES_ROOT")
         if env_root and os.path.isdir(env_root):
             return os.path.realpath(env_root)
         start = os.getcwd()
@@ -188,20 +188,24 @@ def _validate(cfg):
     if missing:
         lines = "\n".join("  - %s" % m for m in missing)
         raise SystemExit(
-            "entropy.json is missing required configuration:\n%s\nSee docs/CONFIG.md." % lines
+            "config.json is missing required configuration:\n%s\nSee docs/CONFIG.md." % lines
         )
 
 
 _cached = None
 
 
+_HARNESS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def load_config(cwd=None, force=False):
-    """Load and validate entropy.json. Cached per process; `force` is for tests only."""
+    """Load and validate config.json. Cached per process; `force` is for tests only."""
     global _cached
     if _cached is not None and not force:
         return _cached
     root = find_repo_root(cwd)
-    file_path = os.path.join(root, CONFIG_FILENAME)
+    # config.json lives in the harness dir, not at the git root.
+    file_path = os.path.join(_HARNESS_DIR, CONFIG_FILENAME)
     user = {}
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:

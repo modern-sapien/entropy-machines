@@ -3,12 +3,12 @@
 
 Implements the six operations docs/TRACKER-ADAPTER.md requires of any
 backend, over one JSON file. Selected by `tracker.backend: "file"` in
-entropy.json; never invoked directly — go through `bin/tracker`, which reads
+config.json; never invoked directly — go through `bin/tracker`, which reads
 that config once and passes this script what it needs as environment:
 
-  ENTROPY_ROOT          repo root (relative paths below resolve against it)
-  ENTROPY_TRACKER_PATH  where the JSON file lives, relative to ENTROPY_ROOT
-                         (default .entropy/issues.json)
+  ENTROPY_MACHINES_ROOT          repo root (relative paths below resolve against it)
+  ENTROPY_MACHINES_TRACKER_PATH  where the JSON file lives, relative to ENTROPY_MACHINES_ROOT
+                         (default .entropy-machines/issues.json)
   ENTROPY_ACTOR         who is calling, for claim/remember attribution
                          (default "unknown")
 
@@ -320,8 +320,8 @@ _COMMANDS = {
 
 def main():
     global PATH
-    root = os.environ.get("ENTROPY_ROOT") or os.getcwd()
-    rel = os.environ.get("ENTROPY_TRACKER_PATH") or ".entropy/issues.json"
+    root = os.environ.get("ENTROPY_MACHINES_ROOT") or os.getcwd()
+    rel = os.environ.get("ENTROPY_MACHINES_TRACKER_PATH") or ".entropy-machines/issues.json"
     PATH = rel if os.path.isabs(rel) else os.path.join(root, rel)
 
     if len(sys.argv) < 2 or sys.argv[1] not in _COMMANDS:

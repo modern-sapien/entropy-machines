@@ -37,21 +37,21 @@ case "$1" in
 esac
 
 . "$(dirname "$0")/../lib/roots.sh"
-ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_root serve
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root serve
 
-CONFIG_PY="$ENTROPY_HOME/lib/config.py"
-NOTES_PY="$ENTROPY_HOME/lib/notes.py"
-TRACKER="$ENTROPY_HOME/bin/tracker"
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+NOTES_PY="$ENTROPY_MACHINES_HOME/lib/notes.py"
+TRACKER="$ENTROPY_MACHINES_HOME/bin/tracker"
 
 # docs.dir has no entry in lib/config.py's DEFAULTS (that file is shared
 # infrastructure, not this bullet's to extend) — so a project that has not
 # set it fails config.py's "no such key" lookup, and that failure IS the
 # default path, not an error to surface.
-docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-docs"
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
 case "$docs_dir" in
   /*) docs_path="$docs_dir" ;;
-  *) docs_path="$ENTROPY_ROOT/$docs_dir" ;;
+  *) docs_path="$ENTROPY_MACHINES_ROOT/$docs_dir" ;;
 esac
 mkdir -p "$docs_path"
 
@@ -71,7 +71,7 @@ mkdir -p "$docs_path"
 # that shared file is not this command's to extend — so a project that never
 # set it fails the lookup, and that failure IS the default path.
 # ---------------------------------------------------------------------------
-THEMES_DIR="$ENTROPY_HOME/lib/themes"
+THEMES_DIR="$ENTROPY_MACHINES_HOME/lib/themes"
 
 list_themes() {
   for _f in "$THEMES_DIR"/*.css; do
@@ -83,7 +83,7 @@ list_themes() {
 }
 
 if theme=$(python3 "$CONFIG_PY" get docs.theme 2>/dev/null); then
-  theme_source="docs.theme in entropy.json"
+  theme_source="docs.theme in config.json"
 else
   theme="high-contrast"
   theme_source="the default (docs.theme is not set)"
@@ -126,7 +126,7 @@ case "$port" in
     ;;
 esac
 
-export ENTROPY_HOME ENTROPY_ROOT
+export ENTROPY_MACHINES_HOME ENTROPY_MACHINES_ROOT
 export SERVE_DOCS_PATH="$docs_path"
 export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
@@ -139,7 +139,7 @@ exec python3 - <<'PY'
 """bin/serve's HTTP server, run via `python3 -` from the shell shim above.
 Everything it needs — roots, docs dir, port — arrives as environment, already
 resolved by bin/serve (docs/CONFIG.md rule 3: a backend never re-reads
-entropy.json itself; this applies the same discipline to bin/serve's own
+config.json itself; this applies the same discipline to bin/serve's own
 python half).
 """
 from __future__ import annotations
@@ -156,8 +156,8 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-ENTROPY_HOME = os.environ["ENTROPY_HOME"]
-ENTROPY_ROOT = os.environ["ENTROPY_ROOT"]
+ENTROPY_MACHINES_HOME = os.environ["ENTROPY_MACHINES_HOME"]
+ENTROPY_MACHINES_ROOT = os.environ["ENTROPY_MACHINES_ROOT"]
 DOCS_PATH = os.environ["SERVE_DOCS_PATH"]
 DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
 PORT = int(os.environ["SERVE_PORT"])
@@ -203,8 +203,8 @@ if not THEME_CSS.strip():
 # by every theme, which is the whole reason this ships themes and not a second
 # template. A doc with no markers is served exactly as it is, and said so in
 # the log, because the alternative is rewriting a span this never agreed on.
-THEME_BEGIN = "/* entropy-theme:begin */"
-THEME_END = "/* entropy-theme:end */"
+THEME_BEGIN = "/* entropy-machines-theme:begin */"
+THEME_END = "/* entropy-machines-theme:end */"
 
 _unthemed_reported = set()
 
@@ -473,9 +473,9 @@ PAGE_HEAD = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>the factory</title>
 <style>
-/* entropy-theme:begin */
+/* entropy-machines-theme:begin */
 __THEME__
-/* entropy-theme:end */
+/* entropy-machines-theme:end */
   :root{
     --fg:var(--ink); --link:var(--accent); --negative:var(--bad);
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -541,7 +541,7 @@ def render_dashboard() -> str:
     docs = list_docs()
 
     parts = [PAGE_HEAD]
-    parts.append(f"<h1>the factory</h1>\n<p class=\"sub\">{esc(ENTROPY_ROOT)}</p>\n")
+    parts.append(f"<h1>the factory</h1>\n<p class=\"sub\">{esc(ENTROPY_MACHINES_ROOT)}</p>\n")
 
     parts.append("<h2>ready</h2>\n")
     if ready is None:
@@ -710,7 +710,7 @@ def main():
     # never drained, because the very next statement blocks in serve_forever()
     # forever; the log stays 0 bytes while the server runs and 0 bytes after
     # it is killed. The URL is the one thing this command exists to produce.
-    print("serving %s on http://localhost:%d" % (ENTROPY_ROOT, PORT), flush=True)
+    print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, PORT), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
     try:

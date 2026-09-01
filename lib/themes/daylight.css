@@ -45,8 +45,8 @@
    6.29:1 light, 7.43:1 dark.
 
    A THEME FILE IS TOKENS ONLY — no layout, no component rules, no @font-face,
-   no remote URL. Selected by docs.theme in entropy.json; bin/serve inlines it
-   between a doc's entropy-theme:begin and entropy-theme:end markers and never
+   no remote URL. Selected by docs.theme in config.json; bin/serve inlines it
+   between a doc's entropy-machines-theme:begin and entropy-machines-theme:end markers and never
    links to it. See docs/CONFIG.md. */
 :root{
   --bg:#FAF8F4;              /* warm paper, not #fff */

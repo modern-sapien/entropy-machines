@@ -55,12 +55,12 @@ into the brief.
    names files claimed by another agent right now — never write those. The
    `--files` scope is a prediction, not a boundary; everything outside the
    denylist is yours if the fix needs it.
-3. **Shared resources may be linked in for you.** A project's `entropy.json`
+3. **Shared resources may be linked in for you.** A project's `config.json`
    can list paths under `worktree.linkPaths` — `node_modules` is the built-in
    default, and a project might add others, like a local gitignored docs
    directory — that its post-checkout hook symlinks into every new worktree.
    Whether any of them are actually present in yours depends on two things:
-   whether this clone had its hooks installed, and whether `entropy.json`
+   whether this clone had its hooks installed, and whether `config.json`
    lists that path at all. Don't assume either way; treat an absent doc
    directory as "maybe just not linked here," not as "doesn't exist in a
    worktree." Never work around a dependency-resolution refusal by hand — a
@@ -71,16 +71,16 @@ into the brief.
    dependencies") instead of letting it slide.
 4. **Never run this project's full build/release command.** It may rewrite
    committed bookkeeping — a collated changelog, a checkpoint file — as a
-   side effect. Use what `entropy.json`'s `suites` list names instead, plus
+   side effect. Use what `config.json`'s `suites` list names instead, plus
    any suite for a non-JS subproject this project might have (a Go module in
-   its own directory is a common shape) — check `entropy.json` rather than
+   its own directory is a common shape) — check `config.json` rather than
    assuming the default suites cover every language in the repo.
-5. **Never hand-edit generated files.** Check `entropy.json`'s `generate`
+5. **Never hand-edit generated files.** Check `config.json`'s `generate`
    block for the command that produces them and, if the project lists them,
    its `outputs`; otherwise look for a "generated, do not edit" header. Edit
    the source instead. Regenerate only if your own change is the input to
    it.
-6. **Some paths are append-only or frozen by design.** Check `entropy.json`'s
+6. **Some paths are append-only or frozen by design.** Check `config.json`'s
    `project.protectedPaths` before editing anything that looks like a
    cross-component contract (a shared type file, a golden fixture another
    tool's output is diffed against) — those are usually append-only or

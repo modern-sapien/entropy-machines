@@ -16,7 +16,7 @@ share one budget makes mixing fall out for free instead of needing a new rule
 per combination.
 
 Costs and the budget are project config (`unattended.sizeCosts`,
-`unattended.budget` in entropy.json) with defaults chosen so a few small caps
+`unattended.budget` in config.json) with defaults chosen so a few small caps
 land on the same number:
 
     S = 3    M = 4    L = 6    budget = 12
@@ -54,7 +54,7 @@ DEFAULT_BUDGET = 12
 
 
 def load_cost_model(root):
-    """(costs, budget) out of entropy.json's `unattended` block.
+    """(costs, budget) out of config.json's `unattended` block.
 
     Not read through lib/config.py — that loader does not define these two
     keys yet (see its DEFAULTS dict), and this script only needs two scalars,
@@ -63,7 +63,7 @@ def load_cost_model(root):
     same posture as bin/drain's and bin/drain-run.sh's own `cfg()` helper.
     """
     try:
-        with open(os.path.join(root, "entropy.json"), encoding="utf-8") as f:
+        with open(os.path.join(root, "config.json"), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         data = {}

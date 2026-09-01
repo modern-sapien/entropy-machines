@@ -3,7 +3,7 @@
 # it has broken before.
 #
 # WHY IT BREAKS. `git rev-parse --show-toplevel` prints the WORKTREE's own
-# path. .entropy/ is gitignored, so it exists in the main checkout and in no
+# path. .entropy-machines/ is gitignored, so it exists in the main checkout and in no
 # worktree at all. Resolve the root that way and a dispatched worker reads an
 # EMPTY tracker — which reports as "no issues ready" rather than as an error,
 # so nothing anywhere says a word. --git-common-dir is the fix and this is the
@@ -26,7 +26,7 @@ assert_dir "$WT" "the worktree exists"
 
 # The premise of the whole test: the worktree really has no tracker state of
 # its own. If this ever stops being true the test below proves nothing.
-assert_no_file "$WT/.entropy/issues.json" "a linked worktree has no .entropy/ of its own"
+assert_no_file "$WT/.entropy-machines/issues.json" "a linked worktree has no .entropy-machines/ of its own"
 
 # 1. The main checkout's harness, invoked with a worktree cwd.
 run_in "$WT" "$HARNESS/bin/tracker" ready
@@ -44,7 +44,7 @@ assert_rc 0 "notes from inside a worktree"
 assert_out "a note only the main checkout has" "the note log resolves to the main checkout"
 
 # 3. And it did not silently create a second store on the way.
-assert_no_file "$WT/.entropy/issues.json" "reading from a worktree creates no second tracker there"
+assert_no_file "$WT/.entropy-machines/issues.json" "reading from a worktree creates no second tracker there"
 
 # 4. bin/status resolves the same way. Its docstring says so explicitly, and it
 #    reimplements the rule in Python rather than sourcing lib/roots.sh — two

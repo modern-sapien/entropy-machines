@@ -44,7 +44,7 @@
 # written after they started.
 #
 # The fix generalises, so it is kept as an option rather than a baked-in date:
-# set `guards.handoffCutoff` (an ISO-8601 timestamp) in entropy.json and a
+# set `guards.handoffCutoff` (an ISO-8601 timestamp) in config.json and a
 # dispatch recorded BEFORE it warns and passes, while one recorded after
 # refuses. The exemption then expires BY ITSELF as those dispatches land —
 # there is no flag anyone must remember to flip, and no window in which the
@@ -130,7 +130,7 @@
 
 set -euo pipefail
 
-# ENTROPY_HOME is the harness DIRECTORY — where config.py sits — which may be
+# ENTROPY_MACHINES_HOME is the harness DIRECTORY — where config.py sits — which may be
 # the repo root or a subdirectory of it. It is not a root and not a separate
 # repo (see lib/roots.sh). The shim installed by lib/install-hooks.sh exports
 # it; the fallback is for direct invocation, by hand or from a test.
@@ -139,8 +139,8 @@ set -euo pipefail
 # the cutoff block, which then had to re-derive it inline — and a single
 # reference to the not-yet-assigned variable was an unbound-variable crash
 # under `set -u`, i.e. a gate that died instead of refusing.
-if [ -z "${ENTROPY_HOME:-}" ]; then
-  ENTROPY_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+if [ -z "${ENTROPY_MACHINES_HOME:-}" ]; then
+  ENTROPY_MACHINES_HOME="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
 fi
 
 # TWO DIFFERENT TREES, one root. Both are computed here so the distinction is
@@ -151,7 +151,7 @@ fi
 #         changelog.d fragments being committed are on disk there and nowhere
 #         else, so fragment reads must use this.
 #   ROOT  the repository's MAIN checkout — `--git-common-dir` via
-#         lib/roots.sh. The tracker's note log lives under .entropy/, which is
+#         lib/roots.sh. The tracker's note log lives under .entropy-machines/, which is
 #         gitignored and therefore absent from every worktree, so the dispatch
 #         memory must be read from here. Resolving it with --show-toplevel
 #         found no memory file inside a worktree and the guard passed
@@ -161,12 +161,12 @@ fi
 # to judge (below), not die. Dying inside a hook reads as a broken tool.
 . "$(dirname -- "$0")/roots.sh"
 TREE="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-ROOT="$(entropy_root 2>/dev/null || true)"
+ROOT="$(entropy_machines_root 2>/dev/null || true)"
 
 # Empty unless the project opts in — see the grandfathering note above.
 CUTOFF="$(
   cd "${TREE:-$PWD}" 2>/dev/null &&
-  python3 "$ENTROPY_HOME/lib/config.py" get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
+  python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get guards.handoffCutoff 2>/dev/null | tr -d '"' || true
 )"
 # `if`, not `[ ... ] && ...` — under `set -e` a failing test as the last
 # command of a compound exits the script, which would make this gate pass
@@ -187,13 +187,13 @@ if [ -n "${HANDOFF_MEMORY:-}" ]; then
 elif [ -n "$ROOT" ]; then
   MEMORY="$ROOT/$(
     cd "$ROOT" 2>/dev/null &&
-    python3 "$ENTROPY_HOME/lib/config.py" get tracker.file.path 2>/dev/null | tr -d '"' || true
+    python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get tracker.file.path 2>/dev/null | tr -d '"' || true
   )"
 else
   MEMORY=""
 fi
 
-# .entropy/ is gitignored per-checkout state. No memory file means no way to
+# .entropy-machines/ is gitignored per-checkout state. No memory file means no way to
 # know what was dispatched, so the guard has nothing to say — it must pass
 # rather than block a commit it cannot reason about. Same for an unresolvable
 # root: decline to judge, do not die.

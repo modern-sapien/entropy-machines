@@ -1,8 +1,8 @@
-.entropy/
+.entropy-machines/
 node_modules/
 __pycache__/
 HANDOFF-*.md
 planning/
 .dispatch-context/
 .scratch
-entropy-docs/
+entropy-machines-docs/

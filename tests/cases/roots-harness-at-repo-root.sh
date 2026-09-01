@@ -16,14 +16,14 @@ assert_same "$REPO" "$HARNESS" "this case is the root layout"
 run_in "$REPO" "$HARNESS/bin/tracker" set i-root title="filed from the root"
 assert_rc 0 "tracker set from the repo root"
 
-# .entropy/ lands at the root, not next to whatever directory we happened to
+# .entropy-machines/ lands at the root, not next to whatever directory we happened to
 # be standing in.
-assert_file "$REPO/.entropy/issues.json" "tracker state lands at the repo root"
+assert_file "$REPO/.entropy-machines/issues.json" "tracker state lands at the repo root"
 
 run_in "$REPO/src" "$HARNESS/bin/tracker" ready
 assert_rc 0 "tracker ready from a subdirectory of the project"
 assert_out "i-root" "a subdirectory sees the SAME tracker, not an empty one"
-assert_no_file "$REPO/src/.entropy" "and it did not create a second store beside itself"
+assert_no_file "$REPO/src/.entropy-machines" "and it did not create a second store beside itself"
 
 run_in "$REPO/src" "$HARNESS/bin/status"
 assert_rc 0 "bin/status from a subdirectory"

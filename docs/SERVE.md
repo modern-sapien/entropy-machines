@@ -32,12 +32,12 @@ checked** — `lib/REPORT-TEMPLATE.html` is a default, not a conformance target.
 
 ## Docs and themes
 
-`docs.dir` (default `entropy-docs/`) is created if absent; docs sit directly in
+`docs.dir` (default `entropy-machines-docs/`) is created if absent; docs sit directly in
 it, since the save-path check refuses any `file` containing `/`. Reports start
 from `lib/REPORT-TEMPLATE.html`, PRDs from `lib/doc-template.html`, whose header
 comment authoritatively describes the response-box machinery. `docs.theme` picks
 a stylesheet from `lib/themes/` (`high-contrast`, `daylight`), inlined on each
-`GET` between the `entropy-theme` markers; an unknown name is refused by name.
+`GET` between the `entropy-machines-theme` markers; an unknown name is refused by name.
 
 ## Saving
 

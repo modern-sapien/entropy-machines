@@ -30,7 +30,7 @@
 fixture_new
 fixture_init
 
-DOCS="$REPO/entropy-docs"
+DOCS="$REPO/entropy-machines-docs"
 PAGE="$DOCS/TRACKER.html"
 
 # A reader over the inlined payload. Prints one line per query so a case can
@@ -235,7 +235,7 @@ assert_out "held[i-held]= " "and the reason is gone with it"
 # The six-operation adapter contract cannot enumerate issues, so a page built
 # from it would silently omit every held, gated, blocked and done issue and
 # still look complete.
-python3 - "$REPO/entropy.json" <<'PY'
+python3 - "$REPO/config.json" <<'PY'
 import json, sys
 path = sys.argv[1]
 cfg = json.load(open(path, encoding="utf-8"))

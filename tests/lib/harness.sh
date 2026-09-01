@@ -140,7 +140,7 @@ run() { run_in "$REPO" "$@"; }
 # THE HARNESS IS VENDORED AS PLAIN TRACKED FILES, so that is exactly what the
 # fixtures do: copy the directories in and commit them. No nested .git, no
 # clone, no symlink — a symlinked bin/ would make $0-relative resolution
-# (lib/roots.sh's entropy_home) answer a question the real layout never asks.
+# (lib/roots.sh's entropy_machines_home) answer a question the real layout never asks.
 vendor_harness() {
   for _d in bin lib hooks doctrine agents docs; do
     [ -d "$ENTROPY_SRC/$_d" ] || continue
@@ -155,7 +155,7 @@ vendor_harness() {
 # A brand-new git repository with the harness vendored into it and committed,
 # plus one file of "project code" (src/main.c) for scope tests to fight over.
 # With no argument the harness lands at the repo root; with one (e.g.
-# "tools/entropy") it lands in a subdirectory — both are supported layouts and
+# "tools/entropy-machines") it lands in a subdirectory — both are supported layouts and
 # both are exercised.
 #
 # Sets:

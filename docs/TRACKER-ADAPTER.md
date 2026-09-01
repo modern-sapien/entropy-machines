@@ -4,7 +4,7 @@ The harness needs **six** operations from an issue tracker. That is the whole
 dependency. Anything richer belongs to your tracker, not to us.
 
 A backend is any executable that implements this CLI. `tracker.backend` in
-`entropy.json` selects one.
+`config.json` selects one.
 
 | Command | Contract |
 |---|---|

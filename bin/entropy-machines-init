@@ -58,7 +58,7 @@ function usage() {
   npx entropy start                     # init (if needed) + open the PRD
   npx entropy init [--dir <path>]       # vendor the harness only
 
-start: vendors the harness if entropy.json is absent, then launches
+start: vendors the harness if config.json is absent, then launches
 bin/serve — which opens your first PRD in a browser.
 
 init:  copies the harness (${HARNESS_DIRS.join(', ')}) into your git
@@ -229,19 +229,18 @@ function init(argv) {
   // commits them. Name the paths the harness actually wrote.
   const addPaths =
     shown === '.'
-      ? `${HARNESS_DIRS.join(' ')} LICENSE entropy.json .gitignore`
-      : `${shown} entropy.json .gitignore`;
+      ? `${HARNESS_DIRS.join(' ')} LICENSE .gitignore`
+      : `${shown} .gitignore`;
   console.log(`  1. commit what init just wrote:  git add ${addPaths}`);
   console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'AGENT-QUICKSTART.md')}`);
   console.log(`  3. ${path.join(shown, 'bin', 'serve')}  — answer the PRD it opens`);
 }
 
-function findServe(root) {
-  // bin/serve lives in the harness directory, which is either at root (--dir .)
-  // or in the DEFAULT_DIR subdirectory. entropy.json is always at root.
+function findHarness(root) {
+  // The harness is either at root (--dir .) or in the DEFAULT_DIR subdirectory.
+  // config.json lives inside the harness dir, not at root.
   for (const [dir, label] of [[root, '.'], [path.join(root, DEFAULT_DIR), DEFAULT_DIR]]) {
-    const s = path.join(dir, 'bin', 'serve');
-    if (fs.existsSync(s)) return { serve: s, cwd: dir, shown: label };
+    if (fs.existsSync(path.join(dir, 'config.json'))) return { dir, shown: label };
   }
   return null;
 }
@@ -250,17 +249,21 @@ function start(argv) {
   const root = repoRoot();
   if (!root) die(['entropy-machines: not inside a git repository.']);
 
-  if (!fs.existsSync(path.join(root, 'entropy.json'))) {
-    console.log('entropy-machines: no entropy.json found, running init first.\n');
+  if (!findHarness(root)) {
+    console.log('entropy-machines: no config.json found, running init first.\n');
     init(argv);
   }
 
-  const loc = findServe(root);
+  const loc = findHarness(root);
   if (!loc) {
-    die(['entropy-machines: bin/serve not found at root or in ' + DEFAULT_DIR + '/.']);
+    die(['entropy-machines: config.json not found at root or in ' + DEFAULT_DIR + '/.']);
+  }
+  const serve = path.join(loc.dir, 'bin', 'serve');
+  if (!fs.existsSync(serve)) {
+    die([`entropy-machines: ${path.join(loc.shown, 'bin', 'serve')} not found.`]);
   }
   console.log(`\nentropy-machines: starting serve from ${loc.shown}/\n`);
-  const r = spawnSync('sh', [loc.serve], { cwd: loc.cwd, stdio: 'inherit' });
+  const r = spawnSync('sh', [serve], { cwd: loc.dir, stdio: 'inherit' });
   process.exit(r.status ?? 1);
 }
 

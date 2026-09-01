@@ -116,7 +116,7 @@ trap 'cleanup' EXIT
 trap 'cleanup_interrupted' INT TERM
 
 # ISOLATE THE ENVIRONMENT. A case's fixture is only throwaway if nothing
-# outside it can steer the run: an ENTROPY_ROOT left over from a real session
+# outside it can steer the run: an ENTROPY_MACHINES_ROOT left over from a real session
 # would point the tools at the developer's actual project, and bin/drain writes
 # under $HOME by default.
 #
@@ -128,7 +128,9 @@ trap 'cleanup_interrupted' INT TERM
 HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
 export HOME
-unset ENTROPY_ROOT ENTROPY_HOME ENTROPY_ACTOR ENTROPY_TRACKER_PATH \
+unset ENTROPY_MACHINES_ROOT ENTROPY_MACHINES_HOME ENTROPY_ACTOR \
+      ENTROPY_MACHINES_TRACKER_PATH ENTROPY_MACHINES_DRAIN_HOME \
+      ENTROPY_ROOT ENTROPY_HOME ENTROPY_TRACKER_PATH \
       ENTROPY_DRAIN_HOME HANDOFF_MEMORY SKIP_HANDOFF SKIP_CHANGELOG \
       DISPATCH_CLAIM_HOURS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE 2>/dev/null
 export GIT_CONFIG_NOSYSTEM=1

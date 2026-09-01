@@ -4,13 +4,13 @@ store, into the project's docs directory.
 
 Never invoked directly: `bin/tracker render` resolves the config once and runs
 this with what it needs in the environment (docs/CONFIG.md rule 3 — one reader
-of entropy.json per command).
+of config.json per command).
 
-  ENTROPY_ROOT             repo root; relative paths below resolve against it
-  ENTROPY_TRACKER_PATH     the store, relative to ENTROPY_ROOT
-  ENTROPY_TRACKER_BACKEND  "file" or "command"
-  ENTROPY_DOCS_DIR         docs.dir — where TRACKER.html lands
-  ENTROPY_PROJECT_NAME     project.name, for the page title (optional)
+  ENTROPY_MACHINES_ROOT             repo root; relative paths below resolve against it
+  ENTROPY_MACHINES_TRACKER_PATH     the store, relative to ENTROPY_MACHINES_ROOT
+  ENTROPY_MACHINES_TRACKER_BACKEND  "file" or "command"
+  ENTROPY_MACHINES_DOCS_DIR         docs.dir — where TRACKER.html lands
+  ENTROPY_MACHINES_PROJECT_NAME     project.name, for the page title (optional)
 
 WHY THIS IS NOT A SEVENTH ADAPTER OPERATION. docs/TRACKER-ADAPTER.md asks a
 backend for six things, and rendering is not one of them: it is a VIEW over
@@ -239,11 +239,11 @@ def main(argv):
         print("usage: bin/tracker render", file=sys.stderr)
         return 2
 
-    root = os.environ.get("ENTROPY_ROOT") or os.getcwd()
-    backend = os.environ.get("ENTROPY_TRACKER_BACKEND") or "file"
-    store_rel = os.environ.get("ENTROPY_TRACKER_PATH") or ".entropy/issues.json"
-    docs_dir = os.environ.get("ENTROPY_DOCS_DIR") or "entropy-docs"
-    project = os.environ.get("ENTROPY_PROJECT_NAME") or os.path.basename(root)
+    root = os.environ.get("ENTROPY_MACHINES_ROOT") or os.getcwd()
+    backend = os.environ.get("ENTROPY_MACHINES_TRACKER_BACKEND") or "file"
+    store_rel = os.environ.get("ENTROPY_MACHINES_TRACKER_PATH") or ".entropy-machines/issues.json"
+    docs_dir = os.environ.get("ENTROPY_MACHINES_DOCS_DIR") or "entropy-machines-docs"
+    project = os.environ.get("ENTROPY_MACHINES_PROJECT_NAME") or os.path.basename(root)
 
     if backend != "file":
         refuse([
@@ -750,7 +750,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#theme')){
     const cur = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
     document.documentElement.dataset.theme = cur;
-    try { localStorage.entropyTheme = cur; } catch (err) { /* private mode */ }
+    try { localStorage.entropyMachinesTheme = cur; } catch (err) { /* private mode */ }
     return;
   }
   const node = e.target.closest('[data-id]');
@@ -766,7 +766,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); document.getElementById('q').focus();
   }
 });
-try { if (localStorage.entropyTheme) document.documentElement.dataset.theme = localStorage.entropyTheme; }
+try { if (localStorage.entropyMachinesTheme) document.documentElement.dataset.theme = localStorage.entropyMachinesTheme; }
 catch (err) { /* private mode: keep the default */ }
 render();
 if (location.hash && IS[location.hash.slice(1)]) openDet(location.hash.slice(1));

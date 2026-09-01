@@ -25,20 +25,20 @@ import re
 import subprocess
 import sys
 
-# ENTROPY_HOME is the harness DIRECTORY — where bin/tracker sits — which may be
+# ENTROPY_MACHINES_HOME is the harness DIRECTORY — where bin/tracker sits — which may be
 # the repo root or a subdirectory of it. Not a root and not a separate repo;
 # see lib/roots.sh.
-ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
-import config  # noqa: E402  -- needs ENTROPY_HOME on the path first
+ENTROPY_MACHINES_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
+import config  # noqa: E402  -- needs ENTROPY_MACHINES_HOME on the path first
 
 
-def entropy_root():
-    """Mirrors lib/roots.sh's entropy_root(): the repository's main checkout,
+def entropy_machines_root():
+    """Mirrors lib/roots.sh's entropy_machines_root(): the repository's main checkout,
     or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
     prints a linked WORKTREE's own path; .entropy/ is gitignored and absent
     from every worktree, so that would report an empty tracker as "0 ready"
-    rather than as an error. Falls back to walking up for entropy.json when
+    rather than as an error. Falls back to walking up for config.json when
     there is no git."""
     try:
         p = subprocess.run(
@@ -54,7 +54,7 @@ def entropy_root():
         return os.path.realpath(os.path.join(common, os.pardir))
     d = os.getcwd()
     while True:
-        if os.path.exists(os.path.join(d, "entropy.json")):
+        if os.path.exists(os.path.join(d, "config.json")):
             return d
         parent = os.path.dirname(d)
         if parent == d:
@@ -63,17 +63,17 @@ def entropy_root():
 
 
 def docs_dir_for(root):
-    """entropy.json's docs.dir, defaulting to entropy-docs -- the same default
-    bin/init writes to and bin/serve reads from. Never raises."""
+    """config.json's docs.dir, defaulting to entropy-machines-docs -- the same
+    default bin/init writes to and bin/serve reads from. Never raises."""
     try:
-        with open(os.path.join(root, "entropy.json"), encoding="utf-8") as f:
+        with open(os.path.join(ENTROPY_MACHINES_HOME, "config.json"), encoding="utf-8") as f:
             cfg = json.load(f)
         d = (cfg.get("docs") or {}).get("dir")
         if isinstance(d, str) and d.strip():
             return d.strip().strip("/")
     except Exception:
         pass
-    return "entropy-docs"
+    return "entropy-machines-docs"
 
 
 def scan_unanswered_docs(root):
@@ -130,12 +130,12 @@ def main(argv):
         return 2
 
     config.refuse_nested_clone("status")
-    root = entropy_root()
-    if not root or not os.path.isfile(os.path.join(root, "entropy.json")):
-        print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_HOME)
+    root = entropy_machines_root()
+    if not root or not os.path.isfile(os.path.join(ENTROPY_MACHINES_HOME, "config.json")):
+        print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_MACHINES_HOME)
         return 0
 
-    tracker = os.path.join(ENTROPY_HOME, "bin", "tracker")
+    tracker = os.path.join(ENTROPY_MACHINES_HOME, "bin", "tracker")
 
     def run_tracker(args):
         try:

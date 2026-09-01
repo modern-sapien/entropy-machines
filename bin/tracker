@@ -2,7 +2,7 @@
 # Adapter dispatcher for the issue tracker. Every caller in this harness goes
 # through this file instead of a backend directly — see
 # docs/TRACKER-ADAPTER.md for the six-command contract every backend
-# implements, and docs/CONFIG.md for entropy.json.
+# implements, and docs/CONFIG.md for config.json.
 #
 #   bin/tracker show i-foo
 #   bin/tracker notes --issue i-foo
@@ -18,10 +18,10 @@
 # Rendering is a view over what a backend already holds, so requiring it of
 # every future backend would be asking each one to ship an HTML generator.
 #
-# `tracker.backend` in entropy.json picks the implementation: "file" runs the
+# `tracker.backend` in config.json picks the implementation: "file" runs the
 # built-in lib/tracker-file over a flat JSON file, "command" shells out to an
 # external tracker binary. This file reads that config once and never again —
-# a backend never re-reads entropy.json itself (docs/CONFIG.md rule 3).
+# a backend never re-reads config.json itself (docs/CONFIG.md rule 3).
 #
 # WHY THE WHOLE DISPATCH RUNS IN A SUBSHELL — this is not ergonomics, it is a
 # correctness guard inherited unchanged from the tool this one replaced. That
@@ -60,12 +60,12 @@ EOF
 [ $# -ge 1 ] || usage
 
 . "$(dirname "$0")/../lib/roots.sh"
-ENTROPY_HOME=$(entropy_home "$0")
-entropy_require_root tracker
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root tracker
 
-config="$ENTROPY_ROOT/entropy.json"
+config="$ENTROPY_MACHINES_HOME/config.json"
 
-# One read of entropy.json, here, once. Prints four tab-separated fields:
+# One read of config.json, here, once. Prints four tab-separated fields:
 #   backend            "file" or "command" (defaults to "file")
 #   file backend path  tracker.file.path, defaulted
 #   command bin        tracker.command.bin
@@ -85,10 +85,10 @@ command = t.get("command") or {}
 cmd_bin = command.get("bin") or ""
 cmd_args = " ".join(command.get("args") or [])
 # Fields 5 and 6 are for `render` only. They are read HERE, in the one place
-# this harness reads entropy.json per command (docs/CONFIG.md rule 3), rather
+# this harness reads config.json per command (docs/CONFIG.md rule 3), rather
 # than in lib/tracker-view.py — which must stay as ignorant of the config file
 # as a backend is.
-docs_dir = ((cfg.get("docs") or {}).get("dir")) or "entropy-docs"
+docs_dir = ((cfg.get("docs") or {}).get("dir")) or "entropy-machines-docs"
 project_name = ((cfg.get("project") or {}).get("name")) or ""
 print("\t".join([backend, file_path, cmd_bin, cmd_args, docs_dir, project_name]))
 PY
@@ -109,17 +109,17 @@ project_name=$(printf '%s' "$info" | cut -f6)
 # inside the same subshell guard everything else here does.
 if [ "$1" = "render" ]; then
   shift
-  view="$ENTROPY_HOME/lib/tracker-view.py"
+  view="$ENTROPY_MACHINES_HOME/lib/tracker-view.py"
   if [ ! -f "$view" ]; then
     echo "tracker: REFUSED — bin/tracker render needs $view, which is missing." >&2
     exit 2
   fi
   (
-    cd "$ENTROPY_ROOT" &&
-    ENTROPY_TRACKER_PATH="$file_path" \
-    ENTROPY_TRACKER_BACKEND="$backend" \
-    ENTROPY_DOCS_DIR="$docs_dir" \
-    ENTROPY_PROJECT_NAME="$project_name" \
+    cd "$ENTROPY_MACHINES_ROOT" &&
+    ENTROPY_MACHINES_TRACKER_PATH="$file_path" \
+    ENTROPY_MACHINES_TRACKER_BACKEND="$backend" \
+    ENTROPY_MACHINES_DOCS_DIR="$docs_dir" \
+    ENTROPY_MACHINES_PROJECT_NAME="$project_name" \
     exec python3 "$view" "$@"
   )
   exit $?
@@ -127,15 +127,15 @@ fi
 
 case "$backend" in
   file)
-    impl="$ENTROPY_HOME/lib/tracker-file"
+    impl="$ENTROPY_MACHINES_HOME/lib/tracker-file"
     if [ ! -x "$impl" ]; then
       echo "tracker: REFUSED — tracker.backend is \"file\" but $impl is missing" >&2
       echo "  or not executable." >&2
       exit 2
     fi
-    # ENTROPY_ROOT is already exported by entropy_require_root; lib/tracker-file
+    # ENTROPY_MACHINES_ROOT is already exported by entropy_machines_require_root; lib/tracker-file
     # reads it as the root its storage path is relative to.
-    ( cd "$ENTROPY_ROOT" && ENTROPY_TRACKER_PATH="$file_path" exec "$impl" "$@" )
+    ( cd "$ENTROPY_MACHINES_ROOT" && ENTROPY_MACHINES_TRACKER_PATH="$file_path" exec "$impl" "$@" )
     ;;
   command)
     if [ -z "$cmd_bin" ]; then
@@ -143,7 +143,7 @@ case "$backend" in
       echo "  is empty in $config." >&2
       exit 2
     fi
-    ( cd "$ENTROPY_ROOT" && exec "$cmd_bin" $cmd_args "$@" )
+    ( cd "$ENTROPY_MACHINES_ROOT" && exec "$cmd_bin" $cmd_args "$@" )
     ;;
   *)
     echo "tracker: REFUSED — unknown tracker.backend \"$backend\" in $config" >&2

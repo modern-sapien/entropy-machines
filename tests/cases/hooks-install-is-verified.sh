@@ -35,7 +35,7 @@ done
 # The shim lives in .git/hooks and cannot find lib/ relatively, so the harness
 # path is baked in. It must be ABSOLUTE — a relative one resolves against
 # whatever cwd git happens to give the hook.
-baked=$(sed -n 's/^export ENTROPY_HOME="\(.*\)"$/\1/p' "$REPO/.git/hooks/commit-msg" | head -1)
+baked=$(sed -n 's/^export ENTROPY_MACHINES_HOME="\(.*\)"$/\1/p' "$REPO/.git/hooks/commit-msg" | head -1)
 assert_same "$HARNESS" "$baked" "the shim bakes in the harness directory, absolute"
 
 # --- dispatch is satisfied now ---------------------------------------------

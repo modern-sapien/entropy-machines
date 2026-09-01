@@ -7,7 +7,7 @@
 # actually consults — see the note at the bottom of install-hooks.sh.)
 #
 # WHAT IT DOES. When `git worktree add` creates a NEW worktree, symlink every
-# path in `worktree.linkPaths` (entropy.json) into it from the main checkout,
+# path in `worktree.linkPaths` (config.json) into it from the main checkout,
 # and give it a PRIVATE SCRATCHPAD reachable as `.scratch`.
 #
 # WHY. A worktree gets the TRACKED tree and nothing else. A dependency
@@ -94,7 +94,7 @@
 # prints a full, confident, WRONG table — every row a real number, none of them
 # about the code the agent thinks it mutated.
 #
-# So: <main_tree>/.entropy/scratch/<worktree-name>/, linked in as `.scratch`.
+# So: <main_tree>/.entropy-machines/scratch/<worktree-name>/, linked in as `.scratch`.
 # The key is the worktree's own directory name, which for a dispatched agent IS
 # `agent-<id>` — the same id that names the worktree — so the mapping is
 # greppable rather than derived.
@@ -128,19 +128,19 @@ warn() {
 # Always succeed, whatever happened above this line.
 trap 'exit 0' EXIT
 
-# ENTROPY_HOME (the harness DIRECTORY — where lib/config.py actually lives,
+# ENTROPY_MACHINES_HOME (the harness DIRECTORY — where lib/config.py actually lives,
 # which may be the repo root or a subdirectory of it) is baked in and exported
 # by the installed shim (lib/install-hooks.sh). The fallback here only matters
 # when this hook is run directly, bypassing the shim — by hand, or from a
 # test. Best-effort and silent on failure, matching this whole hook's fail-open
 # philosophy: config_link_paths() below already no-ops with nothing linked if
-# ENTROPY_HOME cannot be resolved.
+# ENTROPY_MACHINES_HOME cannot be resolved.
 #
-# This hook does not call entropy_require_root — it resolves the repo's main
+# This hook does not call entropy_machines_require_root — it resolves the repo's main
 # tree itself, below, via `--git-common-dir`, because it needs that value for
 # the new-worktree test too, not only for config lookup.
-if [ -z "${ENTROPY_HOME:-}" ]; then
-  . "$(dirname "$0")/../lib/roots.sh" 2>/dev/null && ENTROPY_HOME="$(entropy_home "$0" 2>/dev/null)"
+if [ -z "${ENTROPY_MACHINES_HOME:-}" ]; then
+  . "$(dirname "$0")/../lib/roots.sh" 2>/dev/null && ENTROPY_MACHINES_HOME="$(entropy_machines_home "$0" 2>/dev/null)"
 fi
 
 prev="${1:-}"
@@ -195,7 +195,7 @@ main_tree="$(dirname "$common_dir")"
 # The target defaults to the SAME name in the main checkout, which is what
 # the configured link paths want. The scratchpad passes its own target
 # because the two names differ on purpose: `.scratch` here, a per-worktree
-# directory under the main checkout's .entropy/scratch/ there.
+# directory under the main checkout's .entropy-machines/scratch/ there.
 link_one() {
   name="$1"
   target="${2:-$main_tree/$name}"
@@ -231,7 +231,7 @@ link_one() {
   return 0
 }
 
-# Read worktree.linkPaths from the MAIN checkout's entropy.json — the worktree
+# Read worktree.linkPaths from the MAIN checkout's config.json — the worktree
 # may not have one yet, and even if it does, the main checkout's copy is the
 # one whose dependency directories we are linking to.
 #
@@ -241,25 +241,36 @@ link_one() {
 # all mean "link nothing", and the warning at the end still names what was and
 # was not linked.
 config_link_paths() {
-  [ -f "$main_tree/entropy.json" ] || return 0
+  [ -f "${ENTROPY_MACHINES_HOME:-$main_tree}/config.json" ] || return 0
   command -v python3 >/dev/null 2>&1 || return 0
-  [ -n "${ENTROPY_HOME:-}" ] || return 0
+  [ -n "${ENTROPY_MACHINES_HOME:-}" ] || return 0
 
   # TWO PATHS, ONE ROOT. lib/config.py's own root resolution (find_repo_root)
-  # walks up from `os.getcwd()` looking for entropy.json — it does not care
+  # walks up from `os.getcwd()` looking for config.json — it does not care
   # where its own file lives on disk. So cwd must be the MAIN tree for the
   # lookup to resolve against a tree that certainly exists (a post-checkout
   # hook's cwd is the NEW worktree, which may still be mid-creation). But
   # lib/config.py the SCRIPT FILE lives in the harness DIRECTORY, which may be
   # a subdirectory: "$main_tree/lib/config.py" does not exist there, only
-  # "$ENTROPY_HOME/lib/config.py" does. So: cd into the main tree, but exec the
+  # "$ENTROPY_MACHINES_HOME/lib/config.py" does. So: cd into the main tree, but exec the
   # harness's copy of the loader. The subshell keeps the cd off the caller.
   ( cd "$main_tree" 2>/dev/null || exit 0
-    python3 "$ENTROPY_HOME/lib/config.py" get worktree.linkPaths 2>/dev/null ) \
+    python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get worktree.linkPaths 2>/dev/null ) \
     | tr -d '[]",' | tr ' ' '\n' | sed '/^$/d'
 }
 
 linked=""
+
+# CONFIG.JSON IS UNTRACKED AND ONLY EXISTS IN THE MAIN CHECKOUT'S HARNESS DIR.
+# Without this link every tool that reads $ENTROPY_MACHINES_HOME/config.json
+# refuses inside a worktree. Hardcoded because config.json is what tells us
+# what ELSE to link — it cannot come from its own content.
+if [ -n "${ENTROPY_MACHINES_HOME:-}" ]; then
+  case "$ENTROPY_MACHINES_HOME" in
+    "$main_tree")   link_one "config.json" ;;
+    "$main_tree"/*) link_one "${ENTROPY_MACHINES_HOME#"$main_tree"/}/config.json" ;;
+  esac
+fi
 
 # WHICH PATHS GET LINKED IS CONFIG, NOT CODE. A hardcoded list here was wrong
 # for every project but the one this hook was written in. Each entry is a path
@@ -278,10 +289,10 @@ done
 # already-linked worktree prints nothing.
 
 scratch_name="$(basename "$here")"
-# Rooted at $main_tree (the repo's main checkout), not ENTROPY_HOME — the
+# Rooted at $main_tree (the repo's main checkout), not ENTROPY_MACHINES_HOME — the
 # scratchpad belongs to the project being worked on, not to wherever inside it
 # the harness happens to be vendored.
-scratch_root="$main_tree/${ENTROPY_SCRATCH_ROOT:-.entropy/scratch}"
+scratch_root="$main_tree/${ENTROPY_MACHINES_SCRATCH_ROOT:-.entropy-machines/scratch}"
 scratch_target="$scratch_root/$scratch_name"
 
 if [ ! -d "$scratch_target" ] && ! mkdir -p "$scratch_target" 2>/dev/null; then

@@ -8,8 +8,8 @@
    so both themes get every structural fix for free, and bin/doclint refuses
    any doc that references something off this machine.
 
-   Selected by docs.theme in entropy.json (see docs/CONFIG.md). bin/serve
-   INLINES this file between a doc's entropy-theme:begin and entropy-theme:end
+   Selected by docs.theme in config.json (see docs/CONFIG.md). bin/serve
+   INLINES this file between a doc's entropy-machines-theme:begin and entropy-machines-theme:end
    markers, and into its own dashboard. It is never linked to as a stylesheet:
    a doc is a standalone local file that must still look right when it is
    opened straight off disk or moved somewhere else. */

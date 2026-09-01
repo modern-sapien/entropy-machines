@@ -26,7 +26,7 @@ fixture_init
 
 THEMES="$HARNESS/lib/themes"
 TPL="$HARNESS/lib/REPORT-TEMPLATE.html"
-DOCS="$REPO/entropy-docs"
+DOCS="$REPO/entropy-machines-docs"
 DOC="BUILD-REPORT-THEMED.html"
 
 # High-contrast, verbatim from the template that has always shipped it.
@@ -142,14 +142,14 @@ assert_no_traceback
 cat > "$TEST_TMP/inline.py" <<'PY'
 import sys
 
-BEGIN = "/* entropy-theme:begin */\n"
-END = "/* entropy-theme:end */"
+BEGIN = "/* entropy-machines-theme:begin */\n"
+END = "/* entropy-machines-theme:end */"
 doc = open(sys.argv[1], encoding="utf-8").read()
 theme = open(sys.argv[2], encoding="utf-8").read()
 b = doc.find(BEGIN)
 e = doc.find(END, b + len(BEGIN)) if b != -1 else -1
 if b == -1 or e == -1:
-    print("the template has no entropy-theme markers — bin/serve cannot swap it")
+    print("the template has no entropy-machines-theme markers — bin/serve cannot swap it")
     sys.exit(1)
 span = doc[b + len(BEGIN):e]
 if span != theme:
@@ -164,10 +164,10 @@ assert_rc 0 "the template's own token block is the default theme file, byte for 
 assert_out "verbatim" "and says so"
 
 # ---------------------------------------------------------------------------
-# helpers: point entropy.json at a theme, and drive a real server
+# helpers: point config.json at a theme, and drive a real server
 # ---------------------------------------------------------------------------
 set_theme() {
-  ENTROPY_JSON="$REPO/entropy.json" NEW_THEME="$1" python3 -c '
+  ENTROPY_JSON="$REPO/config.json" NEW_THEME="$1" python3 -c '
 import json, os
 p = os.environ["ENTROPY_JSON"]
 cfg = json.load(open(p, encoding="utf-8"))

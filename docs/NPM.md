@@ -31,13 +31,13 @@ the harness's `bin/`, `lib/` and `docs/` into whatever the project already
 has under those names, and those are three of the most commonly taken
 directory names there are. A subdirectory has none of that: it is one
 directory to add, one to `rm -rf`, and `git log` on it shows only harness
-changes. `lib/roots.sh` derives `ENTROPY_HOME` from each script's own `$0`,
+changes. `lib/roots.sh` derives `ENTROPY_MACHINES_HOME` from each script's own `$0`,
 so both layouts work; `docs/AGENT-QUICKSTART.md` already tells the agent to prefix
 every `bin/…` command with the vendored path.
 
 This is **not** the old nested clone. There is no `.git` in the vendored
 directory, so `git` from anywhere inside your project still answers with your
-project — one root, as `lib/roots.sh` requires. `entropy_refuse_nested_clone`
+project — one root, as `lib/roots.sh` requires. `entropy_machines_refuse_nested_clone`
 refuses the layout that does have one.
 
 Use `--dir .` if you want the root layout the README describes, and every
@@ -70,7 +70,7 @@ npm publish
 `files` is a whitelist of the six directories, with `!**/__pycache__` and
 `!**/*.pyc` negations — a `.npmignore` does **not** filter inside a
 whitelisted directory, so the negations are what keeps compiled Python out.
-`planning/`, `.entropy/`, `tests/`, `example/`, `entropy-docs/` and
+`planning/`, `.entropy-machines/`, `tests/`, `example/`, `entropy-machines-docs/` and
 `CONTRIBUTING.md` are excluded by not being listed; npm excludes `.git`
 unconditionally. `LICENSE`, `README.md` and `package.json` are always
 included — they ship even though `files` does not name them, so the shipped

@@ -25,7 +25,7 @@ TWO JOBS, both mechanical. No model, no judgement.
      sessions' uncommitted work, so a green run there is not a green HEAD --
      which is how a real regression once survived being repeatedly dismissed
      as a local artefact before someone finally traced it back to HEAD. This
-     runs the suites (entropy.json's `suites[]`) in a throwaway worktree at
+     runs the suites (config.json's `suites[]`) in a throwaway worktree at
      committed HEAD.
 
 Run as a script, not as a fifth agent role: once per sprint, after that
@@ -54,14 +54,14 @@ import tempfile
 import time
 
 # ONE ROOT -- see lib/roots.sh, which this block mirrors for the shell entry
-# points. ENTROPY_ROOT is the repository's MAIN checkout: entropy.json,
-# .entropy/ and the git history live there, and the harness is vendored inside
-# it as plain tracked files. ENTROPY_HOME is only the DIRECTORY this harness's
+# points. ENTROPY_MACHINES_ROOT is the repository's MAIN checkout: config.json,
+# .entropy-machines/ and the git history live there, and the harness is vendored inside
+# it as plain tracked files. ENTROPY_MACHINES_HOME is only the DIRECTORY this harness's
 # own files sit in (bin/, lib/, hooks/, doctrine/) -- the repo root, or a
 # subdirectory of it -- resolved from this file's own path so sibling lib/
 # imports work wherever it is vendored. It is not a root and not a repo.
-ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
+ENTROPY_MACHINES_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
 from config import load_config  # noqa: E402  (path must be set up first)
 
 
@@ -73,11 +73,11 @@ def _refuse_nested_clone():
     config.refuse_nested_clone("post-fold-audit")
 
 
-def _entropy_root():
-    """Mirrors lib/roots.sh's entropy_root(): the repository's main checkout,
+def _entropy_machines_root():
+    """Mirrors lib/roots.sh's entropy_machines_root(): the repository's main checkout,
     or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
     prints a linked WORKTREE's own path and would hand this tool a root whose
-    .entropy/ does not exist. Falls back to walking up for entropy.json when
+    .entropy-machines/ does not exist. Falls back to walking up for config.json when
     there is no git. No environment override, matching lib/roots.sh: with one
     root there is nothing for an override to disambiguate.
     """
@@ -95,7 +95,7 @@ def _entropy_root():
         return os.path.realpath(os.path.join(common, os.pardir))
     d = os.getcwd()
     while True:
-        if os.path.exists(os.path.join(d, "entropy.json")):
+        if os.path.exists(os.path.join(d, "config.json")):
             return d
         parent = os.path.dirname(d)
         if parent == d:
@@ -106,32 +106,32 @@ def _entropy_root():
 def _require_root():
     """Mirrors lib/roots.sh's entropy_require_root() -- returns the repo root
     or exits 2 naming the directory actually looked in, instead of silently
-    operating on ENTROPY_HOME."""
+    operating on ENTROPY_MACHINES_HOME."""
     _refuse_nested_clone()
-    project = _entropy_root()
+    project = _entropy_machines_root()
     if not project:
         print("post-fold-audit: REFUSED -- not inside a git repository, and no "
-              "entropy.json found by walking up from %s." % os.getcwd(), file=sys.stderr)
+              "config.json found by walking up from %s." % os.getcwd(), file=sys.stderr)
         print("  cd into the project you are running the factory on.", file=sys.stderr)
         sys.exit(2)
-    if not os.path.exists(os.path.join(project, "entropy.json")):
-        print("post-fold-audit: REFUSED -- no entropy.json at %s." % project, file=sys.stderr)
+    if not os.path.exists(os.path.join(ENTROPY_MACHINES_HOME, "config.json")):
+        print("post-fold-audit: REFUSED -- no config.json at %s." % project, file=sys.stderr)
         print("  That is this project's contract with the harness. See "
-              "%s/docs/CONFIG.md." % ENTROPY_HOME, file=sys.stderr)
-        print("  To create a starter one:  %s/bin/init" % ENTROPY_HOME, file=sys.stderr)
+              "%s/docs/CONFIG.md." % ENTROPY_MACHINES_HOME, file=sys.stderr)
+        print("  To create a starter one:  %s/bin/init" % ENTROPY_MACHINES_HOME, file=sys.stderr)
         sys.exit(2)
     return project
 
 
-ENTROPY_ROOT = _require_root()
-CONFIG = load_config(cwd=ENTROPY_ROOT)
+ENTROPY_MACHINES_ROOT = _require_root()
+CONFIG = load_config(cwd=ENTROPY_MACHINES_ROOT)
 STAMP = os.path.join(
     os.path.expanduser(CONFIG["unattended"]["stateHome"]),
     "clean-tree-stamp.json")
 
 
 def build_suites(cfg):
-    """`suites[]` from entropy.json, as (label, cmd, tag, cwd) tuples.
+    """`suites[]` from config.json, as (label, cmd, tag, cwd) tuples.
 
     No suite is assumed. A project with nothing configured gets an empty
     list here and a loud "no suites configured" print in clean_tree() rather
@@ -153,7 +153,7 @@ def sh(args, cwd, timeout=2400):
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-def git(args, cwd=ENTROPY_ROOT):
+def git(args, cwd=ENTROPY_MACHINES_ROOT):
     return sh(["git"] + args, cwd)
 
 
@@ -177,7 +177,7 @@ def worktree(at, label):
         shutil.rmtree(d, ignore_errors=True)
         return None, out
     for rel in (CONFIG.get("worktree") or {}).get("linkPaths") or []:
-        src = os.path.join(ENTROPY_ROOT, rel)
+        src = os.path.join(ENTROPY_MACHINES_ROOT, rel)
         if not os.path.isdir(src):
             continue
         dst = os.path.join(path, rel)
@@ -211,7 +211,7 @@ def drop(path):
 def orchestrator_delta(patch, base, findings):
     """What the orchestrator wrote at merge time, and nothing else."""
     name = os.path.basename(patch)
-    rc, out = sh(["git", "apply", "--numstat", patch], ENTROPY_ROOT)
+    rc, out = sh(["git", "apply", "--numstat", patch], ENTROPY_MACHINES_ROOT)
     if rc != 0:
         findings.append("%s: unreadable as a patch -- %s" % (name, out.strip()[:160]))
         return
@@ -235,13 +235,13 @@ def orchestrator_delta(patch, base, findings):
         print("\n=== ORCHESTRATOR DELTA - %s (base %s)" % (name, base[:9]))
         changed = []
         for f in files:
-            a, b = os.path.join(path, f), os.path.join(ENTROPY_ROOT, f)
+            a, b = os.path.join(path, f), os.path.join(ENTROPY_MACHINES_ROOT, f)
             if not os.path.exists(b):
                 changed.append((f, "deleted after fold"))
                 continue
             if not os.path.exists(a):
                 continue
-            rc3, d = sh(["git", "diff", "--no-index", "--numstat", a, b], ENTROPY_ROOT)
+            rc3, d = sh(["git", "diff", "--no-index", "--numstat", a, b], ENTROPY_MACHINES_ROOT)
             if d.strip():
                 n = d.split("\t")[:2]
                 changed.append((f, "+%s/-%s" % (n[0], n[1]) if len(n) == 2 else "differs"))
@@ -261,7 +261,7 @@ def orchestrator_delta(patch, base, findings):
 def clean_tree(skip_tags, findings):
     suites = build_suites(CONFIG)
     if not suites:
-        findings.append("no suites configured -- entropy.json's suites[] is empty; "
+        findings.append("no suites configured -- config.json's suites[] is empty; "
                         "nothing was run at HEAD")
         return None, {}
     rc, head = git(["rev-parse", "HEAD"])
@@ -335,14 +335,14 @@ def main():
     ap.add_argument("--base", help="commit each --patch was written against")
     ap.add_argument("--clean-tree-only", action="store_true")
     ap.add_argument("--skip", action="append", default=[], metavar="TAG",
-                    help="skip every suite carrying this entropy.json suites[] tag "
+                    help="skip every suite carrying this config.json suites[] tag "
                          "(repeatable); a partial stamp does NOT close a sprint")
     ap.add_argument("--quick", action="store_true",
                     help="shorthand for --skip slow")
     a = ap.parse_args()
 
-    if os.path.realpath(os.getcwd()) != os.path.realpath(ENTROPY_ROOT):
-        print("post-fold-audit: run from %s" % ENTROPY_ROOT, file=sys.stderr)
+    if os.path.realpath(os.getcwd()) != os.path.realpath(ENTROPY_MACHINES_ROOT):
+        print("post-fold-audit: run from %s" % ENTROPY_MACHINES_ROOT, file=sys.stderr)
         return 2
     if a.patch and not a.base:
         print("post-fold-audit: --patch needs --base", file=sys.stderr)

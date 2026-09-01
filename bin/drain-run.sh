@@ -20,7 +20,7 @@
 #   clean      a fire killed mid-issue by a quota ceiling leaves a dirty tree;
 #              the NEXT fire refuses to start rather than building on top of it
 #   quota      skip if the quota probe recently saw a wall — see QUOTA PROBE
-#   paths      diff the finished work against entropy.json's protected paths
+#   paths      diff the finished work against config.json's protected paths
 #              before pushing; the tracker's own tags say what we should not
 #              START, this says what we actually TOUCHED
 #
@@ -31,7 +31,7 @@
 #   2 disarmed           5 quota wall                    8 touched a protected path
 set -e
 
-# ONE ROOT, TWO PATHS — see lib/roots.sh. ENTROPY_HOME is the harness
+# ONE ROOT, TWO PATHS — see lib/roots.sh. ENTROPY_MACHINES_HOME is the harness
 # DIRECTORY (this script's own bin/, and the lib/ beside it); $root is the
 # repository this works on. They are the same tree — the harness is vendored
 # inside the project — but not necessarily the same directory.
@@ -42,28 +42,28 @@ set -e
 # the old "an installed job only works when the harness sits at the project
 # root" gap: nothing has to carry the root in.
 . "$(dirname "$0")/../lib/roots.sh"
-ENTROPY_HOME=$(entropy_home "$0")
-cd "$ENTROPY_HOME"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+cd "$ENTROPY_MACHINES_HOME"
 # The nested-clone refusal still applies and must be asked for explicitly,
-# because this script deliberately skips entropy_require_root (below).
-entropy_refuse_nested_clone drain-run
+# because this script deliberately skips entropy_machines_require_root (below).
+entropy_machines_refuse_nested_clone drain-run
 
-# entropy_root, not entropy_require_root: the "no entropy.json" refusal exits
+# entropy_machines_root, not entropy_machines_require_root: the "no config.json" refusal exits
 # 2, and 2 is already this script's documented "disarmed" code (see EXIT CODES
 # above). A misconfigured repo is an internal error (1), not a disarmed one,
 # and cfg() below already defaults every key it reads.
-if ! root=$(entropy_root); then
-  echo "drain-run: could not resolve the repository from $ENTROPY_HOME." >&2
+if ! root=$(entropy_machines_root); then
+  echo "drain-run: could not resolve the repository from $ENTROPY_MACHINES_HOME." >&2
   exit 1
 fi
 
 # ---- config -------------------------------------------------------------
 # Same cfg() as bin/drain. Kept as a second copy rather than a shared sourced
 # file: these are the only two callers, both tiny, and a sourced helper would
-# be a third file to keep in sync with the entropy.json shape for a five-line
+# be a third file to keep in sync with the config.json shape for a five-line
 # function. If a third caller shows up, that calculus changes.
 cfg() {
-  python3 - "$root/entropy.json" "$1" "$2" <<'PY'
+  python3 - "$root/config.json" "$1" "$2" <<'PY'
 import json, sys
 path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -75,7 +75,7 @@ cur = data
 # TOLERATE A LEADING DOT. Every call site in this file and in bin/drain writes
 # the key as '.unattended.x' (a jq habit), which split('.') turns into a first
 # segment of '' that matches no dict key — so this helper silently returned its
-# DEFAULT for every lookup, and no unattended setting in entropy.json had any
+# DEFAULT for every lookup, and no unattended setting in config.json had any
 # effect. Fixed here rather than at a dozen call sites so both spellings work.
 for part in key.lstrip('.').split('.'):
     if isinstance(cur, dict) and part in cur:
@@ -106,7 +106,7 @@ PY
 # Every one of those is an implementation detail of whatever agent CLI you
 # point it at, not a stable interface, and can silently stop matching the
 # moment that CLI changes its log format. Configure it under
-# unattended.agent.quotaProbe in entropy.json:
+# unattended.agent.quotaProbe in config.json:
 #
 #   "quotaProbe": {
 #     "type": "log-glob",
@@ -157,7 +157,7 @@ if [ "$1" = "--probe-quota" ]; then
   exit 0
 fi
 
-state_default=$(cfg '.unattended.stateHome' '~/.entropy')
+state_default=$(cfg '.unattended.stateHome' '~/.entropy-machines')
 case "$state_default" in
   "~"*) state_default="$HOME${state_default#\~}" ;;
 esac
@@ -231,7 +231,7 @@ if [ -n "$recent" ] && [ -z "$foreground" ]; then
 fi
 
 # ---- pick the work --------------------------------------------------------
-# The cost model and budget live in entropy.json (unattended.sizeCosts,
+# The cost model and budget live in config.json (unattended.sizeCosts,
 # unattended.budget) and are applied by bin/drain-pick.py, which has tests.
 # THE rc IS CAPTURED, NOT SWALLOWED. Under `set -e` a bare
 # `picked=$(...)` assignment kills this script the moment drain-pick exits
@@ -242,7 +242,7 @@ fi
 # empty $picked means "nothing eligible", which is a normal idle tick, while a
 # non-zero rc means the picker itself failed and somebody has to be told.
 pick_rc=0
-picked=$(python3 "$ENTROPY_HOME/bin/drain-pick.py" "$root" 2>>"$state/pick.err") || pick_rc=$?
+picked=$(python3 "$ENTROPY_MACHINES_HOME/bin/drain-pick.py" "$root" 2>>"$state/pick.err") || pick_rc=$?
 if [ "$pick_rc" -ne 0 ]; then
   finish "error" 7 "drain-pick failed (rc $pick_rc) — see $state/pick.err"
 fi
@@ -258,7 +258,7 @@ echo "drain: taking $count issue(s): $picked"
 # nobody there to answer, the session stalls. That is why the timeout below is
 # not optional: a stall costs one window and leaves a specific line in the log
 # to widen the allowlist by, rather than hanging until the scheduler kills it.
-prompt=$(sed "s|__ISSUES__|$picked|g; s|__BRANCH__|${branch_prefix}${slug}|g" "$ENTROPY_HOME/bin/drain-prompt.md")
+prompt=$(sed "s|__ISSUES__|$picked|g; s|__BRANCH__|${branch_prefix}${slug}|g" "$ENTROPY_MACHINES_HOME/bin/drain-prompt.md")
 
 # Agent invocation is pluggable: unattended.agent.cmd is the argv prefix
 # (default ["claude", "-p"]) and the prompt is appended as the final argument.
@@ -270,7 +270,7 @@ set --
 while IFS= read -r tok; do
   [ -n "$tok" ] && set -- "$@" "$tok"
 done <<AGENTCMD
-$(python3 - "$root/entropy.json" <<'PY'
+$(python3 - "$root/config.json" <<'PY'
 import json, sys
 try:
     data = json.load(open(sys.argv[1]))
@@ -300,7 +300,7 @@ done
 # The enforced half of the autonomy rule. The tracker's own tags say what an
 # issue should not START on; this says what the session actually TOUCHED,
 # which is the only one that survives an untagged issue turning out unsafe.
-# protectedPaths is a plain list of path prefixes in entropy.json
+# protectedPaths is a plain list of path prefixes in config.json
 # (project.protectedPaths) — not a project-specific Python module, so widening
 # or narrowing the guarded set is a one-line config edit.
 guarded=$(python3 - "$root" "$remote" "$want_branch" <<'PY'
@@ -308,7 +308,7 @@ import json, os, subprocess, sys
 root, remote, branch = sys.argv[1], sys.argv[2], sys.argv[3]
 protected = []
 try:
-    with open(os.path.join(root, "entropy.json")) as f:
+    with open(os.path.join(root, "config.json")) as f:
         protected = json.load(f).get("project", {}).get("protectedPaths", []) or []
 except Exception:
     protected = []

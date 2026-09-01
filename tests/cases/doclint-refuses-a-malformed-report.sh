@@ -22,7 +22,7 @@
 fixture_new
 fixture_init
 
-DOCS="$REPO/entropy-docs"
+DOCS="$REPO/entropy-machines-docs"
 LINT="$HARNESS/bin/doclint"
 TPL="$HARNESS/lib/REPORT-TEMPLATE.html"
 

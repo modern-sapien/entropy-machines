@@ -66,12 +66,12 @@ import os
 import re
 import sys
 
-# ENTROPY_HOME is the harness DIRECTORY — where lib/config.py sits — which may
+# ENTROPY_MACHINES_HOME is the harness DIRECTORY — where lib/config.py sits — which may
 # be the repo root or a subdirectory of it. Not a root and not a separate repo;
 # see lib/roots.sh.
-ENTROPY_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ENTROPY_HOME, "lib"))
-import config  # noqa: E402  -- needs ENTROPY_HOME on the path first
+ENTROPY_MACHINES_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
+import config  # noqa: E402  -- needs ENTROPY_MACHINES_HOME on the path first
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +360,7 @@ def docs_dir(cfg):
         # no entry in lib/config.py's DEFAULTS; that shared file is not this
         # tool's to extend, so the fallback lives here exactly as it does in
         # bin/serve and bin/status.
-        d = "entropy-docs"
+        d = "entropy-machines-docs"
     return d if os.path.isabs(d) else os.path.join(cfg["_root"], d.strip("/"))
 
 
@@ -400,13 +400,13 @@ def main(argv):
     else:
         cfg = config.load_config()
         if not cfg["_path"]:
-            return refuse("no entropy.json at %s." % cfg["_root"],
+            return refuse("no config.json at %s." % cfg["_root"],
                           "Run bin/init, or name the docs to check explicitly:",
                           "  bin/doclint path/to/doc.html")
         d = docs_dir(cfg)
         if not os.path.isdir(d):
             return refuse("the docs directory %s does not exist." % d,
-                          "That is docs.dir in entropy.json. Nothing was checked.")
+                          "That is docs.dir in config.json. Nothing was checked.")
         found = html_files_in(d)
         if found is None:
             return refuse("cannot read the docs directory %s." % d)

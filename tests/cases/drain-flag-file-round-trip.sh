@@ -6,7 +6,7 @@
 # status must say which).
 #
 # ENTROPY_DRAIN_HOME keeps the flag file inside this case's temp directory. The
-# default is ~/.entropy, and a test that wrote there would be writing outside
+# default is ~/.entropy-machines, and a test that wrote there would be writing outside
 # its own fixture.
 . "$TEST_LIB/harness.sh"
 

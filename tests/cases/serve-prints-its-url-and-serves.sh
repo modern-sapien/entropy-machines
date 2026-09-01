@@ -40,7 +40,7 @@ fi
 
 OUT=$(cat "$LOG"); ERR=""; ALL="$OUT"; RC=0; LAST_CMD="bin/serve $PORT"
 assert_out "serving $REPO" "the URL line names the project it is serving"
-assert_out "docs: $REPO/entropy-docs" "and the docs directory it will serve from"
+assert_out "docs: $REPO/entropy-machines-docs" "and the docs directory it will serve from"
 
 # --- GET / ------------------------------------------------------------------
 run http_get "http://127.0.0.1:$PORT/"

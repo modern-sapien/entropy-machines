@@ -18,7 +18,7 @@ assert_rc 0 "dispatch an issue so there is something in flight"
 
 # Fingerprint everything status could plausibly touch.
 fingerprint() {
-  ( cd "$REPO" && git status --porcelain; cksum < "$REPO/.entropy/issues.json" ) | cksum
+  ( cd "$REPO" && git status --porcelain; cksum < "$REPO/.entropy-machines/issues.json" ) | cksum
 }
 before=$(fingerprint)
 

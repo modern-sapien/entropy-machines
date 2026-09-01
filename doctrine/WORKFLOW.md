@@ -57,7 +57,7 @@ worker is right.** Dismissing that once hid a fixture set broken at HEAD.
   plainly that nothing does.
 - **Work is held until the owner says merge.**
 - **Never run the full build in a worker or verifier** — release commands rewrite
-  committed bookkeeping. Use `entropy.json`'s `suites`.
+  committed bookkeeping. Use `config.json`'s `suites`.
 - **Symlink `worktree.linkPaths` in every worktree.** Unlinked, a runtime walks up
   and resolves a *sibling worktree* — you test someone else's code and report it as
   your own. Green, confident, wrong.
@@ -80,7 +80,7 @@ dispatch, give concurrent agents strictly disjoint file scopes, and **never `git
 -A` while a lane is live** — stage explicit paths, every time.
 
 **What enforces it: nothing.** `bin/dispatch` refuses a cwd that is not
-`ENTROPY_ROOT`, which catches a session already drifted *when the brief is written*.
+`ENTROPY_MACHINES_ROOT`, which catches a session already drifted *when the brief is written*.
 The runner creates the worktree later, from whatever the cwd is then, so a `cd` in
 between is invisible to every gate — and no shell script can reach inside the
 runner's isolation to check what it actually did. The worker's own check is all

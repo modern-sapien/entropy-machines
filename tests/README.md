@@ -28,7 +28,7 @@ per-case *fixture* is not the expensive part and optimising it is mostly wasted
 effort: building the throwaway repo is ~140ms, while `bin/init` alone is ~700ms
 and a single `bin/tracker` call is ~80ms — of which about 60ms is the shell
 prologue every entry point pays (`lib/roots.sh` resolving the root through
-`git rev-parse`, then a second `python3` just to read `entropy.json`). The
+`git rev-parse`, then a second `python3` just to read `config.json`). The
 number of processes the harness spawns per command is the lever, not the
 fixture.
 
@@ -55,7 +55,7 @@ assert_out "heldWhy" "and the refusal must name the field that works"
 
 `run` (and `run_in <dir>`) capture `RC`, `OUT`, `ERR` and `ALL`, and never
 return non-zero themselves — a refusal is usually the thing under test, so the
-case has to stay alive to assert on it. `fixture_new "tools/entropy"` vendors
+case has to stay alive to assert on it. `fixture_new "tools/entropy-machines"` vendors
 the harness into a subdirectory instead of the repo root; both layouts are
 supported and both are exercised. Everything else is in `tests/lib/harness.sh`,
 which is short enough to read.

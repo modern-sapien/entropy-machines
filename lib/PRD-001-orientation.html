@@ -366,7 +366,7 @@
   <!-- AGENT FILLING THIS IN: run the commands below, do not read them off a
        README and repeat its claims back. An unverified suite command is
        exactly the kind of claim this harness distrusts on principle: see
-       docs/CONFIG.md, bin/init leaves entropy.json's `suites` array empty
+       docs/CONFIG.md, bin/init leaves config.json's `suites` array empty
        rather than guess at one, for the same reason. Report only what you
        personally ran and watched pass or fail, with the actual command and
        its actual result (pass, fail, or count).
@@ -419,7 +419,7 @@
 
 <section class="page" id="p2">
   <h1>Which suites gate a landing, and which are advisory?</h1>
-  <p class="sub">This becomes <code>entropy.json</code>'s <code>suites</code> array.</p>
+  <p class="sub">This becomes <code>config.json</code>'s <code>suites</code> array.</p>
 
   <p>Every entry under <code>suites</code> runs in the verifier's sweep and in
   <code>bin/post-fold-audit</code>. An entry tagged <code>"slow"</code> can be
@@ -486,7 +486,7 @@
   <code>claim</code>, <code>ready</code>, <code>set</code> (no
   <code>add</code>; an issue is created with <code>set</code>, which
   auto-vivifies). <code>"file"</code> is the built-in backend, storing
-  <code>.entropy/issues.json</code> locally. <code>"command"</code> shells
+  <code>.entropy-machines/issues.json</code> locally. <code>"command"</code> shells
   out to any executable implementing the same six ops
   (<code>docs/TRACKER-ADAPTER.md</code>) — and that adapter has to be able to
   express <em>held</em> (a <code>heldWhy</code> field) and <em>gated</em>
@@ -497,7 +497,7 @@
     <label>tracker.backend</label>
     <div class="discuss">
       <strong>Option A</strong> — keep <code>"file"</code>. Zero setup,
-      works today, per-checkout state under <code>.entropy/</code>
+      works today, per-checkout state under <code>.entropy-machines/</code>
       (gitignored). Cost: not shared across machines, no UI beyond
       <code>bin/tracker show</code>.<br>
       <strong>Option B</strong> — point <code>tracker.command.bin</code> at
@@ -560,11 +560,11 @@
     <div class="discuss">
       <strong>Option A</strong> — dispatch a verification issue first:
       confirm the "What we found" page for real and finish
-      <code>entropy.json</code> (suites, generate, worktree links). Cost:
+      <code>config.json</code> (suites, generate, worktree links). Cost:
       one dispatch cycle spent on bookkeeping before touching a real feature
       or bug.<br>
       <strong>Option B</strong> — skip straight to a real feature or bug you
-      already know needs doing, and patch <code>entropy.json</code>'s gaps
+      already know needs doing, and patch <code>config.json</code>'s gaps
       opportunistically as a worker or verifier hits them. Cost: your first
       few dispatches run against unverified suites and paths, so a failure
       might be the harness's config rather than the actual work.<br>
@@ -586,7 +586,7 @@
 
   <pre><code>bin/tracker set i-suites-policy \
   status=notstarted \
-  title="Configure entropy.json suites per PRD-001 Q1" \
+  title="Configure config.json suites per PRD-001 Q1" \
   effort=S
 
 bin/tracker set i-protected-paths \
@@ -595,7 +595,7 @@ bin/tracker set i-protected-paths \
   effort=S
 
 # Q3 answered above but not yet DONE until you (or the worker) actually
-# write it into entropy.json -- filed the same as any other issue.
+# write it into config.json -- filed the same as any other issue.
 bin/tracker set i-tracker-backend \
   status=notstarted \
   title="Configure tracker.backend per PRD-001 Q3" \

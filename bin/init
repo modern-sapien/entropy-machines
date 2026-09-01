@@ -1,8 +1,8 @@
 #!/bin/sh
-# Bootstrap: write a starter entropy.json for a project that has none yet.
+# Bootstrap: write a starter config.json for a project that has none yet.
 #
 # THE CHICKEN-AND-EGG THIS SOLVES — every other entry point in this harness
-# refuses to run without entropy.json (docs/CONFIG.md rule 2: a missing key
+# refuses to run without config.json (docs/CONFIG.md rule 2: a missing key
 # is refused by name, never silently defaulted). That is deliberate, but it
 # leaves a brand-new project with no way in: the first thing a new user is
 # meant to do is run the factory once to discover its own config, and that
@@ -13,9 +13,9 @@
 #
 # Usage: bin/init [--force]
 #
-#   (no flags)  refuse if entropy.json already exists — never silently
+#   (no flags)  refuse if config.json already exists — never silently
 #               overwrite a config someone has tuned.
-#   --force     overwrite an existing entropy.json.
+#   --force     overwrite an existing config.json.
 set -e
 
 usage() {
@@ -38,30 +38,30 @@ for arg in "$@"; do
 done
 
 . "$(dirname "$0")/../lib/roots.sh"
-ENTROPY_HOME=$(entropy_home "$0")
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
 
 # THE NESTED-CLONE REFUSAL STILL APPLIES, and has to be called explicitly.
-# entropy_require_root() runs it first, but this script cannot use that (see
+# entropy_machines_require_root() runs it first, but this script cannot use that (see
 # below), so skipping it silently exempted the ONE command whose whole job is
-# to write files -- and it wrote entropy.json INTO the harness, which is the
+# to write files -- and it wrote config.json INTO the harness, which is the
 # exact misrouting the refusal exists to stop. A gate that every entry point
 # honours except the one that creates state is not a gate.
-entropy_refuse_nested_clone init
+entropy_machines_refuse_nested_clone init
 
-# Deliberately entropy_root, NOT entropy_require_root: the latter
-# exits unless entropy.json already exists at the resolved root, and this
+# Deliberately entropy_machines_root, NOT entropy_machines_require_root: the latter
+# exits unless config.json already exists at the resolved root, and this
 # script is the thing that creates it.
-if ! project=$(entropy_root); then
-  echo "init: REFUSED — not inside a git repository, and no entropy.json" >&2
+if ! project=$(entropy_machines_root); then
+  echo "init: REFUSED — not inside a git repository, and no config.json" >&2
   echo "  found by walking up from $PWD." >&2
   echo "  cd into the project you want to run the factory on." >&2
   exit 2
 fi
 
-target="$project/entropy.json"
+target="$ENTROPY_MACHINES_HOME/config.json"
 
 if [ -f "$target" ] && [ -z "$force" ]; then
-  echo "init: REFUSED — entropy.json already exists at $target." >&2
+  echo "init: REFUSED — config.json already exists at $target." >&2
   echo "  Not overwriting a config someone has tuned. Re-run with --force" >&2
   echo "  if you mean to replace it." >&2
   exit 2
@@ -70,9 +70,9 @@ fi
 project_name=$(basename -- "$project")
 
 # EVERY REFUSAL COMES BEFORE EVERY WRITE. This check used to sit down at step
-# 5, after entropy.json and .gitignore had already been written, so a harness
+# 5, after config.json and .gitignore had already been written, so a harness
 # missing its PRD left the project half-initialised — configured, but with
-# nothing to do next and an entropy.json that a re-run would then refuse to
+# nothing to do next and an config.json that a re-run would then refuse to
 # overwrite. A gate that fires after the damage is not a gate.
 # The PRD is the HTML dialogue doc, not the markdown quickstart. They are two
 # different artifacts for two different readers: docs/QUICKSTART.md tells an
@@ -81,10 +81,10 @@ project_name=$(basename -- "$project")
 # for agents in front of the human and gave them nothing to answer.
 #
 # It lands in the project's docs directory because that is what bin/serve
-# serves; docs.dir is config, defaulting to entropy-docs/.
-prd_src="$ENTROPY_HOME/lib/PRD-001-orientation.html"
-docs_dir=$(python3 "$ENTROPY_HOME/lib/config.py" get docs.dir 2>/dev/null | tr -d '"')
-if [ -z "$docs_dir" ] || [ "$docs_dir" = "null" ]; then docs_dir="entropy-docs"; fi
+# serves; docs.dir is config, defaulting to entropy-machines-docs/.
+prd_src="$ENTROPY_MACHINES_HOME/lib/PRD-001-orientation.html"
+docs_dir=$(python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get docs.dir 2>/dev/null | tr -d '"')
+if [ -z "$docs_dir" ] || [ "$docs_dir" = "null" ]; then docs_dir="entropy-machines-docs"; fi
 prd_dst="$project/$docs_dir/PRD-001-orientation.html"
 
 if [ ! -f "$prd_src" ]; then
@@ -107,13 +107,13 @@ fi
 cat > "$target" <<EOF
 {
   "project": { "name": "$project_name" },
-  "tracker": { "backend": "file", "file": { "path": ".entropy/issues.json" } },
+  "tracker": { "backend": "file", "file": { "path": ".entropy-machines/issues.json" } },
   "suites": [],
   "changelog": { "enabled": false }
 }
 EOF
 
-# STEP 4 — .entropy/ is where the tracker's issues.json lives; it is
+# STEP 4 — .entropy-machines/ is where the tracker's issues.json lives; it is
 # per-checkout state, not something to commit.
 gitignore="$project/.gitignore"
 
@@ -126,7 +126,7 @@ add_ignore() {
   if [ -f "$gitignore" ]; then
     if ! grep -qxF -- "$1" "$gitignore"; then
       # A .gitignore whose last line has no trailing newline would otherwise
-      # weld the entry onto it — `node_modules/.entropy/` — one pattern that
+      # weld the entry onto it — `node_modules/.entropy-machines/` — one pattern that
       # matches nothing, in place of two that match. `$(tail -c 1)` strips a
       # trailing newline and is therefore empty exactly when there is one.
       if [ -s "$gitignore" ] && [ -n "$(tail -c 1 "$gitignore")" ]; then
@@ -139,9 +139,9 @@ add_ignore() {
   fi
 }
 
-add_ignore ".entropy/"
+add_ignore ".entropy-machines/"
 # Python leaves these the first time any harness tool runs, INSIDE the files
-# the user just committed. Ignoring .entropy/ but not these meant a fresh init
+# the user just committed. Ignoring .entropy-machines/ but not these meant a fresh init
 # dirtied the tree it had just set up.
 add_ignore "__pycache__/"
 # Per-dispatch briefs, written by bin/dispatch. Local scratch, not history.
@@ -192,16 +192,16 @@ fi
 # tests is whether the tracker answers for a config that does not exist until
 # step 3 wrote it. So it is NOT phrased as a refusal: the writes above really
 # did happen, and calling it "REFUSED" told the user nothing was written when
-# in fact everything was — and a plain re-run then died on "entropy.json
+# in fact everything was — and a plain re-run then died on "config.json
 # already exists" with no repair path named.
-if ! (cd "$project" && "$ENTROPY_HOME/bin/tracker" ready >/dev/null 2>&1); then
+if ! (cd "$project" && "$ENTROPY_MACHINES_HOME/bin/tracker" ready >/dev/null 2>&1); then
   echo "init: WARNING — $target was WRITTEN, but bin/tracker could not read the" >&2
   echo "  tracker back afterward. This is not a refusal: everything above" >&2
   echo "  really was written, and the project is half-initialised." >&2
-  echo "  Check $project/.entropy/ and $target by hand." >&2
+  echo "  Check $project/.entropy-machines/ and $target by hand." >&2
   echo "  To re-run once you have fixed it (a plain re-run will refuse," >&2
-  echo "  because entropy.json now exists):" >&2
-  echo "      $ENTROPY_HOME/bin/init --force" >&2
+  echo "  because config.json now exists):" >&2
+  echo "      $ENTROPY_MACHINES_HOME/bin/init --force" >&2
   exit 2
 fi
 
@@ -215,16 +215,16 @@ fi
 # root. Vendored in a subdirectory -- now the default -- that command does not
 # exist, and the closing instruction of the setup command was one a user could
 # not run.
-case "$ENTROPY_HOME" in
+case "$ENTROPY_MACHINES_HOME" in
   "$project") cmd_prefix="bin" ;;
-  "$project"/?*) cmd_prefix="${ENTROPY_HOME#"$project"/}/bin" ;;
-  *) cmd_prefix="$ENTROPY_HOME/bin" ;;
+  "$project"/?*) cmd_prefix="${ENTROPY_MACHINES_HOME#"$project"/}/bin" ;;
+  *) cmd_prefix="$ENTROPY_MACHINES_HOME/bin" ;;
 esac
 # RENDER THE TRACKER, so PRD-001's one nav link resolves on day one. The PRD
 # links to TRACKER.html; nothing else creates it, and a first-run user opening
 # the first document the harness hands them would otherwise hit a 404 — which
 # is exactly the bug that made this necessary.
-"$ENTROPY_HOME/bin/tracker" render >/dev/null 2>&1 || \
+"$ENTROPY_MACHINES_HOME/bin/tracker" render >/dev/null 2>&1 || \
   echo "init: warning — could not render TRACKER.html; run \`$cmd_prefix/tracker render\`" >&2
 
 echo "init: tracker is live and empty — \`$cmd_prefix/tracker ready\` answers."

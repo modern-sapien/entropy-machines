@@ -25,11 +25,11 @@ rediscovers the same wall.
    default branch.
 2. Implement one issue at a time. Commit each one separately.
 3. Verify before each commit: run every suite listed under `suites` in this
-   repo's `entropy.json` (docs/CONFIG.md) that is not tagged `slow`. Run the
+   repo's `config.json` (docs/CONFIG.md) that is not tagged `slow`. Run the
    full set, including anything tagged `slow`, at least once before you
    finish. If `suites` is empty, say so in your report rather than skipping
    verification silently.
-4. If this project's `entropy.json` has `changelog.enabled` true, write one
+4. If this project's `config.json` has `changelog.enabled` true, write one
    changelog fragment per commit using the command in
    `changelog.newFragmentCmd`, naming the issue it closes. Never hand-edit
    the collated file at `changelog.collatedFile` directly, and never run
@@ -41,7 +41,7 @@ rediscovers the same wall.
 
 ## What you may not touch
 
-This repo's `entropy.json` lists paths under `project.protectedPaths` — an
+This repo's `config.json` lists paths under `project.protectedPaths` — an
 append-only interface, a generated bundle, a cross-writer contract, anything
 that needs a human holding both ends. Do not edit any of them on your own
 initiative. If an issue cannot be done without touching one, mark it held as
