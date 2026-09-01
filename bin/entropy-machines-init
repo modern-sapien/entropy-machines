@@ -312,13 +312,16 @@ function start(argv) {
   if (!fs.existsSync(serve)) {
     die([`entropy-machines: ${path.join(loc.shown, 'bin', 'serve')} not found.`]);
   }
-  // Agent onboarding notice — only if the agent hasn't been pointed at the
-  // quickstart yet. If CLAUDE.md mentions entropy-machines, it's done.
-  const claudeMdPaths = [
+  // Agent onboarding notice — only if no agent config file mentions
+  // entropy-machines yet. Checks every common agent instruction file.
+  const agentConfigPaths = [
     path.join(root, 'CLAUDE.md'),
     path.join(root, '.claude', 'CLAUDE.md'),
+    path.join(root, '.cursorrules'),
+    path.join(root, '.github', 'copilot-instructions.md'),
+    path.join(root, '.windsurfrules'),
   ];
-  const agentOnboarded = claudeMdPaths.some((p) => {
+  const agentOnboarded = agentConfigPaths.some((p) => {
     try { return fs.readFileSync(p, 'utf8').includes('entropy-machines'); } catch { return false; }
   });
   if (!agentOnboarded) {
