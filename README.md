@@ -1,6 +1,6 @@
 # entropy-machines
 
-Escape the terminal. Enter your proto factory.
+Escape the terminal. Enter your factory floor.
 
 You create PRDs, design with agents, and once your decisions are complete,
 issues are generated from those PRDs. Worker agents execute each issue in
