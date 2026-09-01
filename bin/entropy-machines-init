@@ -47,6 +47,15 @@ const NPM_ENTRY = path.basename(__filename);
 
 const DEFAULT_DIR = 'entropy-machines';
 
+// ANSI color, gated on tty + NO_COLOR (https://no-color.org/).
+const USE_COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
+const BOLD  = USE_COLOR ? '\x1b[1m'  : '';
+const DIM   = USE_COLOR ? '\x1b[2m'  : '';
+const GREEN = USE_COLOR ? '\x1b[32m' : '';
+const YELLOW = USE_COLOR ? '\x1b[33m' : '';
+const CYAN  = USE_COLOR ? '\x1b[36m' : '';
+const RESET = USE_COLOR ? '\x1b[0m'  : '';
+
 function die(lines) {
   for (const line of [].concat(lines)) console.error(line);
   process.exit(2);
@@ -196,31 +205,31 @@ function init(argv) {
   }
 
   const shown = path.relative(root, dest) || '.';
-  console.log(`entropy-machines ${PKG.version}: vendored into ${dest}`);
-  for (const d of HARNESS_DIRS) console.log(`  ${path.join(shown, d)}/`);
-  console.log(`  ${path.join(shown, 'LICENSE')}${licenseNote}`);
+  console.log(`${GREEN}entropy-machines ${PKG.version}: vendored into ${dest}${RESET}`);
+  for (const d of HARNESS_DIRS) console.log(`  ${DIM}${path.join(shown, d)}/${RESET}`);
+  console.log(`  ${DIM}${path.join(shown, 'LICENSE')}${licenseNote}${RESET}`);
   console.log('');
 
   // ---- Hand over to the harness. Everything past here is shell + Python. ----
 
   const vendoredInit = path.join(dest, 'bin', 'init');
-  console.log(`entropy-machines: running ${path.join(shown, 'bin', 'init')}`);
+  console.log(`entropy-machines: running ${DIM}${path.join(shown, 'bin', 'init')}${RESET}`);
   const r = spawnSync(vendoredInit, [], { cwd: root, stdio: 'inherit' });
   if (r.error) {
-    console.error(`entropy-machines: could not run ${vendoredInit}: ${r.error.message}`);
-    console.error('  The files ARE vendored. Run it yourself from the repo root.');
+    console.error(`${YELLOW}entropy-machines: could not run ${vendoredInit}: ${r.error.message}${RESET}`);
+    console.error(`  The files ARE vendored. Run it yourself from the repo root.`);
     process.exit(2);
   }
   if (r.status !== 0) {
     console.error('');
-    console.error('entropy-machines: the files are vendored, but bin/init did not');
+    console.error(`${YELLOW}entropy-machines: the files are vendored, but bin/init did not${RESET}`);
     console.error('  finish. Fix what it named above and re-run it from the repo');
-    console.error(`  root:  ${path.join(shown, 'bin', 'init')}`);
+    console.error(`  root:  ${CYAN}${path.join(shown, 'bin', 'init')}${RESET}`);
     process.exit(r.status === null ? 2 : r.status);
   }
 
   console.log('');
-  console.log('entropy-machines: done. Next —');
+  console.log(`${BOLD}entropy-machines: done. Next —${RESET}`);
   // Named paths only, never a guessed docs directory — that one is config
   // (docs.dir), and CONFIG.md rule 1 makes a hardcoded path in bin/ a bug.
   // NEVER `git add .` for the root layout. This command is reached over npm,
@@ -231,9 +240,12 @@ function init(argv) {
     shown === '.'
       ? `${HARNESS_DIRS.join(' ')} LICENSE .gitignore`
       : `${shown} .gitignore`;
-  console.log(`  1. commit what init just wrote:  git add ${addPaths}`);
-  console.log(`  2. point your coding agent at ${path.join(shown, 'docs', 'AGENT-QUICKSTART.md')}`);
-  console.log(`  3. ${path.join(shown, 'bin', 'serve')}  — answer the PRD it opens`);
+  // Step 1: agent context (most important — the agent needs this first)
+  console.log(`  ${BOLD}1. point your coding agent at ${CYAN}${path.join(shown, 'docs', 'AGENT-QUICKSTART.md')}${RESET}`);
+  // Step 2: run serve to get the PRD
+  console.log(`  2. ${CYAN}${path.join(shown, 'bin', 'serve')}${RESET}  — answer the PRD it opens (creates issues)`);
+  // Step 3: commit (least urgent)
+  console.log(`  ${DIM}3. commit what init wrote:  git add ${addPaths}${RESET}`);
 }
 
 function findHarness(root) {
@@ -262,7 +274,7 @@ function start(argv) {
   if (!fs.existsSync(serve)) {
     die([`entropy-machines: ${path.join(loc.shown, 'bin', 'serve')} not found.`]);
   }
-  console.log(`\nentropy-machines: starting serve from ${loc.shown}/\n`);
+  console.log(`\n${BOLD}entropy-machines: starting serve from ${loc.shown}/${RESET}\n`);
   const r = spawnSync('sh', [serve], { cwd: loc.dir, stdio: 'inherit' });
   process.exit(r.status ?? 1);
 }

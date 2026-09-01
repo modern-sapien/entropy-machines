@@ -17,14 +17,19 @@ PORT=$(free_port)
 LOG="$TEST_TMP/serve.log"
 SERVED=0
 
+SERVER2_PID=""
 stop_server() {
+  if [ -n "$SERVER2_PID" ]; then
+    kill "$SERVER2_PID" 2>/dev/null; wait "$SERVER2_PID" 2>/dev/null
+    SERVER2_PID=""
+  fi
   [ "$SERVED" -eq 0 ] && return 0
   kill "$SERVER_PID" 2>/dev/null
   wait "$SERVER_PID" 2>/dev/null
   SERVED=0
   return 0
 }
-# Kill the server however this case ends, including an assertion failure.
+# Kill both servers however this case ends, including an assertion failure.
 trap 'stop_server' EXIT INT TERM
 
 ( cd "$REPO" && exec "$HARNESS/bin/serve" "$PORT" ) >"$LOG" 2>&1 &
@@ -69,13 +74,33 @@ case "$OUT" in
   *) _fail "an unknown doc must 404" "first line was: $(printf '%s' "$OUT" | head -1)" ;;
 esac
 
-# --- the port is refused while it is held -----------------------------------
-run_in "$REPO" "$HARNESS/bin/serve" "$PORT"
-assert_rc_nonzero "a second bin/serve on the same port must refuse"
-assert_out "REFUSED" "the refusal says so"
-assert_out "already in use" "and names the reason"
-assert_out "bin/serve $((PORT + 1))" "and suggests a port that is not"
+# --- a second serve on the same port falls back to a different port ---------
+LOG2="$TEST_TMP/serve2.log"
+( cd "$REPO" && exec "$HARNESS/bin/serve" "$PORT" ) >"$LOG2" 2>&1 &
+SERVER2_PID=$!
 
+if ! wait_for_line "$LOG2" "http://localhost:" 80; then
+  OUT=$(cat "$LOG2" 2>/dev/null); ERR=""; ALL="$OUT"; RC="(still running)"
+  LAST_CMD="bin/serve $PORT (second instance, backgrounded)"
+  _fail "second bin/serve must start and print its URL within 8s" \
+        "nothing matching http://localhost: appeared in $LOG2"
+fi
+
+OUT=$(cat "$LOG2"); ERR=""; ALL="$OUT"; RC=0; LAST_CMD="bin/serve $PORT (second instance)"
+
+# It must NOT have landed on the original port.
+case "$OUT" in
+  *"http://localhost:$PORT"*)
+    _fail "second server must land on a DIFFERENT port" \
+          "it claimed http://localhost:$PORT which is already held" ;;
+esac
+
+# It must have printed the busy notice (to stderr, captured in the same log).
+assert_out "busy, scanning for an open port" \
+  "second server reports the requested port was busy"
+
+# Clean up both servers.
+kill "$SERVER2_PID" 2>/dev/null; wait "$SERVER2_PID" 2>/dev/null; SERVER2_PID=""
 stop_server
 
 # --- a non-numeric port is refused before anything binds --------------------

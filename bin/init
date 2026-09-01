@@ -18,6 +18,13 @@
 #   --force     overwrite an existing config.json.
 set -e
 
+# ---- ANSI color, gated on tty + NO_COLOR (https://no-color.org/) ----
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD='\033[1m'  DIM='\033[2m'  GREEN='\033[32m'  YELLOW='\033[33m'  CYAN='\033[36m'  RESET='\033[0m'
+else
+  BOLD='' DIM='' GREEN='' YELLOW='' CYAN='' RESET=''
+fi
+
 usage() {
   cat >&2 <<'EOF'
 usage: bin/init [--force]
@@ -195,18 +202,18 @@ fi
 # in fact everything was — and a plain re-run then died on "config.json
 # already exists" with no repair path named.
 if ! (cd "$project" && "$ENTROPY_MACHINES_HOME/bin/tracker" ready >/dev/null 2>&1); then
-  echo "init: WARNING — $target was WRITTEN, but bin/tracker could not read the" >&2
+  printf "${YELLOW}init: WARNING — $target was WRITTEN, but bin/tracker could not read the${RESET}\n" >&2
   echo "  tracker back afterward. This is not a refusal: everything above" >&2
   echo "  really was written, and the project is half-initialised." >&2
-  echo "  Check $project/.entropy-machines/ and $target by hand." >&2
+  printf "  Check ${DIM}$project/.entropy-machines/${RESET} and ${DIM}$target${RESET} by hand.\n" >&2
   echo "  To re-run once you have fixed it (a plain re-run will refuse," >&2
   echo "  because config.json now exists):" >&2
-  echo "      $ENTROPY_MACHINES_HOME/bin/init --force" >&2
+  printf "      ${CYAN}$ENTROPY_MACHINES_HOME/bin/init --force${RESET}\n" >&2
   exit 2
 fi
 
-echo "init: wrote $target"
-echo "$prd_note"
+printf "${GREEN}init: wrote $target${RESET}\n"
+printf "${GREEN}$prd_note${RESET}\n"
 if [ -n "$prd_written" ]; then
   echo "      questions in it are the ones only you can answer."
 fi
@@ -225,8 +232,8 @@ esac
 # the first document the harness hands them would otherwise hit a 404 — which
 # is exactly the bug that made this necessary.
 "$ENTROPY_MACHINES_HOME/bin/tracker" render >/dev/null 2>&1 || \
-  echo "init: warning — could not render TRACKER.html; run \`$cmd_prefix/tracker render\`" >&2
+  printf "${YELLOW}init: warning — could not render TRACKER.html; run \`${CYAN}$cmd_prefix/tracker render${YELLOW}\`${RESET}\n" >&2
 
-echo "init: tracker is live and empty — \`$cmd_prefix/tracker ready\` answers."
-echo "init: next — run \`$cmd_prefix/serve\` and answer the PRD it opens."
+printf "${GREEN}init: tracker is live and empty${RESET} — \`${CYAN}$cmd_prefix/tracker ready${RESET}\` answers.\n"
+printf "${BOLD}init: next — run \`${CYAN}$cmd_prefix/serve${RESET}${BOLD}\` and answer the PRD it opens.${RESET}\n"
 echo "      Filing the issues it produces is step one."

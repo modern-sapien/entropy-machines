@@ -690,18 +690,31 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError as exc:
-        if exc.errno == 48 or "Address already in use" in str(exc):  # EADDRINUSE
-            print(
-                "serve: REFUSED — port %d is already in use.\n"
-                "  Another server (maybe a previous `bin/serve`) already holds it.\n"
-                "  Try a different port:  bin/serve %d" % (PORT, PORT + 1),
-                file=sys.stderr,
-            )
+    # TRY THE REQUESTED PORT, THEN SCAN UPWARD. A user running `npx
+    # entropy-machines start` for the first time should not be stopped by a
+    # stale process on 8787 — the server picks the next open port and says
+    # which one it got. Cap at 20 attempts so a misconfigured machine gets a
+    # clear error, not an infinite loop.
+    MAX_ATTEMPTS = 20
+    port = PORT
+    server = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            break
+        except OSError as exc:
+            if exc.errno == 48 or "Address already in use" in str(exc):
+                if attempt == 0 and port == PORT:
+                    print("serve: port %d busy, scanning for an open port…" % port,
+                          file=sys.stderr, flush=True)
+                port += 1
+                continue
+            print("serve: REFUSED — could not bind 127.0.0.1:%d (%s)." % (port, exc),
+                  file=sys.stderr)
             sys.exit(1)
-        print("serve: REFUSED — could not bind 127.0.0.1:%d (%s)." % (PORT, exc), file=sys.stderr)
+    if server is None:
+        print("serve: REFUSED — ports %d–%d all busy." % (PORT, PORT + MAX_ATTEMPTS - 1),
+              file=sys.stderr)
         sys.exit(1)
     # flush=True IS THE POINT OF THESE TWO LINES. Python block-buffers stdout
     # when it is not a tty — which is exactly the case a bootstrapping agent
@@ -710,7 +723,7 @@ def main():
     # never drained, because the very next statement blocks in serve_forever()
     # forever; the log stays 0 bytes while the server runs and 0 bytes after
     # it is killed. The URL is the one thing this command exists to produce.
-    print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, PORT), flush=True)
+    print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, port), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
     try:
