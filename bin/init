@@ -106,18 +106,10 @@ fi
 # owner to decide and then file as issues.
 cat > "$target" <<EOF
 {
-  "_generatedBy": "bin/init — a deliberately minimal starter, not a finished config. It does not guess at suite commands, protected paths, or anything else it has not verified. Completing it is one of the issues PRD-001-orientation.html asks you to file; see docs/CONFIG.md.",
-  "project": {
-    "name": "$project_name",
-    "protectedPaths": []
-  },
-  "tracker": {
-    "backend": "file",
-    "file": { "path": ".entropy/issues.json" }
-  },
+  "project": { "name": "$project_name" },
+  "tracker": { "backend": "file", "file": { "path": ".entropy/issues.json" } },
   "suites": [],
-  "changelog": { "enabled": false },
-  "worktree": { "linkPaths": [] }
+  "changelog": { "enabled": false }
 }
 EOF
 
