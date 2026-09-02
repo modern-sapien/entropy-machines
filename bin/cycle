@@ -1,0 +1,29 @@
+#!/bin/sh
+# Review-cycle CLI — thin wrapper around lib/cycle.py.
+#
+#   bin/cycle list                       every handle + status + ball
+#   bin/cycle resolve "<phrase>"         handle → file (fuzzy)
+#   bin/cycle responses <handle>         read the user's saved answers
+#   bin/cycle start <handle>             mark 'in-review' (agent is on it)
+#   bin/cycle done  <handle> [label]     mark 'open' (ball back to user) + snapshot
+#   bin/cycle set   <handle> <status>    any status transition
+#   bin/cycle new   <handle> <file> <title> [status]   register a new doc
+#   bin/cycle history <handle>           list this doc's versions
+#   bin/cycle sync                       regenerate STATE.md + INDEX.html from manifest
+set -e
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root cycle
+
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
+case "$docs_dir" in
+  /*) docs_path="$docs_dir" ;;
+  *) docs_path="$ENTROPY_MACHINES_ROOT/$docs_dir" ;;
+esac
+
+export ENTROPY_MACHINES_DOCS="$docs_path"
+export PYTHONPATH="$ENTROPY_MACHINES_HOME/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "$ENTROPY_MACHINES_HOME/lib/cycle.py" "$@"

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Fold agent replies INTO a dialogue-doc — thin wrapper around lib/reply.py.
+#
+#   bin/reply [--informational] <handle> <replies.json|->
+#
+# Resolves the handle via manifest.json, patches the file, snapshots a
+# version, and flips the doc to 'open' (ball → user). Then just open the doc.
+set -e
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root reply
+
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
+case "$docs_dir" in
+  /*) docs_path="$docs_dir" ;;
+  *) docs_path="$ENTROPY_MACHINES_ROOT/$docs_dir" ;;
+esac
+
+export ENTROPY_MACHINES_DOCS="$docs_path"
+export PYTHONPATH="$ENTROPY_MACHINES_HOME/lib${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "$ENTROPY_MACHINES_HOME/lib/reply.py" "$@"

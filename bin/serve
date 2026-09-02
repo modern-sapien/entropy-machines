@@ -147,6 +147,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import importlib
 import os
 import re
 import socket
@@ -167,6 +168,11 @@ TRACKER = os.environ["SERVE_TRACKER"]
 NOTES_PY = os.environ["SERVE_NOTES_PY"]
 THEME_NAME = os.environ["SERVE_THEME_NAME"]
 THEME_FILE = os.environ["SERVE_THEME_FILE"]
+
+# enhance.py — auto-patch stale docs at serve time so the reader never sees
+# a doc missing disk-save, nav-marks, live-reload, collapse, etc.
+sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
+import enhance
 
 # ---------------------------------------------------------------------------
 # THEME — read ONCE, at startup, and refused loudly if it cannot be read.
@@ -664,6 +670,15 @@ class Handler(BaseHTTPRequestHandler):
         name = path.lstrip("/")
         target = doc_path(name)
         if target is not None and os.path.isfile(target):
+            # Auto-patch stale docs before serving. Generated pages (DOCS.html,
+            # INDEX.html) are rebuilt by other tools and must not be patched.
+            if name not in enhance.GENERATED:
+                try:
+                    changed = enhance.patch(target)
+                    if changed:
+                        sys.stderr.write("  auto-patched %s: %s\n" % (name, ", ".join(changed)))
+                except Exception as exc:
+                    sys.stderr.write("  enhance.patch failed for %s: %s\n" % (name, exc))
             with open(target, encoding="utf-8") as f:
                 body = f.read()
             body = apply_theme(body, name)
@@ -735,9 +750,12 @@ def main():
     # never drained, because the very next statement blocks in serve_forever()
     # forever; the log stays 0 bytes while the server runs and 0 bytes after
     # it is killed. The URL is the one thing this command exists to produce.
+    # Initialize enhance once at startup — not per-request.
+    enhance.init(DOCS_PATH)
     print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, port), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
+    print("  auto-enhance: active (stale docs patched on first GET)", flush=True)
     # Auto-open: find the first PRD in the docs directory and open it.
     # If no doc found, open the dashboard. Threaded so it doesn't block startup.
     def _open_browser():

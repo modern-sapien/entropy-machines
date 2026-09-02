@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# PreToolUse hook: block fork-type subagents.
+# Forks inherit the full session context (~160k tokens).
+# Use subagent_type: "general-purpose" with a self-contained prompt instead.
+
+set -euo pipefail
+
+INPUT=$(cat)
+
+python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+if d.get('tool_name') == 'Agent' and d.get('tool_input', {}).get('subagent_type') == 'fork':
+    print(json.dumps({'decision': 'block', 'reason': 'Fork subagents inherit the full session context (~160k tokens). Use subagent_type: \"general-purpose\" with a self-contained prompt instead.'}))
+" "$INPUT"

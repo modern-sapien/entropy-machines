@@ -1,6 +1,6 @@
 # Roles
 
-Four roles: three agents and the owner. Every prohibition is here because
+Five roles: four agents and the owner. Every prohibition is here because
 something went wrong once.
 
 | Role | Does | Never |
@@ -8,6 +8,7 @@ something went wrong once.
 | **Owner** | Rules on open questions in served docs, ticks the sprint closed, says when held work merges. | Delegates the ready tick — there is no code path to it. |
 | **Worker**<br>`agents/isolated-worker.md` | One scoped issue in its own worktree: the change, its tests, its `changelog.d/` fragment, and a `HANDOFF.md` — `changed` / `found` / `assumed` / `next`. | Commits, pushes, merges, runs the full build, edits outside its scope, or touches another worktree. |
 | **Verifier**<br>`agents/verifier.md` | One sweep per sprint (not per worker) on a clean tree: applies every finished patch together, builds, regenerates, runs the suites, checks each change has a test that bites. Verdict with real numbers. | Fixes, lands, commits, reviews design, edits a worker's worktree, or repeats a number it did not re-run. |
+| **Designer** | UX alignment for dialogue docs and PRD layout. Produces visual aids (mermaid diagrams, component mockups). Has access to a grill-me style challenge skill for pressure-testing UX decisions. Ensures docs are scannable, options are clear, and feedback loops are tight. | Implements code changes, commits, or overrides owner UX rulings. |
 | **Orchestrator**<br>the session talking to the owner | Dispatches, folds, lands, reports, files rulings as issues. The **only committer**. | Lands held work without the owner, relays a subagent's verification as its own, or lets its cwd leave the repo root. |
 
 **Worker, hard-won:** write `HANDOFF.md` early — a dead worker otherwise
@@ -20,6 +21,7 @@ which repo you branched from. Symlink
 |---|---|
 | Implement a scoped issue | `isolated-worker` |
 | Sprint verification sweep | `verifier` |
+| UX alignment, visual aids, PRD layout | `designer` |
 | Read-only investigation | `Explore` — no worktree cost |
 | Fold, land, report, file | the orchestrator itself |
 

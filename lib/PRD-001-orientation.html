@@ -249,6 +249,7 @@
   .savebar button.ghost{border-color:var(--border); color:var(--fg); padding:6px 10px;}
 </style>
 </head><body>
+<script id="__theme-flash-patch">try{var t=localStorage.getItem('entropy-machines-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <nav>
   <div class="brand"><span class="logo"></span> PRD-001</div>
   <div class="grp">Orientation</div>
@@ -728,7 +729,13 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
   window.addEventListener('resize',function(){ boxes.forEach(function(b){ autoGrow(ta(b)); }); });
 })();
 </script>
-<script id="__disk-save-patch" data-ds="2">
+<style id="__disk-save-css">
+  .box-status{font-size:var(--fs-sm,12px); font-weight:700; text-transform:uppercase;
+    letter-spacing:.04em; margin-top:6px; padding:0;}
+  .box-status.awaiting{color:var(--caution,#f59e0b);}
+  .box-status.saved{color:var(--positive,#23D18B);}
+</style>
+<script id="__disk-save-patch" data-ds="3">
 (function(){
   var btn=document.getElementById('saveBtn');
   var stat=document.getElementById('saveStat');
@@ -736,6 +743,19 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
   var b=btn.cloneNode(true); btn.parentNode.replaceChild(b, btn);
   function collect(){ var o={}; document.querySelectorAll('.response[data-resp]').forEach(function(el){ var t=el.querySelector('textarea'); if(t) o[el.getAttribute('data-resp')]=t.value; }); return o; }
   var file=(location.pathname.split('/').pop()||'').split('?')[0];
+  function markBoxes(){
+    document.querySelectorAll('.response[data-resp]').forEach(function(el){
+      if(el.classList.contains('mini')) return;
+      var t=el.querySelector('textarea'); if(!t) return;
+      var key=el.getAttribute('data-resp');
+      var s=el.querySelector('.box-status');
+      if(!t.value.trim()){ if(s) s.remove(); return; }
+      var hasReply=!!document.querySelector('aside.review[data-review="'+key+'"]');
+      if(!s){ s=document.createElement('div'); s.className='box-status'; el.appendChild(s); }
+      if(hasReply){ s.textContent='saved'; s.className='box-status saved'; }
+      else { s.textContent='awaiting agent review'; s.className='box-status awaiting'; }
+    });
+  }
   b.addEventListener('click', async function(){
     var data=collect();
     if(stat) stat.textContent='Saving to disk…';
@@ -743,16 +763,11 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
       var res=await fetch('/__save?file='+encodeURIComponent(file),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
       if(res.ok){
         if(stat) stat.textContent='Saved to disk ✓';
-        // Re-baseline the page's idea of what is on disk. Without this,
-        // responses-data still holds what the doc was SERVED with, so anything
-        // comparing the boxes against it reads every saved answer as an unsaved
-        // edit for the rest of the session — which made the live-reload patch
-        // refuse to auto-reload and tell the reader to 💾 something they had
-        // just saved.
         try{
           var el=document.getElementById('responses-data');
           if(el) el.textContent=JSON.stringify(data,null,2);
         }catch(_){}
+        markBoxes();
         return;
       }
       if(stat) stat.textContent='Save failed ('+res.status+')';
@@ -769,6 +784,7 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
       }catch(_){}
     }
   });
+  markBoxes();
 })();
 </script>
 <style id="__todobanner-css">
@@ -944,7 +960,19 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
   #__replybar button:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
-<script id="__livereload-patch" data-lr="2">
+<style id="__livereload-css">
+  /* Borders, never tints (2026-08-07 doc standard). */
+  #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
+    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
+    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
+    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+  #__replybar[hidden]{ display:none; }
+  #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
+    background:none; border:1px solid currentColor; padding:.2rem .7rem; }
+  #__replybar button:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
+  #__replybar .dismiss{ border:none; font-weight:400; }
+</style>
+<script id="__livereload-patch" data-lr="3">
 // "I replied" signal. Without it the reader has no way to learn that a fold
 // landed except being told in chat — which was the last manual link in the
 // loop (owner, 2026-08-09: "otherwise I won't know that you've responded").
@@ -952,19 +980,25 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
 // Polls /__docversion for THIS file and watches the REVIEW SIGNATURE — a hash
 // of the folded <aside class="review"> blocks — not the version.
 //
-// It watched the version first, and that was wrong in the most annoying
-// possible way: a 💾 bumps the version, so saving your own answer announced
-// "New reply — reload to read it" and the reload showed nothing new, because
-// nothing was. Reported by the owner 2026-08-11 ("I never actually see replies
-// upon reload"). The signature moves when a reply is added or rewritten and
-// stays put for anything the reader does to their own boxes, which is the
-// question the banner claims to answer.
-//
-// It will not reload over unsaved typing. Clean is defined as: every textarea
-// matches the responses-data baked into the page at load. Clean -> reload on
-// its own. Dirty -> show the bar and let the reader choose, so a half-typed
-// answer is never destroyed by my fold landing at the wrong moment.
+// v3: scroll-to-update — after a live-reload, scroll to the first NEW reply
+// block so the owner lands on the content that changed, not at the top.
+// Pre-reload snapshot of review ids is stored in sessionStorage.
 (function(){
+  // --- v3: scroll-to-update after live-reload ---
+  try{
+    var pre=JSON.parse(sessionStorage.getItem('__lr-pre')||'null');
+    if(pre){
+      sessionStorage.removeItem('__lr-pre');
+      var first=null;
+      document.querySelectorAll('aside.review[data-review]').forEach(function(el){
+        if(!first && pre.indexOf(el.getAttribute('data-review'))<0) first=el;
+      });
+      if(first) setTimeout(function(){
+        first.scrollIntoView({behavior:'smooth',block:'start'});
+      },200);
+    }
+  }catch(e){}
+
   var file=(location.pathname.split('/').pop()||'').split('?')[0];
   if(!file) return;
   var seen=null, stopped=false;
@@ -974,7 +1008,18 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
     '<button id="__replygo">Reload</button>'+
     '<button class="dismiss" id="__replyx" title="Dismiss">✕</button>';
   document.body.appendChild(bar);
-  bar.querySelector('#__replygo').addEventListener('click',function(){ location.reload(); });
+
+  // Snapshot current review ids into sessionStorage before any reload so
+  // the post-reload pass (above) can diff and scroll to the new one.
+  function snapshot(){
+    var ids=[];
+    document.querySelectorAll('aside.review[data-review]').forEach(function(el){
+      ids.push(el.getAttribute('data-review'));
+    });
+    try{ sessionStorage.setItem('__lr-pre',JSON.stringify(ids)); }catch(e){}
+  }
+
+  bar.querySelector('#__replygo').addEventListener('click',function(){ snapshot(); location.reload(); });
   bar.querySelector('#__replyx').addEventListener('click',function(){ bar.hidden=true; stopped=true; });
 
   function baked(){
@@ -998,9 +1043,7 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
         if(seen===null){ seen=d.reviews; return; }
         if(d.reviews===seen) return;
         seen=d.reviews;   // announce a given reply once, not every 5s
-        // Reload only when nothing would be lost; otherwise hand the reader
-        // the choice. Either way the bar reports that a reply exists.
-        if(!dirty()){ location.reload(); return; }
+        if(!dirty()){ snapshot(); location.reload(); return; }
         document.getElementById('__replytext').textContent=
           'New reply on disk — you have unsaved edits. 💾 first, then reload.';
         bar.hidden=false;
@@ -1183,6 +1226,326 @@ tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progre
             pending:pendingIn(page).length};
   }
   window.__janusBoxes={chainOf:chainOf, pendingIn:pendingIn, countsIn:countsIn};
+})();
+</script>
+<style id="__collapse-css">
+  .__chain-toggle{
+    display:inline-block; font-family:var(--font); font-size:var(--fs-sm);
+    font-weight:700; cursor:pointer; color:var(--dim); background:none;
+    border:1px solid var(--border); padding:3px 10px; margin:8px 0;
+  }
+  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--focus); }
+  .__chain-summary{
+    font-size:var(--fs-sm); color:var(--dim); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; max-width:100%; padding:2px 0;
+  }
+  .response.__chain-collapsed{ padding:5px 13px; }
+</style>
+<script id="__collapse-patch" data-cl="1">
+(function(){
+  var done=false;
+  function init(){
+    if(done) return;
+    var jb=window.__janusBoxes;
+    if(!jb||!jb.chainOf) return;
+    done=true;
+
+    document.querySelectorAll('.page').forEach(function(page){
+      var all=[].slice.call(page.querySelectorAll(
+        '.response[data-resp]:not(.mini), aside.review[data-review]'
+      ));
+      var stems={}, order=[];
+      all.forEach(function(el){
+        var key=el.getAttribute('data-resp')||el.getAttribute('data-review');
+        if(!key) return;
+        var stem=jb.chainOf(key);
+        if(!stems[stem]){ stems[stem]=[]; order.push(stem); }
+        stems[stem].push(el);
+      });
+
+      order.forEach(function(stem){
+        var entries=stems[stem];
+        if(entries.length<3) return;
+
+        var cut=entries.length-2;
+        var older=entries.slice(0,cut);
+
+        function snippet(el){
+          var t='';
+          if(el.classList.contains('response')){
+            var ta=el.querySelector('textarea');
+            t=(ta&&ta.value.trim())||'';
+            if(!t){ var d=el.querySelector('.discuss'); t=d?d.textContent.trim():''; }
+          }else{
+            for(var i=0;i<el.children.length;i++){
+              var ch=el.children[i];
+              if(ch.classList.contains('response')||ch.classList.contains('review')) continue;
+              t+=(t?' ':'')+((ch.textContent||'').trim());
+              if(t.length>=80) break;
+            }
+          }
+          return t.length>80?t.substring(0,80)+'…':(t||'(empty)');
+        }
+
+        older.forEach(function(entry){
+          var sum=document.createElement('div');
+          sum.className='__chain-summary';
+          sum.textContent=snippet(entry);
+
+          if(entry.classList.contains('response')){
+            var d=entry.querySelector('.discuss'); if(d) d.hidden=true;
+            var ta=entry.querySelector('textarea'); if(ta) ta.hidden=true;
+            entry.appendChild(sum);
+          }else{
+            for(var i=0;i<entry.children.length;i++){
+              var ch=entry.children[i];
+              if(ch.classList.contains('response')||ch.classList.contains('review')||
+                 ch.classList.contains('__chain-summary')) continue;
+              ch.hidden=true;
+            }
+            entry.insertBefore(sum,entry.firstChild);
+          }
+          entry.classList.add('__chain-collapsed');
+        });
+
+        var btn=document.createElement('button');
+        btn.className='__chain-toggle';
+        btn.textContent='Show '+cut+' earlier';
+        btn.setAttribute('aria-expanded','false');
+        older[0].parentNode.insertBefore(btn,older[0]);
+
+        var open=false;
+        btn.addEventListener('click',function(){
+          open=!open;
+          btn.setAttribute('aria-expanded',String(open));
+          btn.textContent=open?'Collapse':'Show '+cut+' earlier';
+
+          older.forEach(function(entry){
+            entry.classList.toggle('__chain-collapsed',!open);
+            if(entry.classList.contains('response')){
+              var d=entry.querySelector('.discuss'); if(d) d.hidden=!open;
+              var ta=entry.querySelector('textarea'); if(ta) ta.hidden=!open;
+            }else{
+              for(var i=0;i<entry.children.length;i++){
+                var ch=entry.children[i];
+                if(ch.classList.contains('response')||ch.classList.contains('review')||
+                   ch.classList.contains('__chain-summary')) continue;
+                ch.hidden=!open;
+              }
+            }
+            for(var i=0;i<entry.children.length;i++){
+              if(entry.children[i].classList.contains('__chain-summary')){
+                entry.children[i].hidden=open; break;
+              }
+            }
+          });
+        });
+      });
+    });
+  }
+  init();
+  document.addEventListener('DOMContentLoaded',init);
+  setTimeout(init,0);
+})();
+</script>
+<script id="__theme-toggle-patch" data-tt="1">
+// Theme toggle: cycles system -> light -> dark -> system.
+// Creates the themeBtn in the savebar if absent, so docs that do not template
+// the button still get one when enhanced.
+(function(){
+  var KEY='entropy-machines-theme';
+  var MODES=['system','light','dark'];
+  var ICONS={system:'◐', light:'☀︎', dark:'☽'};
+  var TITLES={system:'Theme: system', light:'Theme: light', dark:'Theme: dark'};
+  var btn=document.getElementById('themeBtn');
+  if(!btn){
+    var bar=document.querySelector('.savebar');
+    if(!bar) return;
+    btn=document.createElement('button');
+    btn.id='themeBtn'; btn.className='ghost'; btn.title='Switch theme';
+    var save=document.getElementById('saveBtn');
+    if(save) bar.insertBefore(btn, save);
+    else bar.appendChild(btn);
+  }
+  function current(){
+    try{ var v=localStorage.getItem(KEY); if(MODES.indexOf(v)>=0) return v; }catch(e){}
+    return 'system';
+  }
+  function apply(mode){
+    if(mode==='system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', mode);
+    btn.textContent=ICONS[mode];
+    btn.title=TITLES[mode];
+    try{ if(mode==='system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); }catch(e){}
+  }
+  apply(current());
+  btn.addEventListener('click', function(){
+    var i=MODES.indexOf(current());
+    apply(MODES[(i+1)%MODES.length]);
+  });
+})();
+</script>
+<style id="__lockbox-css">
+  .response.locked textarea{background:var(--bg); color:var(--fg);
+    border:1px solid var(--border); cursor:default;}
+  .response.locked label{color:var(--positive);}
+</style>
+<script id="__lockbox-patch" data-lb="1">
+(function(){
+  function lock(){
+    document.querySelectorAll('.response[data-resp]').forEach(function(el){
+      if(el.classList.contains('mini')) return;
+      var t=el.querySelector('textarea'); if(!t) return;
+      var key=el.getAttribute('data-resp');
+      if(!t.value.trim()) return;
+      var hasReply=!!document.querySelector('aside.review[data-review="'+key+'"]');
+      if(!hasReply) return;
+      t.readOnly=true;
+      el.classList.add('locked');
+      var lbl=el.querySelector('label');
+      if(lbl && lbl.textContent.indexOf('USER RESPONSE')===-1) lbl.textContent='USER RESPONSE';
+    });
+  }
+  lock();
+  document.addEventListener('DOMContentLoaded', lock);
+  setTimeout(lock, 0);
+})();
+</script>
+<style id="__readmark-css">
+  .__readmark{ font-size:var(--fs-sm,12px); color:var(--dim,#666);
+    font-weight:400; margin-left:.5rem; letter-spacing:.02em; }
+</style>
+<script id="__readmark-patch" data-rm="1">
+// Mark review blocks as read once the owner has scrolled past them.
+// Uses IntersectionObserver: after 2 seconds in view, a small checkmark
+// appears and the data-review key is stored in localStorage per doc.
+// On reload, previously seen reviews are pre-marked.
+(function(){
+  var file=(location.pathname.split('/').pop()||'doc').split('?')[0];
+  var KEY='__readmarks-'+file;
+  var seen={};
+  try{ seen=JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){}
+
+  function mark(el){
+    if(el.querySelector('.__readmark')) return;
+    var m=document.createElement('span');
+    m.className='__readmark';
+    m.textContent='✓ read';
+    var who=el.querySelector('.who');
+    if(who) who.parentNode.insertBefore(m, who.nextSibling);
+    else el.insertBefore(m, el.firstChild);
+  }
+
+  var reviews=[].slice.call(document.querySelectorAll('aside.review[data-review]'));
+  if(!reviews.length) return;
+  var timers={};
+
+  // Pre-mark previously seen reviews.
+  reviews.forEach(function(el){
+    var key=el.getAttribute('data-review');
+    if(seen[key]) mark(el);
+  });
+
+  if(!window.IntersectionObserver) return;
+  var obs=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      var key=e.target.getAttribute('data-review');
+      if(e.isIntersecting){
+        if(!seen[key] && !timers[key]){
+          timers[key]=setTimeout(function(){
+            seen[key]=1;
+            mark(e.target);
+            try{ localStorage.setItem(KEY, JSON.stringify(seen)); }catch(ex){}
+            obs.unobserve(e.target);
+          }, 2000);
+        }
+      }else{
+        if(timers[key]){ clearTimeout(timers[key]); delete timers[key]; }
+      }
+    });
+  }, {threshold:0.3});
+
+  reviews.forEach(function(el){
+    var key=el.getAttribute('data-review');
+    if(!seen[key]) obs.observe(el);
+  });
+})();
+</script>
+<style id="__docstatus-css">
+  .__docstatus{ font-size:var(--fs-sm,12px); font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em;
+    padding:2px 8px; margin-left:.5rem; border:1px solid currentColor;
+    display:inline-block; vertical-align:middle; }
+  .__docstatus.st-open{ color:var(--caution,#a16207); }
+  .__docstatus.st-in-review{ color:var(--info,#006BBD); }
+  .__docstatus.st-resolved{ color:var(--positive,#0A5C21); }
+</style>
+<script id="__docstatus-patch" data-dstatus="1">
+// Show the doc-level status in the sidebar brand area.
+// Reads from data-doc-status on <html> if set; otherwise computes from page
+// state: pending boxes -> open, all answered + some without reviews ->
+// in-review, all answered + all with reviews -> resolved.
+(function(){
+  var done=false;
+  function init(){
+    if(done) return;
+    var brand=document.querySelector('nav .brand');
+    if(!brand) return;
+
+    // Read explicit status from root attribute if present.
+    var explicit=document.documentElement.dataset.docStatus;
+    if(explicit){
+      done=true;
+      show(brand, explicit);
+      return;
+    }
+
+    // Compute from page state — needs __janusBoxes.
+    var jb=window.__janusBoxes;
+    if(!jb||!jb.countsIn) return;
+    done=true;
+
+    var pages=[].slice.call(document.querySelectorAll('.page'));
+    if(!pages.length) return;
+    var totalBoxes=0, totalFilled=0, totalPending=0;
+    pages.forEach(function(page){
+      var c=jb.countsIn(page);
+      totalBoxes+=c.total; totalFilled+=c.filled; totalPending+=c.pending;
+    });
+    if(!totalBoxes) return; // no response boxes — no status
+
+    var status;
+    if(totalPending>0) status='open';
+    else {
+      // All answered. Check if all have reviews.
+      var unreplied=false;
+      document.querySelectorAll('.response[data-resp]:not(.mini)').forEach(function(el){
+        var t=el.querySelector('textarea');
+        if(t && t.value.trim()){
+          var key=el.getAttribute('data-resp');
+          if(!document.querySelector('aside.review[data-review="'+key+'"]')) unreplied=true;
+        }
+      });
+      status=unreplied?'in-review':'resolved';
+    }
+    show(brand, status);
+  }
+
+  function show(brand, status){
+    var el=brand.querySelector('.__docstatus');
+    if(!el){
+      el=document.createElement('span');
+      el.className='__docstatus';
+      brand.appendChild(el);
+    }
+    var labels={'open':'open','in-review':'in review','resolved':'resolved'};
+    el.textContent=labels[status]||status;
+    el.className='__docstatus st-'+status;
+  }
+
+  init();
+  document.addEventListener('DOMContentLoaded', init);
+  setTimeout(init, 0);
 })();
 </script>
 </body></html>
