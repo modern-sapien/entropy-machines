@@ -56,8 +56,9 @@ held (`heldWhy`) and gated (`gate`), neither a status value — `status` holds o
 `notstarted`/`progress`/`done`. `set` auto-vivifies; there is no `add`.
 `dispatch --files` is advisory; what's enforced is the denylist of files other
 agents hold, pasted into your brief. `handoff --from` lifts the worker's four
-lines; `--verified` never is. See [CONFIG.md](CONFIG.md), [SERVE.md](SERVE.md),
-[TRACKER-ADAPTER.md](TRACKER-ADAPTER.md).
+lines; `--verified` never is. The tracker backend is adaptable — its six-operation
+contract is in [TRACKER-ADAPTER.md](TRACKER-ADAPTER.md). See also
+[CONFIG.md](CONFIG.md), [SERVE.md](SERVE.md).
 
 ## Never
 

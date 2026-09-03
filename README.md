@@ -11,6 +11,7 @@ the cycle repeats.
 
 **A PRD creates issues, not the other way round.** The questions in a PRD are
 the decisions only you can make. Everything downstream follows from your answers.
+The tracker backend is a six-operation contract and can be swapped — see [TRACKER-ADAPTER.md](docs/TRACKER-ADAPTER.md).
 
 ```
   YOU ANSWER A PRD
