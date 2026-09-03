@@ -11,6 +11,7 @@ Patches, each guarded by a marker so re-running is safe:
   7. docstatus   — shows doc-level status badge in the sidebar brand area.
   8. issue-agree — checkboxes on PRD issue tables for accept/reject (PRDs only).
   9. unsaved-cue — savebar border turns caution when edits are pending.
+ 10. doc-nav    — cross-doc navigation: hub links + per-type doc listing.
 
 Usage:
   python3 enhance.py            # patch every *.html in this folder
@@ -52,6 +53,7 @@ ISSUE_AGREE_MARK = 'id="__issue-agree-patch"'
 ISSUE_AGREE_RV = "1"
 UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
 UNSAVED_CUE_RV = "1"
+DOCNAV_MARK = 'id="__docnav-patch"'
 LIVERELOAD_MARK = 'id="__livereload-patch"'
 # VERSIONED, like review-css, and for the same reason: every doc already carries
 # a copy of this patch stamped into its HTML, so a mark-only gate reads them all
@@ -81,6 +83,7 @@ GATE_MARKS = (DISK_SAVE_MARK, DISK_WINS_MARK, BOXSTATE_MARK, NAVMARK_MARK,
               LOCKBOX_MARK, THEMEFLASH_MARK, THEMETOGGLE_MARK,
               THEME_OPTIONS_MARK,
               READMARK_MARK, DOCSTATUS_MARK, UNSAVED_CUE_MARK,
+              DOCNAV_MARK,
               LIVERELOAD_MARK, AUTOSAVE_MARK)
 
 
@@ -659,6 +662,90 @@ TRACKERNAV = r'''
   var row=document.createElement('div'); row.className='tracknav';
   row.innerHTML='<a href="DOCS.html">docs</a><a href="INDEX.html">questions</a>';
   brand.parentNode.insertBefore(row, brand.nextSibling);
+})();
+</script>
+'''.strip()
+
+
+DOCNAV = r'''
+<style id="__docnav-css">
+  nav .__docnav{border-top:1px solid var(--border,#ccc);margin-top:.6rem;padding-top:.3rem;}
+  nav .__dn-homes{display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem .4rem .5rem;}
+  nav .__dn-homes a{font-size:var(--fs-sm,12px);font-weight:700;text-decoration:none;
+    color:var(--muted,#71717a);border:1px solid var(--border,#ddd6fe);padding:.1rem .5rem;}
+  nav .__dn-homes a:hover{color:var(--accent,#7c3aed);border-color:currentColor;}
+  nav .__dn-type{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--dim,#666);margin:.65rem .4rem .15rem;font-weight:700;}
+  nav a.__dn-doc{display:block;padding:.18rem .6rem;color:inherit;text-decoration:none;
+    font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    border-left:3px solid transparent;margin-bottom:.05rem;}
+  nav a.__dn-doc:hover{color:var(--accent,#7c3aed);}
+  nav a.__dn-doc.__dn-here{font-weight:600;border-left-color:var(--accent,#7c3aed);}
+</style>
+<script id="__docnav-patch">
+// Cross-doc navigation: hub links (docs home, issue tracker, questions) +
+// per-type doc listing from manifest.json. Inserted into the sidebar before
+// .foot. Degrades silently over file:// or when the server is down.
+//
+// The hub links satisfy the brief's "each doc gets links to PRD home, issue
+// tracker home, sprint doc home." The per-type listing satisfies "from any of
+// those homes you can find any PRD, doc, or issue directly" — the sidebar IS
+// the home. manifest.json is the same source doctracker.py reads; the type
+// grouping mirrors the handle-prefix convention (prd-*, doc-*, BUILD-REPORT-*).
+(function(){
+  var nav=document.querySelector('nav');
+  var brand=nav&&nav.querySelector('.brand');
+  if(!nav||!brand) return;
+  var file=(location.pathname.split('/').pop()||'').split('?')[0];
+
+  fetch('/manifest.json',{cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(m){
+      if(!m||!m.docs) return;
+
+      // Group docs by type from the handle prefix or filename pattern.
+      var prds=[],docs=[],reports=[],other=[];
+      Object.keys(m.docs).sort().forEach(function(did){
+        var e=m.docs[did]; if(!e.file) return;
+        e._did=did;
+        if(/^prd-/i.test(did)) prds.push(e);
+        else if(/^doc-/i.test(did)) docs.push(e);
+        else if(/^BUILD-REPORT-/i.test(e.file)||/^sprint-/i.test(did)) reports.push(e);
+        else other.push(e);
+      });
+
+      function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+
+      // Hub links — the three homes.
+      var html='<div class="__dn-homes">';
+      html+='<a href="DOCS.html">docs home</a>';
+      html+='<a href="TRACKER.html">issues</a>';
+      html+='<a href="INDEX.html">questions</a>';
+      html+='</div>';
+
+      // Per-type doc listings.
+      function addGroup(label, items){
+        if(!items.length) return;
+        html+='<div class="__dn-type">'+esc(label)+'</div>';
+        items.forEach(function(e){
+          var cls='__dn-doc'+(e.file===file?' __dn-here':'');
+          html+='<a class="'+cls+'" href="'+esc(e.file)+'" title="'+esc(e.title||e.file)+'">'+esc(e.title||e.file)+'</a>';
+        });
+      }
+      addGroup('PRDs', prds);
+      addGroup('Docs', docs);
+      addGroup('Reports', reports);
+      if(other.length) addGroup('Other', other);
+
+      // Insert into the sidebar before .foot or at end.
+      var el=document.createElement('div');
+      el.className='__docnav';
+      el.innerHTML=html;
+      var foot=nav.querySelector('.foot');
+      if(foot) nav.insertBefore(el, foot);
+      else nav.appendChild(el);
+    })
+    .catch(function(){/* server offline or file:// — degrade silently */});
 })();
 </script>
 '''.strip()
@@ -1397,6 +1484,9 @@ def apply(src, name="doc.html"):
     if TRACKERNAV_MARK not in src:
         src = src.replace("</body>", TRACKERNAV + "\n</body>", 1)
         changed.append("tracker-nav")
+    if DOCNAV_MARK not in src:
+        src = src.replace("</body>", DOCNAV + "\n</body>", 1)
+        changed.append("doc-nav")
     if AUTOSAVE_MARK not in src:
         src = src.replace("</body>", AUTOSAVE + "\n</body>", 1)
         changed.append("autosave")
