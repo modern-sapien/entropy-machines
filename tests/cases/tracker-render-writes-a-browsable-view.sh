@@ -185,7 +185,7 @@ assert_out "rewrote the entry point" "with what the worker said it changed"
 # wiring: this page is generated, so there is nothing to save back.
 run "$HARNESS/bin/status"
 assert_rc 0 "bin/status after rendering"
-assert_out "5 unanswered question(s) across 1 doc(s)" \
+assert_out "4 unanswered question(s) across 1 doc(s)" \
   "TRACKER.html adds no question of its own — the count is the PRD's alone"
 
 if grep -q "data-resp" "$PAGE"; then

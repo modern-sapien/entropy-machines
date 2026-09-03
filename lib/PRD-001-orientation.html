@@ -253,117 +253,81 @@
 <nav>
   <div class="brand"><span class="logo"></span> PRD-001</div>
   <div class="grp">Orientation</div>
-  <a href="#p0" data-page="p0" class="cur">0 · How this factory works</a>
+  <a href="#p0" data-page="p0" class="cur">0 · How this works</a>
   <div class="grp">Your repo</div>
   <a href="#p1" data-page="p1">1 · What we found</a>
-  <div class="grp">Open questions</div>
-  <a href="#p2" data-page="p2">2 · Which suites gate a landing</a>
-  <a href="#p3" data-page="p3">3 · What's protected</a>
-  <a href="#p4" data-page="p4">4 · Tracker backend</a>
-  <a href="#p5" data-page="p5">5 · Landing policy</a>
-  <a href="#p6" data-page="p6">6 · First real work</a>
+  <div class="grp">Working together</div>
+  <a href="#p2" data-page="p2">2 · Test suites</a>
+  <a href="#p3" data-page="p3">3 · Protected paths</a>
+  <a href="#p4" data-page="p4">4 · Landing work</a>
+  <a href="#p5" data-page="p5">5 · Getting started</a>
   <div class="grp">Output</div>
-  <a href="#p7" data-page="p7">7 · Issues this PRD creates</a>
-  <div class="foot">This is the upstream artifact: filling it in creates
-    your project's first tracker issues, not the other way around. 💾 Save
-    writes your answers back into this file. New sections may get appended
-    below over time — this one won't move or get renamed.</div>
+  <a href="#p6" data-page="p6">6 · What happens next</a>
+  <div class="foot">Fill in the pages ahead and save — your answers become
+    your project's first tracker issues.</div>
 </nav>
 
 <main>
 
 <section class="page cur" id="p0">
   <h1>PRD-001 — Orient the factory to this repo</h1>
-  <p class="sub">The first document you fill in here. Answering it files your project's first real issues.</p>
+  <p class="sub">A short conversation to get your project's first issues filed.</p>
 
   <h2 data-informational>Before we start</h2>
   <p><strong>Point your coding agent at
   <code>docs/AGENT-QUICKSTART.md</code></strong> in the vendored
   entropy-machines directory. It needs that context to work the issues this
-  PRD creates — without it, the agent won't know how to use the tracker,
-  dispatch, or any of the gates this harness enforces.</p>
+  PRD creates.</p>
   <p>You answer this doc; the agent works from what you decide.</p>
 
   <p><code>entropy-machines</code> is a workflow for running coding agents on
-  a real codebase without letting them corrupt each other's work or land
-  things nobody proved. It is four roles and a handful of gates, each one
-  built because something specific went wrong once.</p>
+  a real codebase. It keeps agents from stepping on each other's work and
+  makes sure nothing lands without proof.</p>
 
   <div class="callout key"><span class="tag">upstream, not downstream</span>
-    A PRD is the artifact that <strong>creates</strong> work here — work does
-    not create a PRD. Filling in the questions on the following pages is what
-    files your first tracker issues; a one-off "discovery" task is never the
-    entry point, it's one issue that might fall out of an answer below.
+    A PRD <strong>creates</strong> work here — work does not create a PRD.
+    The pages ahead file your first tracker issues.
   </div>
 
   <h2 data-informational>The cycle</h2>
   <pre><code>ISSUES ──▶ WORKED ──▶ VERIFIED ──▶ FOLDED ──▶ SPRINT REPORT ──▶ ISSUES</code></pre>
-  <p>Full stage-by-stage version, including the incidents each stage's rules
-  were built to stop recurring: <code>doctrine/WORKFLOW.md</code>. You should
-  not need to open it to follow this page.</p>
+  <p>Full stage-by-stage version: <code>doctrine/WORKFLOW.md</code>. You
+  don't need it to follow this page.</p>
 
-  <h2 data-informational>Four roles</h2>
+  <h2 data-informational>Who does what</h2>
   <div class="tbl-wrap">
   <table>
-    <thead><tr><th>Role</th><th>Does</th><th>Never</th></tr></thead>
+    <thead><tr><th>Role</th><th>Does</th></tr></thead>
     <tbody>
-      <tr><td><strong>Owner</strong> (you)</td>
-        <td>Rules on open questions like the ones ahead, says when held work
-          may merge, ticks the sprint closed.</td>
-        <td>Delegates the sprint-close tick or a decision an issue is gated
-          on — there is no code path to either.</td></tr>
+      <tr><td><strong>You</strong> (owner)</td>
+        <td>Answer the open questions ahead, say when work can merge,
+          close the sprint when you're satisfied.</td></tr>
       <tr><td>Worker</td>
-        <td>Implements one scoped issue, in its own git worktree, leaves a
-          <code>HANDOFF.md</code>.</td>
-        <td>Commits, pushes, merges, or edits outside its declared file
-          scope.</td></tr>
+        <td>Takes one scoped issue, works in its own git worktree,
+          leaves a <code>HANDOFF.md</code> when done.</td></tr>
       <tr><td>Verifier</td>
-        <td>Sweeps <em>all</em> finished work for the sprint, once, on a
-          clean tree; reports a verdict.</td>
-        <td>Fixes, lands, or repeats a number it did not personally
-          re-run.</td></tr>
+        <td>Sweeps all finished work for the sprint on a clean tree
+          and reports a verdict.</td></tr>
       <tr><td>Orchestrator</td>
-        <td>Dispatches, folds verified work into <code>main</code> (the only
-          committer), turns rulings into issues.</td>
-        <td>Lands held work without your go-ahead, or relays a worker's own
-          claim as if it had re-run it.</td></tr>
+        <td>Dispatches work, folds verified changes into
+          <code>main</code>, turns your rulings into issues.</td></tr>
     </tbody>
   </table>
   </div>
-  <p>Full definitions, including what each role must <em>not</em> do and why:
-  <code>doctrine/ROLES.md</code>.</p>
+  <p>Full role definitions: <code>doctrine/ROLES.md</code>.</p>
 
-  <h2 data-informational>What the gates protect you from</h2>
-  <ul>
-    <li><code>bin/dispatch</code> refuses to run from anywhere but the repo
-      root, refuses uncommitted edits already sitting in the files it's about
-      to hand out, and refuses to overlap a file another live dispatch
-      already holds — a worker never starts from a wrong or dirty base.</li>
-    <li>The commit-msg hook refuses a commit that lands a dispatched issue
-      with no handoff record for it — a worker's
-      <code>changed</code>/<code>found</code>/<code>assumed</code>/<code>next</code>
-      is never lost to a fast commit.</li>
-    <li>The pre-commit hook refuses a commit touching a watched path with no
-      <code>changelog.d/</code> fragment — nobody has to reconstruct what
-      changed by reading the diff (off entirely if
-      <code>changelog.enabled</code> is false).</li>
-    <li><code>bin/handoff</code> refuses <code>--verified</code> text that
-      just relays what the worker claimed — "tests pass" is not evidence,
-      you have to say what <em>you</em> re-ran.</li>
-    <li>The tracker refuses <code>status=held</code> outright — held-ness
-      lives in <code>heldWhy</code>, gated-ness in <code>gate</code>, and
-      neither is a status value, so a hold with no reason attached cannot be
-      created.</li>
-  </ul>
-  <p>That is everything you need to read the rest of this document. The next
-  page is what an agent found looking at your actual repo; the pages after
-  that are yours to rule on.</p>
+  <p>The harness has guardrails throughout — dispatch refuses dirty bases,
+  commits are refused without handoff records, nothing lands without
+  verification. Details in <code>doctrine/WORKFLOW.md</code>.</p>
+
+  <p>That's enough context. The next page is what an agent found looking at
+  your repo; the pages after that are ours to work through together.</p>
 </section>
 
 <section class="page" id="p1">
   <h1>What we found in your repo</h1>
-  <p class="sub">Observations, not settled fact. Correct anything wrong
-    before answering the questions that follow — they build on this.</p>
+  <p class="sub">Observations from our first look. If something's off,
+    let us know — the pages ahead build on this.</p>
 
   <div class="callout warn"><span class="tag">not yet filled in</span>
     This page ships empty. It gets filled in by an agent as part of bringing
@@ -427,238 +391,143 @@
 </section>
 
 <section class="page" id="p2">
-  <h1>Which suites gate a landing, and which are advisory?</h1>
-  <p class="sub">This becomes <code>config.json</code>'s <code>suites</code> array.</p>
+  <h1>Test suites</h1>
+  <p class="sub">Which tests run and when — something we'll work out together.</p>
 
-  <p>Every entry under <code>suites</code> runs in the verifier's sweep and in
-  <code>bin/post-fold-audit</code>. An entry tagged <code>"slow"</code> can be
-  skipped with <code>--skip slow</code> — that is the built-in way to say
-  "don't block every single fold on this one," which in practice is what
-  makes a suite advisory rather than gating (<code>docs/CONFIG.md</code>).</p>
+  <p>The harness can run your test suites at two points: on every fold
+  (gating), or once per sprint via the verifier (advisory). Fast tests
+  usually gate; slow or flaky ones run advisory. This ends up in
+  <code>config.json</code>'s <code>suites</code> array.</p>
+
+  <p>If you already know what suites you have and how you'd like them
+  treated, write that below. If not, that's fine — most people getting
+  started here don't have this nailed down yet, and that's exactly what
+  the first few sprints help sort out.</p>
 
   <div class="response" data-resp="prd001-q1-suites">
-    <label>Suites: gate vs. advisory</label>
+    <label>Suites</label>
     <div class="discuss">
-      <strong>Option A</strong> — a small, fast set gates every fold (say,
-      typecheck + unit); anything slow or flake-prone (e2e, integration) is
-      tagged <code>"slow"</code> and only required once per sprint via the
-      verifier, not on every single dispatch. Cost: a red slow suite can sit
-      underneath a landed fix for a while, surfacing on your own review
-      cadence instead of blocking immediately.<br>
-      <strong>Option B</strong> — everything in <code>suites</code> gates
-      every fold, nothing tagged slow. Cost: every dispatch cycle pays the
-      full suite's wall time and flake rate, even for a one-line fix.<br>
-      I'd take <strong>A</strong> — start with typecheck + unit gating,
-      tag anything slow or historically flaky, and widen the gate later once
-      you trust it. Which suites do you have (or plan to have), and which
-      of them gate vs. which are advisory?
+      If you know your test commands and which should block a landing,
+      list them here. Otherwise leave this open — we'll figure it out
+      together as we explore the project. The agent that fills in the
+      "What we found" page will have a head start on this.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
 </section>
 
 <section class="page" id="p3">
-  <h1>What belongs in <code>project.protectedPaths</code>?</h1>
-  <p class="sub">Paths no dispatched agent may edit on its own initiative.</p>
+  <h1>Protected paths</h1>
+  <p class="sub">Files no agent should edit without your say-so.</p>
 
-  <p>Candidates: an append-only interface, a generated bundle, a cross-writer
-  contract, anything that needs a human holding both ends. A worker (and the
-  unattended drainer, if you ever arm it) refuses to touch a listed path;
-  the drainer's runner also diffs finished work against the list before
-  pushing and quarantines the whole run on a match.</p>
+  <p>Paths in <code>project.protectedPaths</code> are off-limits to
+  dispatched workers. Think generated bundles, public API surfaces, or
+  schema migrations — anything where an unsupervised edit could hurt.</p>
+
+  <p>If something comes to mind, list it below. If nothing does, that's
+  normal for a project just getting started. You can add paths later the
+  first time an agent touches something you wish it hadn't.</p>
 
   <div class="response" data-resp="prd001-q2-protected-paths">
-    <label>protectedPaths list</label>
+    <label>Protected paths</label>
     <div class="discuss">
-      <strong>Option A</strong> — start narrow: only what you can name right
-      now (a generated bundle, a public API surface, a schema migration you
-      don't want an agent improvising on). Cost: something you forgot is
-      editable by a worker until you notice and add it.<br>
-      <strong>Option B</strong> — start wide: anything that took real design
-      thought, docs included. Cost: workers stall asking to touch ordinary
-      files, and "held, needs owner" piles up for things that never needed
-      protecting.<br>
-      I'd take <strong>A</strong> — the list only blocks automated edits, not
-      yours; you can always add to it the first time a worker touches
-      something you regret. What paths go in it?
+      List any files or directories you'd rather agents not touch on their
+      own. If you're not sure yet, leave this open — it's easy to add to
+      later, and the first sprint or two will make the right list obvious.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
 </section>
 
 <section class="page" id="p4">
-  <h1>Keep the built-in file tracker, or point at one you already use?</h1>
-  <p class="sub">This becomes <code>tracker.backend</code>.</p>
+  <h1>How work gets folded in</h1>
+  <p class="sub">Not a policy to declare up front — a conversation you
+    have with the orchestrator as you go.</p>
 
-  <p>The harness needs exactly six operations from a tracker —
-  <code>show</code>, <code>notes</code>, <code>remember</code>,
-  <code>claim</code>, <code>ready</code>, <code>set</code> (no
-  <code>add</code>; an issue is created with <code>set</code>, which
-  auto-vivifies). <code>"file"</code> is the built-in backend, storing
-  <code>.entropy-machines/issues.json</code> locally. <code>"command"</code> shells
-  out to any executable implementing the same six ops
-  (<code>docs/TRACKER-ADAPTER.md</code>) — and that adapter has to be able to
-  express <em>held</em> (a <code>heldWhy</code> field) and <em>gated</em>
-  (a <code>gate</code> field) correctly, or <code>ready</code> will
-  over-report what's actually claimable.</p>
+  <p>When a worker finishes and the verifier confirms it, the orchestrator
+  folds the change into <code>main</code>. How much of that process you
+  want to see is something you work out together.</p>
 
-  <div class="response" data-resp="prd001-q3-tracker-backend">
-    <label>tracker.backend</label>
+  <p>Early on, you'll probably want to check in on every fold. As you
+  build trust in the loop, you might let the orchestrator fold verified
+  work on its own and only pull you in when something is held or uncertain.
+  Either way, you steer this by giving feedback in the moment — not by
+  setting a standing policy.</p>
+
+  <div class="response" data-resp="prd001-q4-landing-policy">
+    <label>Landing preference</label>
     <div class="discuss">
-      <strong>Option A</strong> — keep <code>"file"</code>. Zero setup,
-      works today, per-checkout state under <code>.entropy-machines/</code>
-      (gitignored). Cost: not shared across machines, no UI beyond
-      <code>bin/tracker show</code>.<br>
-      <strong>Option B</strong> — point <code>tracker.command.bin</code> at
-      an adapter for a tracker you already run. Cost: someone has to write
-      and maintain that adapter, and get held/gated right, or claimable work
-      is reported wrong.<br>
-      I'd take <strong>A</strong> to start — nothing about the workflow
-      depends on which backend answers <code>bin/tracker ready</code>, so
-      migrating later costs nothing you wouldn't pay anyway. File-backed, or
-      point at something else?
+      How hands-on do you want to be right now? "Check with me on
+      everything" and "fold what's verified, flag what's uncertain" are
+      both fine starting points — and you can adjust as you go. There's
+      no wrong answer, and it's not permanent.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
 </section>
 
 <section class="page" id="p5">
-  <h1>Does verified work land on your say-so every time, or on the verifier's word?</h1>
-  <p class="sub">Not a config key — a policy for how the orchestrator behaves.</p>
+  <h1>Getting started</h1>
+  <p class="sub">Two ways in, depending on where you are.</p>
 
-  <p>The two doctrine docs phrase this slightly differently.
-  <code>doctrine/WORKFLOW.md</code> ties your say-so specifically to
-  <em>held</em> work: "Nothing is folded while work is HELD. The owner says
-  when." <code>README.md</code>'s summary states it more broadly: "Nothing
-  lands eagerly. Finished work is held until the owner says merge." Read
-  literally, the first lets the orchestrator fold anything verified and not
-  explicitly held, on its own judgment; the second reads as every fold
-  waiting on you. Worth ruling on explicitly rather than each orchestrator
-  session guessing which reading you meant.</p>
-
-  <div class="response" data-resp="prd001-q4-landing-policy">
-    <label>Landing policy</label>
+  <div class="response" data-resp="prd001-q5-first-work">
+    <label>Which path</label>
     <div class="discuss">
-      <strong>Option A</strong> — owner-gated: the orchestrator checks in
-      with you before every fold, even something verified and not held.
-      Cost: a check-in step per issue or per sprint; slower cadence, but
-      nothing lands without you seeing it first.<br>
-      <strong>Option B</strong> — verifier-gated: the orchestrator folds
-      automatically once the verifier reports healthy and the issue isn't
-      held; you brake specific issues with <code>heldWhy</code>. Cost:
-      faster, but you only get asked when the orchestrator is unsure —
-      you have to actually use <code>heldWhy</code> proactively.<br>
-      I'd take <strong>A</strong> for a new project — until you've seen a
-      few sprints go cleanly and trust the verifier's sweep and your own
-      review habits, then reassess toward B. Which do you want?
+      <strong>Option A — Design first.</strong> Work with a designer agent
+      to nail down what you're building. Those sessions generate issues for
+      the factory while subagents explore the repo and get a head start on
+      the codebase.<br><br>
+      <strong>Option B — Build first.</strong> You already have issues in
+      mind and want to start shipping. We'll put training wheels on the
+      first few PRDs so you can learn the loop while getting real work
+      done.<br><br>
+      Pick whichever fits, or describe your own starting point.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
 </section>
 
 <section class="page" id="p6">
-  <h1>What turns this from orientation into a project?</h1>
-  <p class="sub">The one question above that isn't config at all.</p>
-
-  <p>Everything on the previous four pages configures the harness. None of
-  it is a real feature or bug fixed yet. This is the question whose answer
-  becomes the first issue dispatched to an actual worker.</p>
-
-  <div class="response" data-resp="prd001-q5-first-work">
-    <label>First real issue</label>
-    <div class="discuss">
-      <strong>Option A</strong> — dispatch a verification issue first:
-      confirm the "What we found" page for real and finish
-      <code>config.json</code> (suites, generate, worktree links). Cost:
-      one dispatch cycle spent on bookkeeping before touching a real feature
-      or bug.<br>
-      <strong>Option B</strong> — skip straight to a real feature or bug you
-      already know needs doing, and patch <code>config.json</code>'s gaps
-      opportunistically as a worker or verifier hits them. Cost: your first
-      few dispatches run against unverified suites and paths, so a failure
-      might be the harness's config rather than the actual work.<br>
-      I'd take <strong>A</strong> if anything on the "What we found" page is
-      marked unverified; <strong>B</strong> if you already trust your own
-      toolchain commands and just want to see the loop move. What's the
-      first real issue, and which order?
-    </div>
-    <textarea placeholder="Type your answer…"></textarea>
-  </div>
-</section>
-
-<section class="page" id="p7">
-  <h1>Issues this PRD creates</h1>
-  <p class="sub">Your five answers above, filed. Literal commands — the
-    tracker has six operations, no <code>add</code>; an issue is created
-    with <code>set</code>, which auto-vivifies
-    (<code>docs/TRACKER-ADAPTER.md</code>).</p>
+  <h1>What happens next</h1>
+  <p class="sub">Your answers above become tracker issues.</p>
 
   <pre><code>bin/tracker set i-suites-policy \
   status=notstarted \
-  title="Configure config.json suites per PRD-001 Q1" \
+  title="Configure config.json suites per PRD-001" \
   effort=S
 
 bin/tracker set i-protected-paths \
   status=notstarted \
-  title="Set project.protectedPaths per PRD-001 Q2" \
-  effort=S
-
-# Q3 answered above but not yet DONE until you (or the worker) actually
-# write it into config.json -- filed the same as any other issue.
-bin/tracker set i-tracker-backend \
-  status=notstarted \
-  title="Configure tracker.backend per PRD-001 Q3" \
+  title="Set project.protectedPaths per PRD-001" \
   effort=S
 
 bin/tracker set i-landing-policy \
   status=notstarted \
-  title="Record landing policy per PRD-001 Q4" \
+  title="Record landing preference per PRD-001" \
   effort=S
 
-# Q5's answer names your actual first issue -- write its own `set` once
-# you've picked it; there's no generic id to hand you here.
-
 bin/tracker remember --issue q-1 \
-  "Filed i-suites-policy, i-protected-paths, i-tracker-backend, i-landing-policy from PRD-001-orientation."
+  "Filed i-suites-policy, i-protected-paths, i-landing-policy from PRD-001-orientation."
 bin/tracker set q-1 status=done</code></pre>
 
-  <p>If instead you're still genuinely undecided on one of these — not
-  "haven't gotten to it," actually undecided — file it <em>gated</em>
-  instead of plain <code>notstarted</code>, so <code>ready</code> holds it
-  back until you clear the gate:</p>
+  <p>If you're genuinely undecided on one of these, file it
+  <em>gated</em> so it's held back until you clear it:</p>
 
-  <pre><code>bin/tracker set i-tracker-backend \
+  <pre><code>bin/tracker set i-suites-policy \
   status=notstarted \
-  title="Decide tracker.backend per PRD-001 Q3" \
-  gate="PRD-001#q3"</code></pre>
-
-  <p>Both forms run for real, against a throwaway project, while this page
-  was written:</p>
-
-  <pre><code>$ bin/tracker ready
-{"blockedBy": [], "effort": "S", "id": "i-landing-policy", "status": "notstarted", "title": "..."}
-{"blockedBy": [], "effort": "S", "id": "i-protected-paths", "status": "notstarted", "title": "..."}
-{"blockedBy": [], "effort": "S", "id": "i-suites-policy", "status": "notstarted", "title": "..."}
-# i-tracker-backend (filed gated) does not appear. q-1 (filed done) does not
-# appear either -- ready means claimable, not "exists."
-
-$ bin/tracker set i-tracker-backend status=held
-tracker-file: REFUSED — unknown status 'held'. Known: done, notstarted, progress.
-  held and gated are not status values — set heldWhy=&lt;reason&gt; or gate=&lt;handle&gt; instead.</code></pre>
+  title="Figure out test suites per PRD-001" \
+  gate="PRD-001#q1"</code></pre>
 
   <div class="callout good"><span class="tag">already done for you</span>
-    <code>q-1</code>, "Orient the factory to this repo," is already filed
-    and was claimable before you opened this page —
-    <code>bin/tracker ready</code> shows it from the moment
-    <code>bin/init</code> ran. Marking it <code>status=done</code> above is
-    what closes the loop this PRD opened: a PRD creates issues, and one of
-    them was always going to be "answer this PRD."
+    <code>q-1</code>, "Orient the factory to this repo," was already filed
+    and claimable the moment <code>bin/init</code> ran. Marking it
+    <code>status=done</code> above closes the loop this PRD opened.
   </div>
 
-  <p>Next: <code>bin/dispatch &lt;id&gt; --files "…" --brief "…"</code> on
-  whichever of the above is both <code>ready</code> and next in the order you
-  gave in Q5 — see <code>docs/AGENT-QUICKSTART.md</code> for one full walkthrough of
-  dispatch through handoff, start to finish, on a real example.</p>
+  <p>Next: <code>bin/dispatch &lt;id&gt; --files "…" --brief "…"</code>
+  on whichever issue is <code>ready</code> and makes sense to start
+  with — <code>docs/AGENT-QUICKSTART.md</code> walks through a full
+  dispatch-to-handoff cycle.</p>
 </section>
 
 </main>
