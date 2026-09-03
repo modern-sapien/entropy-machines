@@ -69,10 +69,6 @@ Land held work.
 
 ## Limits
 
-- **`handoff` cannot read `dispatch`'s notes** (JSONL vs. the older free-text
-  form), so `--lift` copies a held file instead of refusing, interrogation is never
-  required, and a recorded handoff never releases the claim. Read dispatch's
-  overlap warning yourself.
 - **`--lift` exits 1 on `.scratch`** — delete that symlink from the worktree, rerun.
 - **Claude-native in practice.** The gates are POSIX shell; automatic parallel
   workers in isolated worktrees is a Claude Code capability. Another runner gets
