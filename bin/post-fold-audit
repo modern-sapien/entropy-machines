@@ -62,14 +62,11 @@ import time
 # imports work wherever it is vendored. It is not a root and not a repo.
 ENTROPY_MACHINES_HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
-from config import load_config  # noqa: E402  (path must be set up first)
+import config  # noqa: E402  (path must be set up first)
 
 
 def _refuse_nested_clone():
     """Mirror of lib/roots.sh's entropy_refuse_nested_clone(). See lib/config.py."""
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
-    import config
     config.refuse_nested_clone("post-fold-audit")
 
 
@@ -124,7 +121,7 @@ def _require_root():
 
 
 ENTROPY_MACHINES_ROOT = _require_root()
-CONFIG = load_config(cwd=ENTROPY_MACHINES_ROOT)
+CONFIG = config.load_config(cwd=ENTROPY_MACHINES_ROOT)
 STAMP = os.path.join(
     os.path.expanduser(CONFIG["unattended"]["stateHome"]),
     "clean-tree-stamp.json")

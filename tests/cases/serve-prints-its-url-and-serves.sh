@@ -32,7 +32,7 @@ stop_server() {
 # Kill both servers however this case ends, including an assertion failure.
 trap 'stop_server' EXIT INT TERM
 
-( cd "$REPO" && exec "$HARNESS/bin/serve" "$PORT" ) >"$LOG" 2>&1 &
+( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT" ) >"$LOG" 2>&1 &
 SERVER_PID=$!
 SERVED=1
 
@@ -76,7 +76,7 @@ esac
 
 # --- a second serve on the same port falls back to a different port ---------
 LOG2="$TEST_TMP/serve2.log"
-( cd "$REPO" && exec "$HARNESS/bin/serve" "$PORT" ) >"$LOG2" 2>&1 &
+( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT" ) >"$LOG2" 2>&1 &
 SERVER2_PID=$!
 
 if ! wait_for_line "$LOG2" "http://localhost:" 80; then

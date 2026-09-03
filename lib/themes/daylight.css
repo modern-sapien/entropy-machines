@@ -18,28 +18,28 @@
        blue-leaning near-black (#23262E), not #292929 grey — a slight hue bias
        in both directions rather than a pure neutral, which is what stops a
        full page of prose reading as printer output.
-     * The rules are quiet. --line sits at 3.25:1 on the ground: a real
+     * The rules are quiet. --border sits at 3.25:1 on the ground: a real
        boundary you can see, not a stripe that competes with the text. The
        structural CSS still separates with borders and never with tints, so
-       quieting the line is the whole difference between the two looks.
+       quieting the border is the whole difference between the two looks.
      * The type scale is bigger and further apart — 13/16/20/28 against
        high-contrast's 12/14/16/20. Body sits at the browser default rather
        than below it, and the title is more than twice the small step, so a
        heading reads as a heading in a page of running text.
-     * --accent (#2A5DB0 light / #7FB2F0 dark) is one blue that works on both
+     * --link (#2A5DB0 light / #7FB2F0 dark) is one blue that works on both
        grounds, so a link does not change character with the toggle.
      * --focus is amber (#B45309 / #F0A868) — the one hue no other token
        occupies in either state, because focus has to be unmistakable, and the
        structural CSS draws it as a border and never as a fill.
 
-   SEMANTICS DO NOT RELY ON HUE. ok is a teal-green, warn an amber, bad a red;
-   under deuteranopia or protanopia the teal stays visibly cool while the other
-   two collapse together, so the three are also separated by LIGHTNESS — in the
-   light state ok/warn/bad differ by 1.40:1, 1.47:1 and 2.05:1 in luminance,
-   and in the dark state by 1.85:1, 1.29:1 and 1.43:1. Every one of them clears
-   4.5:1 against its own ground. The templates pair each of these colours with
-   a word ("open", "ok"); keep that true — the colour is the second signal, not
-   the only one.
+   SEMANTICS DO NOT RELY ON HUE. positive is a teal-green, caution an amber,
+   negative a red; under deuteranopia or protanopia the teal stays visibly cool
+   while the other two collapse together, so the three are also separated by
+   LIGHTNESS — in the light state positive/caution/negative differ by 1.40:1,
+   1.47:1 and 2.05:1 in luminance, and in the dark state by 1.85:1, 1.29:1 and
+   1.43:1. Every one of them clears 4.5:1 against its own ground. The templates
+   pair each of these colours with a word ("open", "ok"); keep that true — the
+   colour is the second signal, not the only one.
 
    Body text on ground: 14.26:1 light, 14.13:1 dark. Muted text (--dim):
    6.29:1 light, 7.43:1 dark.
@@ -51,34 +51,33 @@
 :root{
   --bg:#FAF8F4;              /* warm paper, not #fff */
   --panel:#FFFFFF;           /* one step up from the ground, for insets */
-  --ink:#23262E;             /* blue-leaning near-black — 14.26:1 on --bg */
+  --fg:#23262E;              /* blue-leaning near-black — 14.26:1 on --bg */
   --dim:#5A5C63;             /* 6.29:1 — a real value, never opacity */
-  --line:#8E8A7E;            /* 3.25:1 — visible, quiet */
+  --border:#8E8A7E;          /* 3.25:1 — visible, quiet */
   --focus:#B45309;           /* amber; no other token uses this hue */
-  --accent:#2A5DB0;          /* one link blue for both grounds */
-  --ok:#0B6E5A;              /* teal-green: stays cool for a red-green reader */
-  --warn:#A06E12;
-  --bad:#8C1D18;             /* darkest of the three here, so it shouts */
-  --alt:#6D4AA8;
+  --link:#2A5DB0;            /* one link blue for both grounds */
+  --positive:#0B6E5A;        /* teal-green: stays cool for a red-green reader */
+  --caution:#A06E12;
+  --negative:#8C1D18;        /* darkest of the three here, so it shouts */
+  --accent:#6D4AA8;
   --fs-sm:13px; --fs-base:16px; --fs-head:20px; --fs-title:28px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
-  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+  --good:var(--positive); --muted:var(--dim);
+  --warn-deep:var(--caution); --code-bg:var(--panel);
 }
 /* The dark state. Ink-on-slate rather than white-on-black: the same trade as
    the light state, one stop softer than high contrast at both ends. The type
-   scale does not change with the state, so it is not restated. The aliases are
-   var() references and re-resolve here on their own. */
+   scale does not change with the state, so it is not restated. */
 :root[data-theme=dark]{
   --bg:#14161A;              /* slate, not #000 */
   --panel:#1B1E24;
-  --ink:#E6E3DC;             /* warm off-white — 14.13:1 on --bg */
+  --fg:#E6E3DC;              /* warm off-white — 14.13:1 on --bg */
   --dim:#A8A69F;             /* 7.43:1 */
-  --line:#626973;            /* 3.27:1 */
+  --border:#626973;          /* 3.27:1 */
   --focus:#F0A868;
-  --accent:#7FB2F0;
-  --ok:#34A98D;
-  --warn:#F2C87B;
-  --bad:#FF8C82;             /* lightest of the three here, so it shouts */
-  --alt:#C79BEE;
+  --link:#7FB2F0;
+  --positive:#34A98D;
+  --caution:#F2C87B;
+  --negative:#FF8C82;        /* lightest of the three here, so it shouts */
+  --accent:#C79BEE;
 }

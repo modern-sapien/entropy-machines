@@ -125,7 +125,15 @@ if [ ! -r "$theme_file" ]; then
   exit 1
 fi
 
-port="${1:-8787}"
+SERVE_NO_OPEN=""
+port=""
+for _arg in "$@"; do
+  case "$_arg" in
+    --no-open) SERVE_NO_OPEN=1 ;;
+    *) port="$_arg" ;;
+  esac
+done
+port="${port:-8787}"
 case "$port" in
   ''|*[!0-9]*)
     echo "serve: REFUSED — port must be a number, got '$port'." >&2
@@ -137,6 +145,7 @@ export ENTROPY_MACHINES_HOME ENTROPY_MACHINES_ROOT
 export SERVE_DOCS_PATH="$docs_path"
 export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
+export SERVE_NO_OPEN="$SERVE_NO_OPEN"
 export SERVE_TRACKER="$TRACKER"
 export SERVE_THEME_NAME="$theme"
 export SERVE_THEME_FILE="$theme_file"
@@ -826,7 +835,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "status": status})
 
 
-def main():
+def main(no_open=False):
     # TRY THE REQUESTED PORT, THEN SCAN UPWARD. A user running `npx
     # entropy-machines start` for the first time should not be stopped by a
     # stale process on 8787 — the server picks the next open port and says
@@ -866,17 +875,16 @@ def main():
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
     print("  auto-enhance: active (stale docs patched on first GET)", flush=True)
-    # Auto-open: find the first PRD in the docs directory and open it.
-    # If no doc found, open the dashboard. Threaded so it doesn't block startup.
-    def _open_browser():
-        import glob
-        prds = sorted(glob.glob(os.path.join(DOCS_PATH, "PRD-*.html")))
-        if prds:
-            target = "http://localhost:%d/%s" % (port, os.path.basename(prds[0]))
-        else:
-            target = "http://localhost:%d/" % port
-        webbrowser.open(target)
-    threading.Thread(target=_open_browser, daemon=True).start()
+    if not no_open:
+        def _open_browser():
+            import glob
+            prds = sorted(glob.glob(os.path.join(DOCS_PATH, "PRD-*.html")))
+            if prds:
+                target = "http://localhost:%d/%s" % (port, os.path.basename(prds[0]))
+            else:
+                target = "http://localhost:%d/" % port
+            webbrowser.open(target)
+        threading.Thread(target=_open_browser, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -884,5 +892,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(no_open=bool(os.environ.get("SERVE_NO_OPEN")))
 PY

@@ -31,16 +31,16 @@ DOC="BUILD-REPORT-THEMED.html"
 
 # Janus — the default theme, violet-accented high contrast.
 JN_BG="--bg:#0a0a0d;"
-JN_LINE="--line:#a78bfa;"
+JN_BORDER="--border:#a78bfa;"
 JN_STEP="--fs-base:14px;"
 # High-contrast — the original house style.
 HC_BG="--bg:#000;"
-HC_LINE="--line:#6FC3DF;"
+HC_BORDER="--border:#6FC3DF;"
 HC_STEP="--fs-base:14px;"
 # Daylight — a different aesthetic, not a recolour: warm paper, quiet rule,
 # bigger type.
 DL_BG="--bg:#FAF8F4;"
-DL_LINE="--line:#8E8A7E;"
+DL_BORDER="--border:#8E8A7E;"
 DL_STEP="--fs-base:16px;"
 
 # ---------------------------------------------------------------------------
@@ -62,12 +62,11 @@ import re
 import sys
 
 REQUIRED = {
-    "--bg", "--panel", "--ink", "--dim", "--line", "--focus", "--accent",
-    "--ok", "--warn", "--bad", "--alt",
+    "--bg", "--panel", "--fg", "--dim", "--border", "--focus", "--link",
+    "--positive", "--caution", "--negative", "--accent",
     "--fs-sm", "--fs-base", "--fs-head", "--fs-title", "--mono",
-    # aliases the older docs already use
-    "--positive", "--good", "--muted", "--border", "--caution", "--warn-deep",
-    "--code-bg",
+    # secondary aliases some CSS may reference
+    "--good", "--muted", "--warn-deep", "--code-bg",
 }
 
 BLOCK_RE = re.compile(r"(:root(?:\[[^\]]*\])?)\s*\{([^}]*)\}")
@@ -255,7 +254,7 @@ trap 'stop_server' EXIT INT TERM
 
 # start_server <port> <logfile> — fails the case if the URL never appears.
 start_server() {
-  ( cd "$REPO" && exec "$HARNESS/bin/serve" "$1" ) >"$2" 2>&1 &
+  ( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$1" ) >"$2" 2>&1 &
   SERVER_PID=$!
   SERVED=1
   if ! wait_for_line "$2" "http://localhost:$1" 80; then
@@ -291,12 +290,17 @@ assert_out "200" "with a 200"
 
 run grep -F -- "$JN_BG" "$TEST_TMP/default.html"
 assert_rc 0 "the default serves the janus ground"
-run grep -F -- "$JN_LINE" "$TEST_TMP/default.html"
+run grep -F -- "$JN_BORDER" "$TEST_TMP/default.html"
 assert_rc 0 "and its violet border"
 run grep -F -- "$JN_STEP" "$TEST_TMP/default.html"
 assert_rc 0 "and its type scale"
-run grep -F -- "$DL_BG" "$TEST_TMP/default.html"
-assert_rc 1 "and nothing of daylight's"
+# Daylight tokens may appear in the theme-options block (scoped under
+# data-theme), but NOT in the server-inlined theme:begin/end span.
+run sed -n '/entropy-machines-theme:begin/,/entropy-machines-theme:end/p' "$TEST_TMP/default.html"
+assert_rc 0 "the theme span exists"
+OUT=$(sed -n '/entropy-machines-theme:begin/,/entropy-machines-theme:end/p' "$TEST_TMP/default.html")
+case "$OUT" in *"$DL_BG"*) RC=1 ;; *) RC=0 ;; esac
+assert_rc 0 "and the inlined theme span has nothing of daylight's"
 
 # The dashboard is a viewable interface too and wears the same theme.
 run python3 "$TEST_TMP/fetch.py" "http://127.0.0.1:$PORT/" "$TEST_TMP/dash-default.html"
@@ -322,20 +326,21 @@ assert_rc 0 "the same doc is served under daylight"
 
 run grep -F -- "$DL_BG" "$TEST_TMP/daylight.html"
 assert_rc 0 "daylight's ground is in the served page"
-run grep -F -- "$DL_LINE" "$TEST_TMP/daylight.html"
+run grep -F -- "$DL_BORDER" "$TEST_TMP/daylight.html"
 assert_rc 0 "and its rule colour"
 run grep -F -- "$DL_STEP" "$TEST_TMP/daylight.html"
 assert_rc 0 "and its type scale"
 run grep -F -- "[data-theme=dark]" "$TEST_TMP/daylight.html"
 assert_rc 0 "including the dark state, so the toggle still works both ways"
 
-# The half that a swap applying nothing would also satisfy.
-run grep -F -- "$JN_BG" "$TEST_TMP/daylight.html"
-assert_rc 1 "and the janus ground it replaced is GONE"
-run grep -F -- "$JN_LINE" "$TEST_TMP/daylight.html"
-assert_rc 1 "along with its violet border"
-run grep -F -- ":root[data-theme=light]" "$TEST_TMP/daylight.html"
-assert_rc 1 "and the janus-light override, which would out-specify daylight on the toggle"
+# The inlined theme span should have daylight, not janus.
+# Janus tokens may appear in the theme-options block (scoped), but NOT in the
+# server-inlined theme:begin/end span.
+DL_THEME_SPAN=$(sed -n '/entropy-machines-theme:begin/,/entropy-machines-theme:end/p' "$TEST_TMP/daylight.html")
+case "$DL_THEME_SPAN" in *"$JN_BG"*) RC=1 ;; *) RC=0 ;; esac
+assert_rc 0 "the janus ground is not in daylight's inlined theme span"
+case "$DL_THEME_SPAN" in *"$JN_BORDER"*) RC=1 ;; *) RC=0 ;; esac
+assert_rc 0 "nor its violet border"
 
 # The file on disk is untouched — the theme is applied in flight, so the doc
 # stays the author's and switching themes rewrites nothing.

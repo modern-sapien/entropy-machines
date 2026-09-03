@@ -105,9 +105,9 @@
    therefore work: whichever state a theme does not name falls through to its
    own bare :root.
 
-   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark accent)
-   and #7c3aed (light accent), lifted from src/shared/brand.ts. This theme
-   uses them as --accent in their respective states. The surrounding palette is
+   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark link)
+   and #7c3aed (light link), lifted from src/shared/brand.ts. This theme
+   uses them as --link in their respective states. The surrounding palette is
    built to clear WCAG AAA (7:1 body text, 4.5:1 large text and UI) while
    keeping the violet instantly recognisable.
 
@@ -124,107 +124,107 @@
 :root{
   --bg:#0a0a0d;              /* Janus product dark background */
   --panel:#18181b;           /* Janus dark surface */
-  --ink:#fafafa;             /* Janus dark text — 19.2:1 on --bg */
+  --fg:#fafafa;              /* Janus dark text — 19.2:1 on --bg */
   --dim:rgba(250,250,250,.7); /* muted text on dark */
-  --line:#a78bfa;            /* violet border — the brand signal */
+  --border:#a78bfa;          /* violet border — the brand signal */
   --focus:#f59e0b;           /* amber — unmistakable, no hue collision */
-  --accent:#a78bfa;          /* Janus dark accent */
-  --ok:#23D18B; --warn:#fbbf24; --bad:#ef4444; --alt:#c084fc;
+  --link:#a78bfa;            /* Janus dark link */
+  --positive:#23D18B; --caution:#fbbf24; --negative:#ef4444; --accent:#c084fc;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
-  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+  --good:var(--positive); --muted:var(--dim);
+  --warn-deep:var(--caution); --code-bg:var(--panel);
 }
 :root[data-theme=light]{
   --bg:#faf9fc;              /* Janus product light background */
   --panel:#ffffff;
-  --ink:#18181b;             /* Janus light text — 17.4:1 on --bg */
+  --fg:#18181b;              /* Janus light text — 17.4:1 on --bg */
   --dim:rgba(24,24,27,.7);
-  --line:#7c3aed;            /* violet border, saturated for light ground */
+  --border:#7c3aed;          /* violet border, saturated for light ground */
   --focus:#d97706;           /* amber — darker for light ground contrast */
-  --accent:#7c3aed;          /* Janus light accent */
-  --ok:#0A5C21; --warn:#92400e; --bad:#b91c1c; --alt:#6d28d9;
+  --link:#7c3aed;            /* Janus light link */
+  --positive:#0A5C21; --caution:#92400e; --negative:#b91c1c; --accent:#6d28d9;
 }
 /* entropy-machines-theme:end */
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;background:var(--bg);color:var(--fg);
   font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:860px;margin:0 auto;padding:24px 20px 80px}
-a{color:var(--accent)}
+a{color:var(--link)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 
 h1{font-size:var(--fs-title);font-weight:700;margin:0 0 4px;line-height:1.3}
 h2{font-size:var(--fs-head);font-weight:700;margin:32px 0 8px;letter-spacing:.2px}
 h3{font-size:var(--fs-base);font-weight:700;margin:20px 0 6px}
 p,li,td,th{font-size:var(--fs-base)}
-.sub,.meta,figcaption{font-size:var(--fs-sm);color:var(--ink)}
+.sub,.meta,figcaption{font-size:var(--fs-sm);color:var(--fg)}
 .eyebrow{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em;margin:0 0 6px}
-code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--border);
   border-radius:2px;padding:0 4px}
 h1 code{font-size:var(--fs-head)}
-pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--line);
+pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--border);
   border-radius:4px;padding:10px 12px;overflow-x:auto;line-height:1.5}
 pre code{border:0;padding:0;font-size:inherit}
 
-header{border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:8px;
+header{border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:8px;
   display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
 header .sub{margin:0}
-#theme{margin-left:auto;background:var(--panel);border:1px solid var(--line);
-  color:var(--ink);border-radius:4px;padding:6px 10px;cursor:pointer;
+#theme{margin-left:auto;background:var(--panel);border:1px solid var(--border);
+  color:var(--fg);border-radius:4px;padding:6px 10px;cursor:pointer;
   font-family:inherit;font-size:var(--fs-sm);font-weight:600}
 #theme:hover{box-shadow:inset 0 0 0 2px var(--focus)}
 
 .pill{display:inline-block;font-size:var(--fs-sm);font-weight:700;padding:1px 8px;
-  border-radius:10px;border:1px solid var(--line);color:var(--ink)}
-.pill.ok{color:var(--ok);border-color:var(--ok)}
-.pill.warn{color:var(--warn);border-color:var(--warn)}
-.pill.bad{color:var(--bad);border-color:var(--bad)}
-.pill.alt{color:var(--alt);border-color:var(--alt)}
+  border-radius:10px;border:1px solid var(--border);color:var(--fg)}
+.pill.ok{color:var(--positive);border-color:var(--positive)}
+.pill.warn{color:var(--caution);border-color:var(--caution)}
+.pill.bad{color:var(--negative);border-color:var(--negative)}
+.pill.alt{color:var(--accent);border-color:var(--accent)}
 
-.card{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin:12px 0}
+.card{border:1px solid var(--border);border-radius:4px;padding:12px 14px;margin:12px 0}
 .card > :first-child{margin-top:0}
 .card > :last-child{margin-bottom:0}
 .card.flag{border-color:var(--focus)}
 table{width:100%;border-collapse:collapse;margin:12px 0;display:block;overflow-x:auto}
-th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th,td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
 th{font-weight:700}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 ul,ol{padding-left:20px}
 li{margin:3px 0}
-hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+hr{border:0;border-top:1px solid var(--border);margin:28px 0}
 
-nav{border:1px solid var(--line);padding:10px 12px;margin:0 0 22px;
+nav{border:1px solid var(--border);padding:10px 12px;margin:0 0 22px;
   display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
 nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em}
-nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--line)}
+nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--border)}
 nav a:hover{border-bottom-color:var(--focus)}
 
-.links{border:1px solid var(--line);padding:8px 12px;margin:0 0 18px;
+.links{border:1px solid var(--border);padding:8px 12px;margin:0 0 18px;
   display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
 .links .k{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em;color:var(--dim)}
 .links a{font-family:var(--mono);font-size:var(--fs-sm);text-decoration:none;
-  border:1px solid var(--line);padding:1px 6px}
+  border:1px solid var(--border);padding:1px 6px}
 .links a:hover{border-color:currentColor}
 .links .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
 
-.response{border:1px solid var(--line);padding:12px 14px;margin:16px 0}
+.response{border:1px solid var(--border);padding:12px 14px;margin:16px 0}
 .response label{display:block;font-size:var(--fs-sm);font-weight:700;
   text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}
 .response .discuss{font-size:var(--fs-base);margin:0 0 10px}
 .response textarea{display:block;width:100%;min-height:76px;padding:8px;
-  background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  background:var(--bg);color:var(--fg);border:1px solid var(--border);
   font:var(--fs-base)/1.5 var(--mono);resize:vertical}
 .response textarea:focus-visible{outline:none;border-color:var(--focus);
   box-shadow:inset 0 0 0 1px var(--focus)}
 .savebar{position:fixed;bottom:14px;right:19px;display:flex;align-items:center;
-  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--line);
+  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--border);
   padding:7px 9px 7px 16px}
 .savebar .stat{font-size:var(--fs-sm)}
 .savebar button{font:700 var(--fs-base) inherit;cursor:pointer;
-  border:1px solid var(--line);background:none;color:var(--ink);padding:6px 14px}
+  border:1px solid var(--border);background:none;color:var(--fg);padding:6px 14px}
 .savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus)}
 .savebar button.ghost{padding:6px 10px}
 </style></head>

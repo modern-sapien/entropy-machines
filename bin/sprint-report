@@ -1,0 +1,345 @@
+#!/bin/sh
+# Generate a sprint report from tracker state and git history.
+#
+#   bin/sprint-report <sprint-name>           # e.g. "sprint-2"
+#   bin/sprint-report <sprint-name> --since <commit>   # issues since that commit
+#
+# Reads .entropy-machines/issues.json for issue states, git log for changes,
+# fills lib/sprint-report-template.html with real data, writes to the
+# configured docs directory, and runs enhance.py on the result.
+#
+# The output is a dialogue doc the owner can answer via bin/serve.
+set -e
+
+usage() {
+  cat >&2 <<'EOF'
+usage: bin/sprint-report <sprint-name> [--since <commit>]
+
+  sprint-name    Identifier for the sprint (e.g. "sprint-2", "sprint-3")
+  --since        Git commit to measure changes from (default: 10 commits back)
+
+Writes SPRINT-REPORT-<sprint-name>.html to the docs directory and runs
+enhance.py on it.
+EOF
+  exit 2
+}
+
+name=""; since=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage ;;
+    --since) since="$2"; shift 2 ;;
+    -*) usage ;;
+    *) [ -n "$name" ] && usage; name="$1"; shift ;;
+  esac
+done
+[ -n "$name" ] || usage
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root sprint-report
+
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
+case "$docs_dir" in
+  /*) docs_path="$docs_dir" ;;
+  *) docs_path="$ENTROPY_MACHINES_ROOT/$docs_dir" ;;
+esac
+mkdir -p "$docs_path"
+
+export ENTROPY_MACHINES_HOME ENTROPY_MACHINES_ROOT
+export SPRINT_DOCS_PATH="$docs_path"
+export SPRINT_NAME="$name"
+export SPRINT_SINCE="$since"
+export PYTHONPATH="$ENTROPY_MACHINES_HOME/lib${PYTHONPATH:+:$PYTHONPATH}"
+
+exec python3 - <<'PY'
+"""Sprint report generator — fills lib/sprint-report-template.html with data
+from the tracker and git history, writes the result to the docs directory,
+and runs enhance.py on it.
+
+Everything it needs arrives as environment from the shell shim above.
+"""
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+ENTROPY_MACHINES_HOME = os.environ["ENTROPY_MACHINES_HOME"]
+ENTROPY_MACHINES_ROOT = os.environ["ENTROPY_MACHINES_ROOT"]
+DOCS_PATH = os.environ["SPRINT_DOCS_PATH"]
+SPRINT_NAME = os.environ["SPRINT_NAME"]
+SPRINT_SINCE = os.environ.get("SPRINT_SINCE", "")
+
+TEMPLATE = os.path.join(ENTROPY_MACHINES_HOME, "lib", "sprint-report-template.html")
+TRACKER = os.path.join(ENTROPY_MACHINES_ROOT, ".entropy-machines", "issues.json")
+
+
+def esc(s: str) -> str:
+    return html.escape(str(s), quote=True)
+
+
+def run(cmd: list[str], **kw) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False, **kw)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def load_tracker() -> dict:
+    try:
+        with open(TRACKER, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {"issues": {}, "notes": []}
+
+
+def git_log(n: int = 15) -> list[str]:
+    r = run(["git", "log", "--oneline", "-%d" % n], cwd=ENTROPY_MACHINES_ROOT)
+    if r and r.returncode == 0:
+        return [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    return []
+
+
+def git_diff_stat(since: str = "HEAD") -> str:
+    r = run(["git", "diff", "--stat", since], cwd=ENTROPY_MACHINES_ROOT)
+    if r and r.returncode == 0:
+        return r.stdout.strip()
+    return "(unavailable)"
+
+
+def git_branch() -> str:
+    r = run(["git", "branch", "--show-current"], cwd=ENTROPY_MACHINES_ROOT)
+    if r and r.returncode == 0:
+        return r.stdout.strip()
+    return "unknown"
+
+
+def git_commit_count(since: str = "") -> int:
+    if since:
+        r = run(["git", "rev-list", "--count", "%s..HEAD" % since], cwd=ENTROPY_MACHINES_ROOT)
+    else:
+        r = run(["git", "rev-list", "--count", "HEAD"], cwd=ENTROPY_MACHINES_ROOT)
+    if r and r.returncode == 0:
+        return int(r.stdout.strip())
+    return 0
+
+
+def categorize_issues(tracker: dict) -> tuple[list, list, list]:
+    """Split issues into (done, in_progress, not_started)."""
+    issues = tracker.get("issues", {})
+    done, progress, notstarted = [], [], []
+    for iid, info in sorted(issues.items()):
+        entry = {"id": iid, **info}
+        status = info.get("status", "")
+        if status == "done":
+            done.append(entry)
+        elif status == "progress":
+            progress.append(entry)
+        elif status == "notstarted":
+            notstarted.append(entry)
+    return done, progress, notstarted
+
+
+def get_handoff_notes(tracker: dict, issue_id: str) -> dict:
+    """Get the last HANDOFF note fields for an issue."""
+    notes = tracker.get("notes", [])
+    last = {}
+    for note in notes:
+        if note.get("issue") == issue_id and note.get("verb") == "HANDOFF":
+            last = note.get("fields", {})
+    return last
+
+
+def build_delivered_html(tracker: dict, done: list, progress: list) -> str:
+    """Build the HTML for delivered issues."""
+    parts = []
+    all_issues = done + progress
+    if not all_issues:
+        parts.append('  <p class="foot">No issues delivered this sprint.</p>\n')
+        return "".join(parts)
+
+    for entry in all_issues:
+        iid = entry["id"]
+        title = esc(entry.get("title", ""))
+        status = entry.get("status", "")
+        pill_class = "grn" if status == "done" else "dec"
+        pill_text = status
+
+        handoff = get_handoff_notes(tracker, iid)
+        changed = esc(handoff.get("changed", ""))
+        verified = esc(handoff.get("verified", ""))
+        scope = handoff.get("scope", [])
+        if isinstance(scope, list):
+            files = ", ".join("<code>%s</code>" % esc(s) for s in scope)
+        else:
+            files = "<code>%s</code>" % esc(str(scope))
+
+        parts.append('  <div class="card">\n')
+        parts.append('    <p><code>%s</code> <span class="pill %s">%s</span></p>\n' % (esc(iid), pill_class, pill_text))
+        parts.append('    <p>%s</p>\n' % title)
+        if changed:
+            parts.append('    <p><strong>Changed:</strong> %s</p>\n' % changed)
+        if files:
+            parts.append('    <p><strong>Files:</strong> %s</p>\n' % files)
+        if verified:
+            parts.append('    <p class="foot"><strong>Verified:</strong> %s</p>\n' % verified)
+        parts.append('  </div>\n')
+
+    return "".join(parts)
+
+
+def build_verified_rows(tracker: dict) -> str:
+    """Build verification table rows from test suite results."""
+    # Run the test suite and doclint to get real results
+    rows = []
+
+    # Test suite
+    r = run(["tests/run"], cwd=ENTROPY_MACHINES_ROOT)
+    if r and r.returncode == 0:
+        # Parse pass count from output
+        lines = r.stdout.strip().splitlines()
+        last = lines[-1] if lines else ""
+        rows.append('      <tr><td>Full test suite</td><td><code>tests/run</code></td><td>%s</td></tr>' % esc(last))
+    else:
+        rows.append('      <tr><td>Full test suite</td><td><code>tests/run</code></td><td>(not run)</td></tr>')
+
+    # Doclint
+    import glob
+    prds = glob.glob(os.path.join(DOCS_PATH, "PRD-*.html"))
+    if prds:
+        r = run([os.path.join(ENTROPY_MACHINES_HOME, "bin", "doclint")] + prds, cwd=ENTROPY_MACHINES_ROOT)
+        if r and r.returncode == 0:
+            rows.append('      <tr><td>Doc lint</td><td><code>bin/doclint PRD-*.html</code></td><td>%d/%d pass</td></tr>' % (len(prds), len(prds)))
+        else:
+            msg = esc((r.stderr or r.stdout or "failed").strip()[:80]) if r else "(not run)"
+            rows.append('      <tr><td>Doc lint</td><td><code>bin/doclint PRD-*.html</code></td><td>%s</td></tr>' % msg)
+
+    # Tracker status
+    issues = tracker.get("issues", {})
+    done_count = sum(1 for i in issues.values() if i.get("status") == "done")
+    progress_count = sum(1 for i in issues.values() if i.get("status") == "progress")
+    rows.append('      <tr><td>Tracker status</td><td><code>.entropy-machines/issues.json</code></td><td>%d done, %d in progress</td></tr>' % (done_count, progress_count))
+
+    return "\n".join(rows)
+
+
+def build_decisions_html() -> str:
+    """Build placeholder decision cards. The generator creates a basic set;
+    real decisions should be hand-added or extended by the caller."""
+    return """  <div class="card flag">
+    <span class="eyebrow">Review needed</span>
+    <p>Review the delivered issues above and the verification evidence. Flag anything
+    that needs rework or further testing.</p>
+  </div>
+
+  <div class="response" data-resp="s-decisions">
+    <label>Decisions</label>
+    <div class="discuss">Any decisions or rulings to make before closing this sprint?</div>
+    <textarea placeholder="Type your answer..."></textarea>
+  </div>
+"""
+
+
+def build_next_html(notstarted: list) -> str:
+    """Build the upcoming issues list."""
+    if not notstarted:
+        return '  <p class="foot">No open issues in the tracker.</p>\n'
+    parts = ['  <ul>\n']
+    for entry in notstarted:
+        parts.append('    <li><code>%s</code> — %s</li>\n' % (esc(entry["id"]), esc(entry.get("title", ""))))
+    parts.append('  </ul>\n')
+    return "".join(parts)
+
+
+def build_open_items(progress: list) -> str:
+    """Build the open/in-progress items section."""
+    if not progress:
+        return '  <p>No issues still in progress.</p>\n'
+    parts = ['  <h2>Still in progress</h2>\n', '  <ul>\n']
+    for entry in progress:
+        parts.append('    <li><code>%s</code> <span class="pill dec">in progress</span> — %s</li>\n' % (
+            esc(entry["id"]), esc(entry.get("title", ""))))
+    parts.append('  </ul>\n')
+    return "".join(parts)
+
+
+def main():
+    tracker = load_tracker()
+    done, progress, notstarted = categorize_issues(tracker)
+
+    # Read template
+    try:
+        with open(TEMPLATE, encoding="utf-8") as f:
+            tmpl = f.read()
+    except OSError as exc:
+        print("sprint-report: cannot read template at %s: %s" % (TEMPLATE, exc), file=sys.stderr)
+        sys.exit(1)
+
+    branch = git_branch()
+    commit_count = git_commit_count(SPRINT_SINCE) if SPRINT_SINCE else len(git_log(50))
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    total_delivered = len(done) + len(progress)
+    pill_class = "grn" if not progress else "dec"
+    pill_text = "%d delivered" % len(done)
+    if progress:
+        pill_text += ", %d in progress" % len(progress)
+
+    # Fill placeholders
+    replacements = {
+        "{{TITLE}}": "Sprint Report: %s" % SPRINT_NAME,
+        "{{SPRINT_NAME}}": SPRINT_NAME,
+        "{{SPRINT_DATE}}": today,
+        "{{SUBTITLE}}": "%s · %d commits on %s" % (today, commit_count, branch),
+        "{{SUMMARY_PILL_CLASS}}": pill_class,
+        "{{SUMMARY_PILL_TEXT}}": pill_text,
+        "{{SUMMARY_TEXT}}": "%d issues tracked. %d done, %d in progress, %d not started." % (
+            len(done) + len(progress) + len(notstarted), len(done), len(progress), len(notstarted)),
+        "{{HIGHLIGHTS_HTML}}": "",
+        "{{DELIVERED_ISSUES_HTML}}": build_delivered_html(tracker, done, progress),
+        "{{VERIFIED_ROWS_HTML}}": "      <tr><td>See verification page</td><td></td><td></td></tr>",
+        "{{NOT_VERIFIED_TEXT}}": "Browser-level smoke tests.",
+        "{{DECISIONS_HTML}}": build_decisions_html(),
+        "{{OPEN_ITEMS_HTML}}": build_open_items(progress),
+        "{{NEXT_ISSUES_HTML}}": build_next_html(notstarted),
+        "{{RESPONSES_JSON}}": "{}",
+        "{{DOC_KEY}}": "SPRINT-REPORT-%s" % SPRINT_NAME,
+    }
+
+    report = tmpl
+    for key, val in replacements.items():
+        report = report.replace(key, val)
+
+    # Write output
+    out_name = "SPRINT-REPORT-%s.html" % SPRINT_NAME
+    out_path = os.path.join(DOCS_PATH, out_name)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(report)
+    print("sprint-report: wrote %s" % out_path, flush=True)
+
+    # Run enhance.py on the output
+    sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
+    try:
+        import enhance
+        enhance.init(DOCS_PATH)
+        changed = enhance.patch(out_path)
+        if changed:
+            print("sprint-report: enhanced %s: %s" % (out_name, ", ".join(changed)), flush=True)
+        else:
+            print("sprint-report: %s already up to date" % out_name, flush=True)
+    except Exception as exc:
+        print("sprint-report: enhance.py failed: %s" % exc, file=sys.stderr)
+
+    print("sprint-report: done. Serve with: bin/serve", flush=True)
+
+
+if __name__ == "__main__":
+    main()
+PY

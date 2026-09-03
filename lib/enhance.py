@@ -6,7 +6,7 @@ Patches, each guarded by a marker so re-running is safe:
   2. nav-marks   — live per-section review state in the sidebar.
   3. live-reload — polls for new reply folds and auto-reloads when clean.
   4. collapse    — collapses earlier rounds of long dialogue chains.
-  5. theme-toggle — system/light/dark toggle button and flash prevention.
+  5. theme-selector — named-theme selector (replaces the old dark/light toggle).
   6. readmark    — IntersectionObserver marks review blocks as read.
   7. docstatus   — shows doc-level status badge in the sidebar brand area.
   8. issue-agree — checkboxes on PRD issue tables for accept/reject (PRDs only).
@@ -17,6 +17,7 @@ Usage:
   python3 enhance.py <file>     # patch one file
 """
 import glob
+import json
 import os
 import re
 import sys
@@ -39,8 +40,10 @@ COLLAPSE_RV = "1"
 LOCKBOX_MARK = 'id="__lockbox-patch"'
 LOCKBOX_RV = "1"
 THEMEFLASH_MARK = 'id="__theme-flash-patch"'
+THEMEFLASH_RV = "2"
 THEMETOGGLE_MARK = 'id="__theme-toggle-patch"'
-THEMETOGGLE_RV = "1"
+THEMETOGGLE_RV = "2"
+THEME_OPTIONS_MARK = 'id="__theme-options-patch"'
 READMARK_MARK = 'id="__readmark-patch"'
 READMARK_RV = "1"
 DOCSTATUS_MARK = 'id="__docstatus-patch"'
@@ -76,6 +79,7 @@ DISK_SAVE_RV = "3"
 GATE_MARKS = (DISK_SAVE_MARK, DISK_WINS_MARK, BOXSTATE_MARK, NAVMARK_MARK,
               TODOBANNER_MARK, TRACKERNAV_MARK, COLLAPSE_MARK,
               LOCKBOX_MARK, THEMEFLASH_MARK, THEMETOGGLE_MARK,
+              THEME_OPTIONS_MARK,
               READMARK_MARK, DOCSTATUS_MARK, UNSAVED_CUE_MARK,
               LIVERELOAD_MARK, AUTOSAVE_MARK)
 
@@ -101,7 +105,8 @@ VERSIONED = {
     "__navmark-patch": ("data-nm", lambda: NAVMARK_RV, lambda: _script_only(NAVMARK)),
     "__todobanner-patch": ("data-tb", lambda: TODOBANNER_RV, lambda: _script_only(TODOBANNER)),
     "__collapse-patch": ("data-cl", lambda: COLLAPSE_RV, lambda: _script_only(COLLAPSE)),
-    "__theme-toggle-patch": ("data-tt", lambda: THEMETOGGLE_RV, lambda: THEMETOGGLE),
+    "__theme-flash-patch": ("data-tf", lambda: THEMEFLASH_RV, lambda: THEMEFLASH),
+    "__theme-toggle-patch": ("data-tt", lambda: THEMETOGGLE_RV, lambda: _themetoggle_body()),
     "__lockbox-patch": ("data-lb", lambda: LOCKBOX_RV, lambda: LOCKBOX),
     "__readmark-patch": ("data-rm", lambda: READMARK_RV, lambda: _script_only(READMARK)),
     "__docstatus-patch": ("data-dstatus", lambda: DOCSTATUS_RV, lambda: _script_only(DOCSTATUS)),
@@ -667,7 +672,7 @@ REPORTNAV = r"""<style id="__reportnav-css">
     margin:.35rem 0 0; flex-basis:100%; }
   main nav .seclinks a{ font-size:var(--fs-sm,12px); font-weight:700;
     text-decoration:none; color:var(--dim,#666);
-    border:1px solid var(--line,#ccc); padding:2px 8px; }
+    border:1px solid var(--border,#ccc); padding:2px 8px; }
   main nav .seclinks a:hover{ color:var(--accent,#0F4A85); border-color:currentColor; }
   main nav .seclinks a:target,
   main nav .seclinks a.here{ color:var(--focus,#F38518); border-color:currentColor; }
@@ -918,47 +923,110 @@ COLLAPSE = r'''
 '''.strip()
 
 
-THEMEFLASH = r'''<script id="__theme-flash-patch">try{var t=localStorage.getItem('entropy-machines-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>'''
+THEMEFLASH = r'''<script id="__theme-flash-patch" data-tf="__RV__">try{var t=localStorage.getItem('entropy-machines-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>'''
 
-THEMETOGGLE = r'''
+# ---- theme infrastructure ---------------------------------------------------
+# A THEME FILE IS TOKENS ONLY — :root blocks with CSS custom properties.
+# _theme_options() reads the .css files, extracts the bare :root tokens, and
+# scopes each under :root[data-theme="<name>"] so that setting data-theme
+# to the theme name activates those tokens.
+
+_theme_cache = None
+
+
+def _theme_options():
+    """Read all theme CSS files, return (scoped_css, theme_list)."""
+    global _theme_cache
+    if _theme_cache is not None:
+        return _theme_cache
+    themes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'themes')
+    if not os.path.isdir(themes_dir):
+        _theme_cache = ('', [])
+        return _theme_cache
+    blocks = []
+    themes = []
+    for fname in sorted(os.listdir(themes_dir)):
+        if not fname.endswith('.css'):
+            continue
+        name = fname[:-4]
+        path = os.path.join(themes_dir, fname)
+        try:
+            css = open(path, encoding='utf-8').read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        m = re.search(r':root\s*\{([^}]+)\}', css)
+        if not m:
+            continue
+        tokens = m.group(1)
+        blocks.append(':root[data-theme="%s"]{%s}' % (name, tokens))
+        label = name.replace('-', ' ').title()
+        themes.append({'name': name, 'label': label})
+    _theme_cache = ('\n'.join(blocks), themes)
+    return _theme_cache
+
+
+def _themetoggle_body():
+    """Build the theme-selector patch body with embedded theme names."""
+    _, themes = _theme_options()
+    themes_json = json.dumps(themes)
+    return _THEMETOGGLE_TEMPLATE.replace('__THEMES_JSON__', themes_json)
+
+
+_THEMETOGGLE_TEMPLATE = r'''
+<style id="__theme-toggle-css">
+  .savebar select#themeBtn{
+    font:inherit; font-size:var(--fs-sm,12px);
+    background:var(--bg,#000); border:1px solid var(--border,#ddd);
+    color:inherit; padding:2px 6px; cursor:pointer;
+  }
+  .savebar select#themeBtn:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+</style>
 <script id="__theme-toggle-patch" data-tt="__RV__">
-// Theme toggle: cycles system -> light -> dark -> system.
-// Creates the themeBtn in the savebar if absent, so docs that do not template
-// the button still get one when enhanced.
 (function(){
   var KEY='entropy-machines-theme';
-  var MODES=['system','light','dark'];
-  var ICONS={system:'◐', light:'☀︎', dark:'☽'};
-  var TITLES={system:'Theme: system', light:'Theme: light', dark:'Theme: dark'};
-  var btn=document.getElementById('themeBtn');
-  if(!btn){
+  var THEMES=__THEMES_JSON__;
+  var el=document.getElementById('themeBtn');
+  var sel;
+  if(el && el.tagName==='SELECT'){
+    sel=el;
+  }else{
     var bar=document.querySelector('.savebar');
     if(!bar) return;
-    btn=document.createElement('button');
-    btn.id='themeBtn'; btn.className='ghost'; btn.title='Switch theme';
+    sel=document.createElement('select');
+    sel.id='themeBtn'; sel.title='Theme';
+    if(el) el.parentNode.removeChild(el);
     var save=document.getElementById('saveBtn');
-    if(save) bar.insertBefore(btn, save);
-    else bar.appendChild(btn);
+    if(save) bar.insertBefore(sel, save);
+    else bar.appendChild(sel);
   }
-  function current(){
-    try{ var v=localStorage.getItem(KEY); if(MODES.indexOf(v)>=0) return v; }catch(e){}
-    return 'system';
+  if(!sel.options.length){
+    var d=document.createElement('option');
+    d.value=''; d.textContent='Default theme';
+    sel.appendChild(d);
+    THEMES.forEach(function(t){
+      var o=document.createElement('option');
+      o.value=t.name; o.textContent=t.label;
+      sel.appendChild(o);
+    });
   }
-  function apply(mode){
-    if(mode==='system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', mode);
-    btn.textContent=ICONS[mode];
-    btn.title=TITLES[mode];
-    try{ if(mode==='system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); }catch(e){}
-  }
-  apply(current());
-  btn.addEventListener('click', function(){
-    var i=MODES.indexOf(current());
-    apply(MODES[(i+1)%MODES.length]);
+  var stored='';
+  try{ stored=localStorage.getItem(KEY)||''; }catch(e){}
+  sel.value=stored;
+  sel.addEventListener('change', function(){
+    var v=sel.value;
+    if(v){
+      document.documentElement.setAttribute('data-theme', v);
+      try{ localStorage.setItem(KEY, v); }catch(e){}
+    }else{
+      document.documentElement.removeAttribute('data-theme');
+      try{ localStorage.removeItem(KEY); }catch(e){}
+    }
   });
 })();
 </script>
 '''.strip()
+
+THEMETOGGLE = _THEMETOGGLE_TEMPLATE
 
 
 LOCKBOX = r'''
@@ -1340,20 +1408,32 @@ def apply(src, name="doc.html"):
         if upgraded != src:
             src = upgraded
             changed.append("collapse v" + COLLAPSE_RV)
+    # Theme options CSS — scoped :root[data-theme="<name>"] blocks for every
+    # theme in lib/themes/. Injected before </head> so the tokens are available
+    # when __theme-flash-patch sets data-theme right after <body>.
+    if THEME_OPTIONS_MARK not in src:
+        options_css, _ = _theme_options()
+        if options_css:
+            block = '<style id="__theme-options-patch">\n' + options_css + '\n</style>'
+            src = src.replace("</head>", block + "\n</head>", 1)
+            changed.append("theme-options")
     # Theme flash prevention — right after <body> so it runs before paint.
-    # Match </head><body> to avoid the string "<body>" appearing inside a CSS
-    # comment (PRD-001's style block mentions it).
     if THEMEFLASH_MARK not in src:
-        src = src.replace("</head><body>", "</head><body>\n" + THEMEFLASH, 1)
-        changed.append("theme-flash")
+        src = src.replace("</head><body>", "</head><body>\n" + versioned_block("__theme-flash-patch"), 1)
+        changed.append("theme-flash v" + THEMEFLASH_RV)
+    else:
+        upgraded = ensure_versioned(src, "__theme-flash-patch")
+        if upgraded != src:
+            src = upgraded
+            changed.append("theme-flash v" + THEMEFLASH_RV)
     if THEMETOGGLE_MARK not in src:
         src = src.replace("</body>", versioned_block("__theme-toggle-patch") + "\n</body>", 1)
-        changed.append("theme-toggle v" + THEMETOGGLE_RV)
+        changed.append("theme-selector v" + THEMETOGGLE_RV)
     else:
         upgraded = ensure_versioned(src, "__theme-toggle-patch")
         if upgraded != src:
             src = upgraded
-            changed.append("theme-toggle v" + THEMETOGGLE_RV)
+            changed.append("theme-selector v" + THEMETOGGLE_RV)
     if LOCKBOX_MARK not in src:
         src = src.replace("</body>", versioned_block("__lockbox-patch") + "\n</body>", 1)
         changed.append("lockbox v" + LOCKBOX_RV)

@@ -6,9 +6,9 @@
    therefore work: whichever state a theme does not name falls through to its
    own bare :root.
 
-   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark accent)
-   and #7c3aed (light accent), lifted from src/shared/brand.ts. This theme
-   uses them as --accent in their respective states. The surrounding palette is
+   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark link)
+   and #7c3aed (light link), lifted from src/shared/brand.ts. This theme
+   uses them as --link in their respective states. The surrounding palette is
    built to clear WCAG AAA (7:1 body text, 4.5:1 large text and UI) while
    keeping the violet instantly recognisable.
 
@@ -25,24 +25,24 @@
 :root{
   --bg:#0a0a0d;              /* Janus product dark background */
   --panel:#18181b;           /* Janus dark surface */
-  --ink:#fafafa;             /* Janus dark text — 19.2:1 on --bg */
+  --fg:#fafafa;              /* Janus dark text — 19.2:1 on --bg */
   --dim:rgba(250,250,250,.7); /* muted text on dark */
-  --line:#a78bfa;            /* violet border — the brand signal */
+  --border:#a78bfa;          /* violet border — the brand signal */
   --focus:#f59e0b;           /* amber — unmistakable, no hue collision */
-  --accent:#a78bfa;          /* Janus dark accent */
-  --ok:#23D18B; --warn:#fbbf24; --bad:#ef4444; --alt:#c084fc;
+  --link:#a78bfa;            /* Janus dark link */
+  --positive:#23D18B; --caution:#fbbf24; --negative:#ef4444; --accent:#c084fc;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-  --positive:var(--ok); --good:var(--ok); --muted:var(--dim); --border:var(--line);
-  --caution:var(--warn); --warn-deep:var(--warn); --code-bg:var(--panel);
+  --good:var(--positive); --muted:var(--dim);
+  --warn-deep:var(--caution); --code-bg:var(--panel);
 }
 :root[data-theme=light]{
   --bg:#faf9fc;              /* Janus product light background */
   --panel:#ffffff;
-  --ink:#18181b;             /* Janus light text — 17.4:1 on --bg */
+  --fg:#18181b;              /* Janus light text — 17.4:1 on --bg */
   --dim:rgba(24,24,27,.7);
-  --line:#7c3aed;            /* violet border, saturated for light ground */
+  --border:#7c3aed;          /* violet border, saturated for light ground */
   --focus:#d97706;           /* amber — darker for light ground contrast */
-  --accent:#7c3aed;          /* Janus light accent */
-  --ok:#0A5C21; --warn:#92400e; --bad:#b91c1c; --alt:#6d28d9;
+  --link:#7c3aed;            /* Janus light link */
+  --positive:#0A5C21; --caution:#92400e; --negative:#b91c1c; --accent:#6d28d9;
 }

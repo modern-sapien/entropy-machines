@@ -33,35 +33,6 @@ sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
 import config  # noqa: E402  -- needs ENTROPY_MACHINES_HOME on the path first
 
 
-def entropy_machines_root():
-    """Mirrors lib/roots.sh's entropy_machines_root(): the repository's main checkout,
-    or None. `git rev-parse --git-common-dir` -- NOT --show-toplevel, which
-    prints a linked WORKTREE's own path; .entropy/ is gitignored and absent
-    from every worktree, so that would report an empty tracker as "0 ready"
-    rather than as an error. Falls back to walking up for config.json when
-    there is no git."""
-    try:
-        p = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        p = None
-    if p is not None and p.returncode == 0 and p.stdout.strip():
-        common = p.stdout.strip()
-        if not os.path.isabs(common):
-            common = os.path.join(os.getcwd(), common)
-        return os.path.realpath(os.path.join(common, os.pardir))
-    d = os.getcwd()
-    while True:
-        if os.path.exists(os.path.join(d, "config.json")):
-            return d
-        parent = os.path.dirname(d)
-        if parent == d:
-            return None
-        d = parent
-
-
 def docs_dir_for(root):
     """config.json's docs.dir, defaulting to entropy-machines-docs -- the same
     default bin/init writes to and bin/serve reads from. Never raises."""
@@ -130,8 +101,8 @@ def main(argv):
         return 2
 
     config.refuse_nested_clone("status")
-    root = entropy_machines_root()
-    if not root or not os.path.isfile(os.path.join(ENTROPY_MACHINES_HOME, "config.json")):
+    root = config.find_repo_root()
+    if not os.path.isfile(os.path.join(ENTROPY_MACHINES_HOME, "config.json")):
         print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_MACHINES_HOME)
         return 0
 
