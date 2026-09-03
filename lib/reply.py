@@ -23,15 +23,16 @@ import docstate
 DIR = None  # set by docstate.init()
 
 REVIEW_CSS = """
-<style id="__review-css" data-rv="6">
+<style id="__review-css" data-rv="7">
   /* Flat dialogue: agent and user blocks alternate at the same visual level.
      The follow-up .response stays inside <aside> for the re-fold regex, but
-     CSS breaks it out of the aside's tint so it reads as a peer block. */
+     CSS breaks it out of the aside's tint so it reads as a peer block.
+     v7: agent voice uses --accent left-border to match .discuss blocks. */
   aside.review{
-    border:1px solid var(--border,#6FC3DF); border-left:3px solid var(--border,#6FC3DF);
+    border:1px solid var(--border,#6FC3DF); border-left:3px solid var(--accent,#D670D6);
     padding:.7rem .9rem; margin:.6rem 0 .3rem; font-size:var(--fs-base,14px);
     color:inherit; background:var(--bg,#000); }
-  aside.review .who{ font-weight:700; color:var(--border,#6FC3DF); font-size:var(--fs-sm,12px);
+  aside.review .who{ font-weight:700; color:var(--accent,#D670D6); font-size:var(--fs-sm,12px);
     letter-spacing:.04em; text-transform:uppercase; display:block; margin-bottom:.35rem; }
   aside.review p{ margin:.4rem 0; } aside.review ul{ margin:.4rem 0 .4rem 1.1rem; }
   aside.review li{ margin:.2rem 0; }

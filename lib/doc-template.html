@@ -215,9 +215,13 @@
   .response label{display:block; font-size:var(--fs-sm); font-weight:700;
     text-transform:uppercase; letter-spacing:.05em; color:var(--caution); margin-bottom:5px;}
   .response .discuss{margin:0 0 10px; padding:9px 12px; border:1px solid var(--border);
-    border-left:2px solid var(--accent); background:none;
+    border-left:3px solid var(--accent); background:none;
     font-size:var(--fs-base); line-height:1.55; color:var(--fg);}
   .response .discuss code{font-size:var(--fs-sm);}
+  /* Thread role colours: agent voice (discuss + review) is --accent,
+     user voice (filled textarea) is --positive. */
+  .response.filled:not(.mini) textarea{border-left:3px solid var(--positive);}
+  main aside.review{border-left-color:var(--accent);}
   .response textarea{width:100%; min-height:52px; resize:vertical; font-family:var(--font);
     font-size:var(--fs-base); color:var(--fg); background:var(--bg);
     border:1px solid var(--border); padding:7px 10px; line-height:1.5; overflow:hidden;}
@@ -1006,7 +1010,8 @@
 </script>
 <style id="__lockbox-css">
   .response.locked textarea{background:var(--bg); color:var(--fg);
-    border:1px solid var(--border); cursor:default;}
+    border:1px solid var(--border); border-left:3px solid var(--positive);
+    cursor:default;}
   .response.locked label{color:var(--positive);}
 </style>
 <script id="__lockbox-patch" data-lb="1">
