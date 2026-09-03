@@ -9,6 +9,8 @@ Patches, each guarded by a marker so re-running is safe:
   5. theme-toggle — system/light/dark toggle button and flash prevention.
   6. readmark    — IntersectionObserver marks review blocks as read.
   7. docstatus   — shows doc-level status badge in the sidebar brand area.
+  8. issue-agree — checkboxes on PRD issue tables for accept/reject (PRDs only).
+  9. unsaved-cue — savebar border turns caution when edits are pending.
 
 Usage:
   python3 enhance.py            # patch every *.html in this folder
@@ -43,6 +45,10 @@ READMARK_MARK = 'id="__readmark-patch"'
 READMARK_RV = "1"
 DOCSTATUS_MARK = 'id="__docstatus-patch"'
 DOCSTATUS_RV = "1"
+ISSUE_AGREE_MARK = 'id="__issue-agree-patch"'
+ISSUE_AGREE_RV = "1"
+UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
+UNSAVED_CUE_RV = "1"
 LIVERELOAD_MARK = 'id="__livereload-patch"'
 # VERSIONED, like review-css, and for the same reason: every doc already carries
 # a copy of this patch stamped into its HTML, so a mark-only gate reads them all
@@ -65,11 +71,12 @@ DISK_SAVE_RV = "3"
 # testing nothing — the same duplicated-list failure the tracker.SOURCES
 # comment in serve.py documents. Both now import this. PRDSTATUS_MARK is
 # deliberately absent: it is applied only to PRD/SPINE docs, so requiring it
-# would make every other doc read stale forever.
+# would make every other doc read stale forever. ISSUE_AGREE_MARK is absent
+# for the same reason: it is applied only to PRDs with issue tables.
 GATE_MARKS = (DISK_SAVE_MARK, DISK_WINS_MARK, BOXSTATE_MARK, NAVMARK_MARK,
               TODOBANNER_MARK, TRACKERNAV_MARK, COLLAPSE_MARK,
               LOCKBOX_MARK, THEMEFLASH_MARK, THEMETOGGLE_MARK,
-              READMARK_MARK, DOCSTATUS_MARK,
+              READMARK_MARK, DOCSTATUS_MARK, UNSAVED_CUE_MARK,
               LIVERELOAD_MARK, AUTOSAVE_MARK)
 
 
@@ -98,6 +105,8 @@ VERSIONED = {
     "__lockbox-patch": ("data-lb", lambda: LOCKBOX_RV, lambda: LOCKBOX),
     "__readmark-patch": ("data-rm", lambda: READMARK_RV, lambda: _script_only(READMARK)),
     "__docstatus-patch": ("data-dstatus", lambda: DOCSTATUS_RV, lambda: _script_only(DOCSTATUS)),
+    "__issue-agree-patch": ("data-ia", lambda: ISSUE_AGREE_RV, lambda: _script_only(ISSUE_AGREE)),
+    "__unsaved-cue-patch": ("data-uc", lambda: UNSAVED_CUE_RV, lambda: UNSAVED_CUE),
 }
 
 
@@ -1127,6 +1136,159 @@ DOCSTATUS = r'''
 '''.strip()
 
 
+ISSUE_AGREE = r'''
+<style id="__issue-agree-css">
+  /* Issue agreement checkboxes on the PRD output/issues page. */
+  .issue-agree-th{ width:3.2rem; text-align:center; font-size:var(--fs-sm,12px);
+    font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    color:var(--dim,#666); }
+  .issue-agree-td{ text-align:center; vertical-align:middle; }
+  .issue-agree-td input[type="checkbox"]{ width:1.1rem; height:1.1rem;
+    cursor:pointer; accent-color:var(--positive,#23D18B); }
+</style>
+<script id="__issue-agree-patch" data-ia="__RV__">
+// Issue agreement checkboxes. On any page whose <h1> says "Issues this PRD
+// creates", every <table> gets an "Accept" column of checkboxes. The owner
+// checks the issues they agree to file, leaves the rest unchecked. State is
+// stored per-file in localStorage so it survives reloads.
+(function(){
+  var KEY_PREFIX='janus-issue-agree-';
+  var file=(location.pathname.split('/').pop()||'doc').split('?')[0];
+  var KEY=KEY_PREFIX+file;
+  function loadState(){
+    try{ return JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ return {}; }
+  }
+  function saveState(state){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  }
+  function issueId(tr){
+    // The first <td> holds the issue id in a <strong> tag.
+    var td=tr.querySelector('td');
+    if(!td) return null;
+    var s=td.querySelector('strong');
+    return s ? s.textContent.trim() : null;
+  }
+  function init(){
+    // Find pages whose <h1> says "Issues this PRD creates".
+    var pages=document.querySelectorAll('.page');
+    var issueTables=[];
+    pages.forEach(function(page){
+      var h1=page.querySelector('h1');
+      if(!h1 || h1.textContent.indexOf('Issues')===-1 ||
+         h1.textContent.indexOf('PRD')===-1) return;
+      var tables=page.querySelectorAll('table');
+      tables.forEach(function(t){ issueTables.push(t); });
+    });
+    if(!issueTables.length) return;
+    var state=loadState();
+    issueTables.forEach(function(table){
+      // Guard: do not add twice (idempotent).
+      if(table.querySelector('.issue-agree-th')) return;
+      // Add header.
+      var thead=table.querySelector('thead');
+      if(thead){
+        var headerRow=thead.querySelector('tr');
+        if(headerRow){
+          var th=document.createElement('th');
+          th.className='issue-agree-th';
+          th.textContent='Accept';
+          headerRow.insertBefore(th, headerRow.firstChild);
+        }
+      }
+      // Add checkboxes to each body row.
+      var tbody=table.querySelector('tbody');
+      if(!tbody) return;
+      var rows=tbody.querySelectorAll('tr');
+      rows.forEach(function(tr){
+        var id=issueId(tr);
+        var td=document.createElement('td');
+        td.className='issue-agree-td';
+        var cb=document.createElement('input');
+        cb.type='checkbox';
+        cb.title=id ? 'Accept '+id : 'Accept this issue';
+        if(id && state[id]) cb.checked=true;
+        cb.addEventListener('change', function(){
+          var st=loadState();
+          var iid=issueId(tr);
+          if(iid){ if(cb.checked) st[iid]=true; else delete st[iid]; }
+          saveState(st);
+        });
+        td.appendChild(cb);
+        tr.insertBefore(td, tr.firstChild);
+      });
+    });
+  }
+  init();
+  document.addEventListener('DOMContentLoaded', init);
+  setTimeout(init, 0);
+})();
+</script>
+'''.strip()
+
+
+def _has_issue_tables(src):
+    """True when this doc has an issues-output page with tables."""
+    return "Issues this PRD creates" in src and "<table" in src
+
+
+UNSAVED_CUE = r'''
+<script id="__unsaved-cue-patch" data-uc="__RV__">
+// Visual cue on the savebar when edits are pending.
+//
+// The template's inline script already sets saveStat to "Unsaved changes…", but
+// a text label is easy to miss in peripheral vision. This patch adds a
+// caution-coloured border to the savebar while any textarea differs from the
+// baked responses-data, so the reader has a persistent visual reminder that work
+// will be lost if the tab closes without a save.
+//
+// Resets to the default border on save (listens for saveStat text changing to
+// "Saved") and on clear. Runs after disk-save and disk-wins so responses-data
+// reflects the true on-disk state.
+(function(){
+  var bar=document.querySelector('.savebar');
+  if(!bar) return;
+  var origBorder=bar.style.borderColor||'';
+  var stat=document.getElementById('saveStat');
+  function baked(){
+    var el=document.getElementById('responses-data');
+    try{ return JSON.parse((el&&el.textContent)||'{}')||{}; }catch(e){ return {}; }
+  }
+  function hasPendingEdits(){
+    var disk=baked();
+    var found=false;
+    document.querySelectorAll('.response[data-resp]').forEach(function(el){
+      var t=el.querySelector('textarea'); if(!t) return;
+      var key=el.getAttribute('data-resp');
+      if((t.value||'').trim()!==String(disk[key]||'').trim()) found=true;
+    });
+    return found;
+  }
+  function update(){
+    if(hasPendingEdits()){
+      bar.style.borderColor='var(--caution,#a16207)';
+      bar.style.borderWidth='2px';
+    }else{
+      bar.style.borderColor=origBorder;
+      bar.style.borderWidth='';
+    }
+  }
+  document.querySelectorAll('.response[data-resp] textarea').forEach(function(t){
+    t.addEventListener('input', update);
+  });
+  // Reset after save or clear.
+  if(stat){
+    new MutationObserver(function(){ update(); }).observe(stat,{childList:true,characterData:true,subtree:true});
+  }
+  document.addEventListener('click', function(e){
+    var id=e.target&&e.target.id;
+    if(id==='saveBtn'||id==='clearBtn') setTimeout(update, 100);
+  });
+  update();
+})();
+</script>
+'''.strip()
+
+
 def apply(src, name="doc.html"):
     """Pure transform: apply all patches to src, return (new_src, changed).
 
@@ -1216,6 +1378,28 @@ def apply(src, name="doc.html"):
         if upgraded != src:
             src = upgraded
             changed.append("docstatus v" + DOCSTATUS_RV)
+    # Issue agreement checkboxes — only on PRDs that have an issues-output page
+    # with tables. Like PRDSTATUS_MARK, not in GATE_MARKS because requiring it
+    # of all docs would make every non-PRD read stale.
+    if _has_issue_tables(src):
+        if ISSUE_AGREE_MARK not in src:
+            src = src.replace("</body>", ISSUE_AGREE.replace("__RV__", ISSUE_AGREE_RV) + "\n</body>", 1)
+            changed.append("issue-agree v" + ISSUE_AGREE_RV)
+        else:
+            upgraded = ensure_versioned(src, "__issue-agree-patch")
+            if upgraded != src:
+                src = upgraded
+                changed.append("issue-agree v" + ISSUE_AGREE_RV)
+    # Unsaved-cue — savebar border turns caution when edits are pending.
+    # Applied to every doc that has a savebar.
+    if UNSAVED_CUE_MARK not in src:
+        src = src.replace("</body>", versioned_block("__unsaved-cue-patch") + "\n</body>", 1)
+        changed.append("unsaved-cue v" + UNSAVED_CUE_RV)
+    else:
+        upgraded = ensure_versioned(src, "__unsaved-cue-patch")
+        if upgraded != src:
+            src = upgraded
+            changed.append("unsaved-cue v" + UNSAVED_CUE_RV)
     if LIVERELOAD_MARK not in src:
         src = src.replace("</body>", livereload_block() + "\n</body>", 1)
         changed.append("live-reload v" + LIVERELOAD_RV)

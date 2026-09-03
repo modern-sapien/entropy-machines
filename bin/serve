@@ -19,7 +19,14 @@
 #                                 reason OTHER than the reader's own answer
 #                                 being written back — see docs/SERVE.md.
 #   POST /__save?file=<f>        body is {data-resp: answer}; merged back
-#                                 into <f> ON DISK, atomically.
+#                                 into <f> ON DISK, atomically. On success,
+#                                 docstate.on_save() snapshots the version
+#                                 and flips the doc's status to in-review.
+#   GET  /__docstatus?file=<f>   {"status":"open","version":3,...} — the
+#                                 doc's current status from manifest.json.
+#   POST /__docstatus            body is {"file":"<f>","status":"<s>"};
+#                                 calls docstate.set_status() to move the
+#                                 doc to the given status.
 #
 # See docs/SERVE.md for the full contract, the docversion hash's exact
 # semantics, and the dashboard's data sources.
@@ -173,6 +180,28 @@ THEME_FILE = os.environ["SERVE_THEME_FILE"]
 # a doc missing disk-save, nav-marks, live-reload, collapse, etc.
 sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
 import enhance
+
+# docstate lives in lib/ — add it to the path so we can import it.
+# Optional: if docstate.py is not present the server works without it —
+# POST /__save still merges answers, the /__docstatus endpoints 404, and
+# no snapshot/status bookkeeping runs. This is the first-clone state before
+# lib/docstate.py is committed.
+try:
+    import docstate
+except ImportError:
+    docstate = None
+
+# ---------------------------------------------------------------------------
+# DOCSTATE — init once; on_save() is called from POST /__save.
+# init() is best-effort: if the manifest does not exist (first-run, no docs
+# built yet) docstate functions silently no-op via on_save's "file not in
+# manifest" guard, and the /__docstatus endpoints return 404.
+# ---------------------------------------------------------------------------
+if docstate is not None:
+    try:
+        docstate.init(DOCS_PATH)
+    except Exception:  # noqa: BLE001
+        pass
 
 # ---------------------------------------------------------------------------
 # THEME — read ONCE, at startup, and refused loudly if it cannot be read.
@@ -666,6 +695,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"reviews": doc_signature(text)})
             return
 
+        if path == "/__docstatus":
+            self._docstatus_get(parsed)
+            return
+
         # a bare filename request — the only other shape this server serves.
         name = path.lstrip("/")
         target = doc_path(name)
@@ -693,6 +726,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/__docstatus":
+            self._docstatus_post(parsed)
+            return
         if parsed.path != "/__save":
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
@@ -713,7 +749,81 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - report, don't crash the server
             self._send_json(500, {"error": str(exc)})
             return
+        # --- docstate: snapshot + status flip after a successful save ---
+        if docstate is not None:
+            try:
+                docstate.on_save(name)
+            except Exception:  # noqa: BLE001 - never fail the save for bookkeeping
+                pass
         self._send_json(200, {"ok": True, "count": count})
+
+    # ------------------------------------------------------------------
+    # /__docstatus — read or write the doc-level status from the browser.
+    # GET  /__docstatus?file=X        → {"status":"open", ...}
+    # POST /__docstatus  {file,status} → {"ok":true,"status":"open"}
+    # ------------------------------------------------------------------
+    def _docstatus_get(self, parsed):
+        if docstate is None:
+            self._send_json(404, {"error": "docstate not available"})
+            return
+        name = (parse_qs(parsed.query).get("file") or [""])[0]
+        safe = safe_doc_name(name)
+        if safe is None:
+            self._send_json(400, {"error": "bad file"})
+            return
+        try:
+            m = docstate.load()
+        except Exception:  # noqa: BLE001
+            self._send_json(404, {"error": "no manifest"})
+            return
+        did = next((d for d, e in m["docs"].items() if e.get("file") == safe), None)
+        if did is None:
+            self._send_json(404, {"error": "doc not in manifest"})
+            return
+        entry = m["docs"][did]
+        self._send_json(200, {
+            "status": entry.get("status", ""),
+            "version": entry.get("version", 0),
+            "handle": entry.get("handle", did),
+            "updatedAt": entry.get("updatedAt", ""),
+        })
+
+    def _docstatus_post(self, parsed):
+        if docstate is None:
+            self._send_json(404, {"error": "docstate not available"})
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("expected an object")
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(400, {"error": str(exc)})
+            return
+        name = body.get("file", "")
+        status = body.get("status", "")
+        safe = safe_doc_name(name)
+        if safe is None:
+            self._send_json(400, {"error": "bad file"})
+            return
+        if status not in docstate.STATUS:
+            self._send_json(400, {"error": "unknown status %r; one of %s" % (status, list(docstate.STATUS))})
+            return
+        try:
+            m = docstate.load()
+        except Exception:  # noqa: BLE001
+            self._send_json(404, {"error": "no manifest"})
+            return
+        did = next((d for d, e in m["docs"].items() if e.get("file") == safe), None)
+        if did is None:
+            self._send_json(404, {"error": "doc not in manifest"})
+            return
+        try:
+            docstate.set_status(m, did, status)
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "status": status})
 
 
 def main():

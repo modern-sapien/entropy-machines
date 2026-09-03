@@ -1149,3 +1149,105 @@ true
 echo "handoff: recorded on $id."
 [ -n "$scope" ] && echo "  scope released: $scope"
 echo "  The commit-msg guard for $id is now satisfied."
+
+# --- auto-open changed docs in the browser (best-effort) ---------------------
+#
+# After --verified records successfully, open any changed doc files in the
+# browser so the owner can review them immediately. Starts bin/serve if it is
+# not already listening on a port in the 8787–8806 range.
+#
+# BEST-EFFORT: wrapped in a subshell whose failure is caught and discarded. A
+# doc that cannot be opened, a serve that cannot start, a port that cannot be
+# found — none of these may fail the handoff that just succeeded.
+_open_changed_docs() {
+  _docs_dir=$(python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get docs.dir 2>/dev/null) \
+    || _docs_dir="entropy-machines-docs"
+
+  # --- 1. Collect doc basenames from the worktree scan (most precise) --------
+  _doc_names=""
+  if [ -n "$tmp" ] && [ -s "$tmp/changes" ]; then
+    while read -r _kind _path; do
+      [ -n "$_path" ] || continue
+      case "$_path" in "$_docs_dir"/*.html)
+        _bn=$(basename "$_path")
+        # deduplicate
+        case " $_doc_names " in *" $_bn "*) ;; *)
+          _doc_names="${_doc_names:+$_doc_names }$_bn" ;; esac
+      ;; esac
+    done < "$tmp/changes"
+  fi
+
+  # --- 2. Fall back to the dispatch scope ------------------------------------
+  if [ -z "$_doc_names" ]; then
+    for _f in $scope; do
+      _pat=$(printf '%s' "$_f" | sed 's|(own)$||; s|/\*.*$||; s|/$||')
+      [ -n "$_pat" ] || continue
+      case "$_pat" in "$_docs_dir"/*.html)
+        _bn=$(basename "$_pat")
+        case " $_doc_names " in *" $_bn "*) ;; *)
+          _doc_names="${_doc_names:+$_doc_names }$_bn" ;; esac
+      ;; esac
+    done
+  fi
+
+  # --- 3. Fall back to the dispatch context file -----------------------------
+  if [ -z "$_doc_names" ]; then
+    _ctx="$ENTROPY_MACHINES_ROOT/.dispatch-context/$id.md"
+    if [ -f "$_ctx" ] && [ -d "$ENTROPY_MACHINES_ROOT/$_docs_dir" ]; then
+      for _docfile in "$ENTROPY_MACHINES_ROOT/$_docs_dir"/*.html; do
+        [ -f "$_docfile" ] || continue
+        _bn=$(basename "$_docfile")
+        if grep -qF "$_bn" "$_ctx" 2>/dev/null; then
+          _doc_names="${_doc_names:+$_doc_names }$_bn"
+        fi
+      done
+    fi
+  fi
+
+  [ -z "$_doc_names" ] && return 0
+
+  # --- 4. Find an already-running serve instance (ports 8787–8806) -----------
+  _port=""
+  _p=8787
+  while [ "$_p" -le 8806 ]; do
+    if lsof -iTCP:"$_p" -sTCP:LISTEN -t >/dev/null 2>&1; then
+      _port=$_p
+      break
+    fi
+    _p=$((_p + 1))
+  done
+
+  # --- 5. Start bin/serve if nothing is listening ----------------------------
+  if [ -z "$_port" ]; then
+    _serve_log=$(mktemp "${TMPDIR:-/tmp}/serve-handoff.XXXXXX")
+    "$ENTROPY_MACHINES_HOME/bin/serve" > "$_serve_log" 2>&1 &
+    _serve_pid=$!
+    _tries=0
+    while [ "$_tries" -lt 40 ]; do
+      if _line=$(grep '^serving ' "$_serve_log" 2>/dev/null); then
+        _port=$(printf '%s' "$_line" | sed 's|.*localhost:\([0-9]*\).*|\1|')
+        break
+      fi
+      # Check if serve exited early (bad config, missing deps, etc.)
+      if ! kill -0 "$_serve_pid" 2>/dev/null; then
+        rm -f "$_serve_log"
+        return 0
+      fi
+      sleep 0.25
+      _tries=$((_tries + 1))
+    done
+    rm -f "$_serve_log"
+    [ -z "$_port" ] && return 0
+    echo "  started bin/serve on port $_port"
+  fi
+
+  # --- 6. Open each doc in the browser ---------------------------------------
+  for _name in $_doc_names; do
+    # Only open docs that actually exist on disk
+    if [ -f "$ENTROPY_MACHINES_ROOT/$_docs_dir/$_name" ]; then
+      open "http://localhost:$_port/$_name" 2>/dev/null || true
+      echo "  opened http://localhost:$_port/$_name"
+    fi
+  done
+}
+_open_changed_docs 2>/dev/null || true
