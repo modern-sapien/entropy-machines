@@ -11,7 +11,7 @@ Patches, each guarded by a marker so re-running is safe:
   7. docstatus   — shows doc-level status badge in the sidebar brand area.
   8. issue-agree — checkboxes on PRD issue tables for accept/reject (PRDs only).
   9. unsaved-cue — savebar border turns caution when edits are pending.
- 10. doc-nav    — cross-doc navigation: 5 category links to landing pages.
+ 10. doc-nav    — cross-doc navigation: 4 category links to landing pages.
 
 Usage:
   python3 enhance.py            # patch every *.html in this folder
@@ -55,7 +55,7 @@ ISSUE_AGREE_RV = "1"
 UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
 UNSAVED_CUE_RV = "1"
 DOCNAV_MARK = 'id="__docnav-patch"'
-DOCNAV_RV = "1"
+DOCNAV_RV = "2"
 LIVERELOAD_MARK = 'id="__livereload-patch"'
 # VERSIONED, like review-css, and for the same reason: every doc already carries
 # a copy of this patch stamped into its HTML, so a mark-only gate reads them all
@@ -669,7 +669,7 @@ DOCNAV = r'''
   nav .__dn-cats a:hover{color:var(--accent,#7c3aed);border-color:currentColor;}
 </style>
 <script id="__docnav-patch" data-dn="__RV__">
-// Cross-doc navigation: 5 category links, each to its own landing page.
+// Cross-doc navigation: 4 category links, each to its own landing page.
 // No manifest.json fetch needed — the landing pages handle browsing.
 (function(){
   var nav=document.querySelector('nav');
@@ -681,7 +681,6 @@ DOCNAV = r'''
     +'<a href="PRDS.html">PRDs</a>'
     +'<a href="REPORTS.html">reports</a>'
     +'<a href="DOCS.html">docs</a>'
-    +'<a href="DOCS.html">other</a>'
     +'</div>';
   var foot=nav.querySelector('.foot');
   if(foot) nav.insertBefore(el, foot);
