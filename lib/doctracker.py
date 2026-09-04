@@ -258,8 +258,20 @@ TEMPLATE = r"""<!doctype html>
   --you:#7A4A00; --me:#0F4A85; --done:#0A5C21; --held:#6B21A8; --warn:#A81C0B;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink);
   font:var(--fs-base)/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+body>nav{width:296px;flex:none;border-right:1px solid var(--line);background:var(--panel);
+  padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+body>nav .brand{display:flex;align-items:center;gap:8px;font-weight:700;
+  font-size:var(--fs-base);margin-bottom:16px;padding:0 6px}
+body>nav .brand .logo{width:18px;height:18px;border:1px solid var(--line);background:none}
+body>nav a{display:block;padding:6px 10px;color:var(--ink);text-decoration:none;
+  font-size:var(--fs-base);margin-bottom:2px;border:1px solid transparent}
+body>nav a:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+body>nav a.cur{border-color:var(--line);font-weight:700}
+body>nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink);margin:16px 6px 6px}
+.content{flex:1;min-width:0}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 
@@ -268,7 +280,6 @@ header{position:sticky;top:0;z-index:20;background:var(--panel);
   display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 header h1{font-size:var(--fs-head);margin:0;font-weight:700;color:var(--ink)}
 header h1 span{color:var(--dim);font-weight:400}
-header nav a{font-size:var(--fs-sm);font-weight:600;margin-right:10px}
 #q{flex:1;min-width:200px;background:var(--panel);border:1px solid var(--line);
   color:var(--ink);border-radius:4px;padding:7px 10px;font-size:var(--fs-base)}
 #q::placeholder{color:var(--dim)}
@@ -346,14 +357,23 @@ button.act:hover{box-shadow:inset 0 0 0 2px var(--focus)}
 button.act[disabled]{cursor:wait}
 </style></head>
 <body>
+<nav>
+  <div class="brand"><span class="logo"></span> Doc tracker</div>
+  <div class="grp">Categories</div>
+  <a href="TRACKER.html">issues</a>
+  <a href="PRDS.html">PRDs</a>
+  <a href="REPORTS.html">reports</a>
+  <a href="DOCS.html">docs</a>
+</nav>
+<div class="content">
 <header>
   <h1>Doc tracker</h1>
-  <nav><a href="TRACKER.html">issues</a> <a href="PRDS.html">PRDs</a> <a href="REPORTS.html">reports</a></nav>
   <input id="q" placeholder="search title, handle, question…  (/ to focus)">
   <div class="seg" id="theme"><button>◐</button></div>
   <div class="tot" id="tot"></div>
 </header>
 <div id="out"></div>
+</div>
 <div id="scrim"></div>
 <div id="det"><button id="close">×</button><div id="detBody"></div></div>
 
@@ -486,6 +506,13 @@ document.addEventListener('keydown', e => {
 if (localStorage.bwTheme) document.documentElement.dataset.theme = localStorage.bwTheme;
 render();
 if (location.hash && byHandle[location.hash.slice(1)]) openDet(location.hash.slice(1));
+// Highlight current page in sidebar
+(function(){
+  var file=(location.pathname.split('/').pop()||'').split('?')[0];
+  document.querySelectorAll('body>nav a[href]').forEach(function(a){
+    if(a.getAttribute('href')===file) a.classList.add('cur');
+  });
+})();
 </script>
 </body></html>
 """
@@ -516,16 +543,26 @@ CATEGORY_TEMPLATE = r"""<!doctype html>
   --you:#7A4A00; --me:#0F4A85; --done:#0A5C21; --held:#6B21A8; --warn:#A81C0B;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink);
   font:var(--fs-base)/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+body>nav{width:296px;flex:none;border-right:1px solid var(--line);background:var(--panel);
+  padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+body>nav .brand{display:flex;align-items:center;gap:8px;font-weight:700;
+  font-size:var(--fs-base);margin-bottom:16px;padding:0 6px}
+body>nav .brand .logo{width:18px;height:18px;border:1px solid var(--line);background:none}
+body>nav a{display:block;padding:6px 10px;color:var(--ink);text-decoration:none;
+  font-size:var(--fs-base);margin-bottom:2px;border:1px solid transparent}
+body>nav a:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+body>nav a.cur{border-color:var(--line);font-weight:700}
+body>nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink);margin:16px 6px 6px}
+.content{flex:1;min-width:0}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 header{position:sticky;top:0;z-index:20;background:var(--panel);
   border-bottom:1px solid var(--line);padding:10px 16px;
   display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 header h1{font-size:var(--fs-head);margin:0;font-weight:700}
-header nav{display:flex;gap:8px;flex-wrap:wrap}
-header nav a{font-size:var(--fs-sm);font-weight:600}
 .seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
 .seg button{background:var(--panel);border:0;color:var(--ink);padding:7px 11px;
   font-size:var(--fs-sm);font-weight:600;cursor:pointer}
@@ -556,17 +593,21 @@ section{padding:0 18px 80px}
 #empty{color:var(--ink);padding:40px 18px}
 </style></head>
 <body>
+<nav>
+  <div class="brand"><span class="logo"></span> __TITLE__</div>
+  <div class="grp">Categories</div>
+  <a href="TRACKER.html">issues</a>
+  <a href="PRDS.html">PRDs</a>
+  <a href="REPORTS.html">reports</a>
+  <a href="DOCS.html">docs</a>
+</nav>
+<div class="content">
 <header>
   <h1>__TITLE__</h1>
-  <nav>
-    <a href="TRACKER.html">issues</a>
-    <a href="PRDS.html">PRDs</a>
-    <a href="REPORTS.html">reports</a>
-    <a href="DOCS.html">docs</a>
-  </nav>
   <div class="seg" id="theme"><button>&#9680;</button></div>
 </header>
 <section id="out"></section>
+</div>
 
 <script id="data" type="application/json">__DATA__</script>
 <script>
@@ -611,6 +652,13 @@ document.addEventListener('click', e => {
 try { if (localStorage.bwTheme) document.documentElement.dataset.theme = localStorage.bwTheme; }
 catch(err) {}
 render();
+// Highlight current page in sidebar
+(function(){
+  var file=(location.pathname.split('/').pop()||'').split('?')[0];
+  document.querySelectorAll('body>nav a[href]').forEach(function(a){
+    if(a.getAttribute('href')===file) a.classList.add('cur');
+  });
+})();
 </script>
 </body></html>
 """
