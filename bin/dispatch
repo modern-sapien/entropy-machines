@@ -3,9 +3,12 @@
 #
 #   bin/dispatch i-foo --files "src/x.ts tests/x.test.ts" --brief "one-line task"
 #
-# Exit 0 means SAFE TO DISPATCH; anything else names the hazard. It does not
-# spawn the agent — your agent runner does that — it refuses the mistakes
-# that have each burned a real run:
+# Exit 0 means SAFE TO DISPATCH; anything else names the hazard. It emits a
+# structured JSON block (--- AGENT CALL --- / --- END AGENT CALL ---) with
+# the exact Agent tool parameters — subagent_type, isolation, name,
+# description, prompt — so the orchestrator's call is mechanical: pass the
+# JSON fields to the Agent tool, nothing to remember or infer. It refuses
+# the mistakes that have each burned a real run:
 #
 #   1. NON-ROOT CWD. A worktree is created in whatever repo the dispatching
 #      session's cwd belongs to. A session parked one directory off from the
@@ -596,99 +599,105 @@ if [ "$dry" -eq 1 ]; then
 else
   echo "dispatch: OK — brief + scope recorded on $id."
 fi
-echo "Dispatch the worker defined in agents/isolated-worker.md."
-echo "  Claude Code: Agent tool, subagent_type: isolated-worker."
-echo "  A different runner: give it its own worktree, this brief directly (not"
-echo "  just pointed at it), and a way for you to read back its HANDOFF.md —"
-echo "  see the note at the top of agents/isolated-worker.md."
-echo "  issue: $id"
-echo "  advisory --files: $files"
-echo "  ENFORCED denylist: $deny_field"
-echo "  brief: $brief"
-echo
-# Pasted verbatim into the agent's brief. Four keys, one line each, and the
-# instruction says so twice — an agent given a free-form "write up what you
-# found" returns prose the lander then has to read and compress, which is
-# the work this was meant to remove. The file is gitignored, so the agent
-# cannot accidentally add it to the tree.
-echo "PASTE INTO THE AGENT'S BRIEF:"
-echo "  BRIEF: $brief"
-echo
-# FIRST LINE after the brief, and the load-bearing one — see the measured
-# numbers in the header. This holds regardless of whether your runner
-# auto-loads a project-instructions file into subagents: proximity to the
-# prompt is what changes behaviour, not presence in context.
-echo "  FIRST, before anything else: read this file, in full, with one Read:"
-echo "    $ctx"
-echo "  It is your issue text, what already landed under this id, your scope and"
-echo "  brief, what earlier agents left you, and this project's suites. It is in"
-echo "  the MAIN checkout, NOT in your worktree; the path above is absolute, use"
-echo "  it as-is."
-if [ "$dry" -eq 1 ]; then
-  echo "  (--dry-run: that file was NOT written. Rerun without --dry-run.)"
-fi
-# The cwd check, stated to the AGENT. This script already refuses a
-# non-root cwd, but that runs when the brief is written and the dispatch
-# call happens after — a `cd` in between still misroutes the worktree, and
-# has once taken out three agents at once this way. Nothing in the tool
-# chain can catch that on the way in, so the agent checks on the way out.
+# ---------------------------------------------------------------------------
+# STRUCTURED AGENT CALL
+# ---------------------------------------------------------------------------
+# The prompt is assembled and emitted as part of a JSON block containing the
+# exact Agent tool parameters. The orchestrator passes these directly — no
+# manual assembly, no remembering the subagent_type. The same measured
+# numbers from the header (pasted ~96%, referenced ~38%) shaped what goes
+# into the prompt: every load-bearing rule is INSIDE the prompt text, not
+# merely referenced.
 #
-# --git-common-dir answers WHICH REPO IS THIS A WORKTREE OF. From a linked
-# worktree it resolves to the MAIN repo's .git as an ABSOLUTE path, so it
-# carries the repo's own path. From a non-worktree checkout at its root it
-# prints a bare relative `.git`, which is why the wording calls that out as
-# its own reportable state rather than leaving the agent to interpret it.
-# --show-toplevel is the wrong check here: it prints the WORKTREE's own
-# path, which can never equal the main repo's path, so it can never confirm
-# which repo the worktree belongs to.
-echo "  Your scope is a DENYLIST, not an allowlist. These files are claimed by"
-echo "  another agent RIGHT NOW and you must NOT write them: $deny_field"
-echo "  Everything else is yours if the fix needs it. If your fix needs a CLAIMED"
-echo "  file: STOP — do not write it, and do NOT ship the half you were allowed"
-echo "  to write. Leave the in-scope work coherent and name the exact file and"
-echo "  what it must contain in HANDOFF.md's found: line. The context file above"
-echo "  has the full protocol and says what does and does not enforce it."
-echo "  SECOND, before you write anything: run \`git rev-parse --git-common-dir\`."
-echo "  It prints the MAIN repo's .git — which repo your worktree branched from."
-echo "  It MUST contain /$(basename "$ENTROPY_MACHINES_ROOT")/. A bare relative \`.git\` means you"
-echo "  are not in a worktree at all: report that."
-echo "  If either is wrong, STOP and report it. NEVER cd to make it pass and"
-echo "  never write to the shared checkout — a cd is the failure, not the fix."
-echo "  Do NOT use --show-toplevel here: yours is the worktree path, so it can"
-echo "  never end in /$(basename "$ENTROPY_MACHINES_ROOT") and tells you nothing about the repo."
-# THE SCRATCHPAD, IN THE PASTE BLOCK RATHER THAN ONLY IN A DOC. The same
-# measurement that shapes the rest of this block puts a pasted rule at ~96%
-# and one sitting only in a doc the agent was told to go read at far less —
-# and a scratchpad the worker never hears about is the shared one it was
-# already using.
-echo "  YOUR PRIVATE SCRATCHPAD is \`.scratch\` at the root of your worktree —"
-echo "  mutators, probe harnesses, captured suite output go THERE, not in any"
-echo "  scratchpad shared with the agents running beside you. Two concurrent"
-echo "  agents have overwritten each other's throwaway files by both reaching"
-echo "  for a shared scratch directory instead. If a tool refuses to write"
-echo "  through .scratch, say so in HANDOFF.md — do not fall back to a shared"
-echo "  scratchpad silently."
-# Earlier agents' carry-forward lines, INSIDE the paste block rather than
-# only in the context file above it, for the same measured reason.
-if [ -n "$carry" ]; then
-  echo "  WHAT EARLIER WORK ON THIS ISSUE LEFT YOU (you may not be able to look"
-  echo "  this up yourself — see the context file for how to check):"
-  echo "$carry"
+# The prompt is written to a temp file so Python can JSON-encode it with
+# proper escaping. The file is cleaned up on exit.
+prompt_tmp="$ctxdir/.prompt-$id.tmp"
+trap 'rm -f "$prompt_tmp"' EXIT
+{
+  echo "BRIEF: $brief"
   echo
-fi
-echo "  Before you finish, write HANDOFF.md at the root of your worktree."
-echo "  Exactly these four keys, ONE LINE each, no prose:"
-echo "    changed: <what you changed>"
-echo "    found:   <seen but not fixed, out of scope — or: none>"
-echo "    assumed: <what you took as given — or: none>"
-echo "    next:    <what the next agent needs to know — or: none>"
-echo "  Keep it under six lines total. Do not commit it; it is gitignored."
-echo "  AFTER YOU STOP YOU WILL BE QUESTIONED, while you are still resumable, and"
-echo "  your work is not lifted until your answers are recorded. The questions are"
-echo "  adversarial on purpose — what you did NOT run, which of your assertions is"
-echo "  weakest, what you took on trust, what in the brief you skipped, what you"
-echo "  would check next. They are listed in the context file above; note the"
-echo "  answers as you work. \"Nothing\" to every one of them is refused."
+  # FIRST LINE after the brief, and the load-bearing one — see the measured
+  # numbers in the header. This holds regardless of whether your runner
+  # auto-loads a project-instructions file into subagents: proximity to the
+  # prompt is what changes behaviour, not presence in context.
+  echo "FIRST, before anything else: read this file, in full, with one Read:"
+  echo "  $ctx"
+  echo "It is your issue text, what already landed under this id, your scope and"
+  echo "brief, what earlier agents left you, and this project's suites. It is in"
+  echo "the MAIN checkout, NOT in your worktree; the path above is absolute, use"
+  echo "it as-is."
+  if [ "$dry" -eq 1 ]; then
+    echo "(--dry-run: that file was NOT written. Rerun without --dry-run.)"
+  fi
+  # The cwd check, stated to the AGENT. This script already refuses a
+  # non-root cwd, but that runs when the brief is written and the dispatch
+  # call happens after — a `cd` in between still misroutes the worktree, and
+  # has once taken out three agents at once this way. Nothing in the tool
+  # chain can catch that on the way in, so the agent checks on the way out.
+  #
+  # --git-common-dir answers WHICH REPO IS THIS A WORKTREE OF. From a linked
+  # worktree it resolves to the MAIN repo's .git as an ABSOLUTE path, so it
+  # carries the repo's own path. From a non-worktree checkout at its root it
+  # prints a bare relative `.git`, which is why the wording calls that out as
+  # its own reportable state rather than leaving the agent to interpret it.
+  # --show-toplevel is the wrong check here: it prints the WORKTREE's own
+  # path, which can never equal the main repo's path, so it can never confirm
+  # which repo the worktree belongs to.
+  echo "Your scope is a DENYLIST, not an allowlist. These files are claimed by"
+  echo "another agent RIGHT NOW and you must NOT write them: $deny_field"
+  echo "Everything else is yours if the fix needs it. If your fix needs a CLAIMED"
+  echo "file: STOP — do not write it, and do NOT ship the half you were allowed"
+  echo "to write. Leave the in-scope work coherent and name the exact file and"
+  echo "what it must contain in HANDOFF.md's found: line. The context file above"
+  echo "has the full protocol and says what does and does not enforce it."
+  echo "SECOND, before you write anything: run \`git rev-parse --git-common-dir\`."
+  echo "It prints the MAIN repo's .git — which repo your worktree branched from."
+  echo "It MUST contain /$(basename "$ENTROPY_MACHINES_ROOT")/. A bare relative \`.git\` means you"
+  echo "are not in a worktree at all: report that."
+  # THE SCRATCHPAD, IN THE PASTE BLOCK RATHER THAN ONLY IN A DOC. The same
+  # measurement that shapes the rest of this block puts a pasted rule at ~96%
+  # and one sitting only in a doc the agent was told to go read at far less —
+  # and a scratchpad the worker never hears about is the shared one it was
+  # already using.
+  echo "YOUR PRIVATE SCRATCHPAD is \`.scratch\` at the root of your worktree."
+  # Earlier agents' carry-forward lines, INSIDE the paste block rather than
+  # only in the context file above it, for the same measured reason.
+  if [ -n "$carry" ]; then
+    echo "WHAT EARLIER WORK ON THIS ISSUE LEFT YOU:"
+    echo "$carry"
+    echo
+  fi
+  echo "Before you finish, write HANDOFF.md at the root of your worktree."
+  echo "Exactly these four keys, ONE LINE each, no prose:"
+  echo "  changed: what you changed"
+  echo "  found:   seen but not fixed, out of scope — or: none"
+  echo "  assumed: what you took as given — or: none"
+  echo "  next:    what the next agent needs to know — or: none"
+} > "$prompt_tmp"
+
+# Emit the structured agent call — the orchestrator passes these fields
+# directly to the Agent tool. subagent_type and isolation are set here;
+# the orchestrator must not override them.
+echo
+echo "--- AGENT CALL ---"
+python3 -c '
+import json, sys
+prompt = open(sys.argv[1]).read()
+call = {
+    "subagent_type": "isolated-worker",
+    "isolation": "worktree",
+    "name": sys.argv[2],
+    "description": "Implement " + sys.argv[2],
+    "prompt": prompt
+}
+print(json.dumps(call, indent=2))
+' "$prompt_tmp" "$id"
+echo "--- END AGENT CALL ---"
+echo
+echo "Pass the JSON block above directly to the Agent tool — subagent_type and"
+echo "isolation are set. Do not change them."
+echo "Non-Claude-Code runner: see agents/isolated-worker.md for requirements."
+echo "  issue: $id | advisory --files: $files | ENFORCED denylist: $deny_field"
 echo
 echo "WHEN YOU LAND IT, before committing:"
 echo "  bin/handoff $id --interrogate                     # the questions; send them to the LIVE agent"
