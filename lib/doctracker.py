@@ -164,22 +164,69 @@ def collect():
     return docs
 
 
+def categorize(docs):
+    """Group docs by category using the handle-prefix convention.
+
+    Returns a dict: {category: [doc, ...]} where category is one of
+    'prd', 'report', 'doc', 'other'.  Same grouping the old DOCNAV JS
+    used — prd-* handles, BUILD-REPORT-* files or sprint-* handles,
+    doc-* handles, and everything else.
+    """
+    cats = {"prd": [], "report": [], "doc": [], "other": []}
+    for d in docs:
+        h = d["handle"]
+        f = d["file"]
+        if re.match(r"^prd-", h, re.I):
+            cats["prd"].append(d)
+        elif re.match(r"^BUILD-REPORT-", f, re.I) or re.match(r"^sprint-", h, re.I):
+            cats["report"].append(d)
+        elif re.match(r"^doc-", h, re.I):
+            cats["doc"].append(d)
+        else:
+            cats["other"].append(d)
+    return cats
+
+
+def render_category(cat_docs, title, out_path, statuses):
+    """Write a category landing page listing the given docs."""
+    payload = {"docs": cat_docs, "statuses": statuses}
+    blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    page = CATEGORY_TEMPLATE.replace("__TITLE__", title).replace("__DATA__", blob)
+    tmp = out_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(page)
+    os.replace(tmp, out_path)
+    return out_path
+
+
 def render():
-    """Rebuild DOCS.html. Returns the output path."""
+    """Rebuild DOCS.html and the category landing pages. Returns the
+    DOCS.html output path (the main doc tracker)."""
     if DIR is None:
         init()
-    payload = {"docs": collect(), "statuses": {k: v[0] for k, v in ds.STATUS.items()}}
+    all_docs = collect()
+    statuses = {k: v[0] for k, v in ds.STATUS.items()}
+    payload = {"docs": all_docs, "statuses": statuses}
     blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
     html = TEMPLATE.replace("__DATA__", blob)
     with open(OUT, "w") as f:
         f.write(html)
+
+    # Category landing pages — PRDS.html and REPORTS.html.
+    cats = categorize(all_docs)
+    render_category(cats["prd"], "PRDs", os.path.join(DIR, "PRDS.html"), statuses)
+    render_category(cats["report"], "Reports", os.path.join(DIR, "REPORTS.html"), statuses)
+
     return OUT
 
 
 def main():
     init()
+    all_docs = collect()
     out = render()
-    print(f"wrote {out} ({len(collect())} docs)")
+    cats = categorize(all_docs)
+    print(f"wrote {out} ({len(all_docs)} docs)")
+    print(f"  PRDS.html ({len(cats['prd'])} docs), REPORTS.html ({len(cats['report'])} docs)")
     if "--open" in sys.argv:
         subprocess.run(["open", out])
 
@@ -301,7 +348,7 @@ button.act[disabled]{cursor:wait}
 <body>
 <header>
   <h1>Doc tracker</h1>
-  <nav><a href="INDEX.html">questions</a></nav>
+  <nav><a href="TRACKER.html">issues</a> <a href="PRDS.html">PRDs</a> <a href="REPORTS.html">reports</a></nav>
   <input id="q" placeholder="search title, handle, question…  (/ to focus)">
   <div class="seg" id="theme"><button>◐</button></div>
   <div class="tot" id="tot"></div>
@@ -439,6 +486,131 @@ document.addEventListener('keydown', e => {
 if (localStorage.bwTheme) document.documentElement.dataset.theme = localStorage.bwTheme;
 render();
 if (location.hash && byHandle[location.hash.slice(1)]) openDet(location.hash.slice(1));
+</script>
+</body></html>
+"""
+
+CATEGORY_TEMPLATE = r"""<!doctype html>
+<html lang="en" data-generated="doctracker.py"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<!-- GENERATED FILE — written by doctracker.py. Hand edits are lost on
+     the next render. This is a read-only category landing page. -->
+<style>
+:root{
+  --bg:#000; --panel:#000;
+  --ink:#fff; --dim:rgba(255,255,255,.7);
+  --line:#6FC3DF;
+  --focus:#F38518;
+  --accent:#21A6FF;
+  --you:#F5F543; --me:#21A6FF; --done:#23D18B; --held:#D670D6; --warn:#F48771;
+  --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+:root[data-theme=light]{
+  --bg:#fff; --panel:#fff;
+  --ink:#292929; --dim:rgba(41,41,41,.75);
+  --line:#0F4A85;
+  --focus:#006BBD;
+  --accent:#0F4A85;
+  --you:#7A4A00; --me:#0F4A85; --done:#0A5C21; --held:#6B21A8; --warn:#A81C0B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:var(--fs-base)/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+header{position:sticky;top:0;z-index:20;background:var(--panel);
+  border-bottom:1px solid var(--line);padding:10px 16px;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+header h1{font-size:var(--fs-head);margin:0;font-weight:700}
+header nav{display:flex;gap:8px;flex-wrap:wrap}
+header nav a{font-size:var(--fs-sm);font-weight:600}
+.seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{background:var(--panel);border:0;color:var(--ink);padding:7px 11px;
+  font-size:var(--fs-sm);font-weight:600;cursor:pointer}
+.seg button:hover{box-shadow:inset 0 0 0 1px var(--focus)}
+section{padding:0 18px 80px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block;
+  border:1px solid var(--bg);box-shadow:0 0 0 1px currentColor}
+.dot.open{background:var(--you);color:var(--you)}
+.dot.in-review{background:var(--me);color:var(--me)}
+.dot.resolved{background:var(--done);color:var(--done)}
+.dot.held{background:var(--held);color:var(--held)}
+.rows{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
+.row{display:flex;gap:10px;align-items:center;padding:9px 12px;
+  border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
+.row:first-child{border-top:0}
+.row:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+.row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-weight:700}
+.row.resolved .t{font-weight:400}
+.row .id{color:var(--ink);font-family:var(--mono);font-size:var(--fs-sm);flex:none}
+.tag{font-size:var(--fs-sm);font-weight:700;padding:1px 8px;border-radius:10px;
+  border:1px solid var(--line);color:var(--ink);flex:none;white-space:nowrap;
+  background:transparent}
+.tag.you{color:var(--you);border-color:var(--you)}
+.tag.me{color:var(--me);border-color:var(--me)}
+.tag.gate{color:var(--warn);border-color:var(--warn)}
+.tag.v{font-variant-numeric:tabular-nums}
+#empty{color:var(--ink);padding:40px 18px}
+</style></head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <nav>
+    <a href="TRACKER.html">issues</a>
+    <a href="PRDS.html">PRDs</a>
+    <a href="REPORTS.html">reports</a>
+    <a href="DOCS.html">docs</a>
+  </nav>
+  <div class="seg" id="theme"><button>&#9680;</button></div>
+</header>
+<section id="out"></section>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const DOCS = D.docs;
+const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function tags(d){
+  let t = '';
+  if (d.counts.unanswered) t += '<span class="tag you">' + d.counts.unanswered + ' to answer</span>';
+  if (d.counts['awaiting-reply']) t += '<span class="tag me">' + d.counts['awaiting-reply'] + ' awaiting reply</span>';
+  const g = d.issues.filter(i => i.gated).length;
+  if (g) t += '<span class="tag gate">gates ' + g + ' issue' + (g>1?'s':'') + '</span>';
+  return t;
+}
+
+function render(){
+  const out = document.getElementById('out');
+  if (!DOCS.length){
+    out.innerHTML = '<div id="empty">No documents in this category yet.</div>';
+    return;
+  }
+  const sorted = DOCS.slice().sort((a,b) => (b.updatedAt||'').localeCompare(a.updatedAt||''));
+  out.innerHTML = '<div class="rows">' + sorted.map(d =>
+    '<a class="row ' + d.status + '" href="' + esc(d.file) + '">' +
+    '<span class="dot ' + d.status + '"></span>' +
+    '<span class="t">' + esc(d.title) + '</span>' +
+    (d.status !== 'resolved' ? tags(d) : '') +
+    '<span class="tag v">v' + d.version + '</span>' +
+    '<span class="id">' + esc(d.handle) + '</span>' +
+    '</a>').join('') + '</div>';
+}
+
+document.addEventListener('click', e => {
+  if (e.target.closest('#theme')){
+    const cur = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = cur;
+    try { localStorage.bwTheme = cur; } catch(err) {}
+    return;
+  }
+});
+try { if (localStorage.bwTheme) document.documentElement.dataset.theme = localStorage.bwTheme; }
+catch(err) {}
+render();
 </script>
 </body></html>
 """

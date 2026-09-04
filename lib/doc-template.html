@@ -558,18 +558,8 @@
     padding:.1rem .5rem; }
   nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
 </style>
-<script id="__trackernav-patch">
-// Top-of-sidebar links back to the tracker pages, mirroring the header nav
-// those pages carry (docs ↔ issues ↔ questions ↔ plan). Inserted after the
-// nav brand; silently does nothing on a page without one (generated pages
-// have their own header nav).
-(function(){
-  var brand=document.querySelector('nav .brand'); if(!brand) return;
-  var row=document.createElement('div'); row.className='tracknav';
-  row.innerHTML='<a href="DOCS.html">docs</a><a href="TRACKER.html">issues</a>'+
-    '<a href="INDEX.html">questions</a><a href="WORKSTREAMS.html">plan</a>';
-  brand.parentNode.insertBefore(row, brand.nextSibling);
-})();
+<script id="__trackernav-patch" data-tn="1">
+/* Replaced by __docnav-patch category links. No-op — kept for the gate mark. */
 </script>
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */

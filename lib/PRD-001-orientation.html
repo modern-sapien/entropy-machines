@@ -801,21 +801,8 @@ bin/tracker set q-1 status=done</code></pre>
     padding:.1rem .5rem; }
   nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
 </style>
-<script id="__trackernav-patch">
-// A top-of-sidebar link to the issue tracker. ONE link, because TRACKER.html
-// is the only generated page this harness has: `bin/tracker render` writes it
-// into the docs directory next to this file, and bin/serve serves it from
-// there. It used to carry four (DOCS / INDEX / WORKSTREAMS as well), inherited
-// from the project this template came from, and the other three 404'd in every
-// project ever initialised here — nothing in this harness generates them, and
-// workstreams are not even a concept in its issue model. Do not add a link
-// back until something writes the page it points at.
-(function(){
-  var brand=document.querySelector('nav .brand'); if(!brand) return;
-  var row=document.createElement('div'); row.className='tracknav';
-  row.innerHTML='<a href="TRACKER.html">issues</a>';
-  brand.parentNode.insertBefore(row, brand.nextSibling);
-})();
+<script id="__trackernav-patch" data-tn="1">
+/* Replaced by __docnav-patch category links. No-op — kept for the gate mark. */
 </script>
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */
