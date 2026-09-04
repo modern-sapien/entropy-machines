@@ -1,0 +1,503 @@
+<!doctype html>
+<!-- ===================== entropy-machines dialogue doc =====================
+  A PRD/plan/report the owner ANSWERS. bin/serve renders it, rewires the save
+  button to POST /__save so answers are written back into THIS file on disk,
+  and live-reloads the open tab when an agent writes a reply.
+
+  CONTRACT — bin/serve and the agents both depend on these:
+    * every question lives in a div with class `response` and a unique,
+      stable `data-resp` attribute, containing a label, a div with class
+      `discuss`, and one textarea.
+    * data-resp keys are unique per doc and STABLE — they are the identity an
+      agent uses to read and write a specific answer. Renaming one orphans it.
+    * a script element of type application/json with id `responses-data`,
+      near the end of the body, is where saved answers are mirrored.
+    * pages are section elements with class `page` and id `p0`, `p1`, ...,
+      each with a matching nav anchor carrying the same id in `data-page`.
+
+  A QUESTION WITHOUT A .response BOX IS INVISIBLE. Only a data-resp is saved,
+  counted, or reported as outstanding — a question written as plain prose
+  renders with nowhere to answer it and the doc reports itself as answered.
+
+  NOTE: this comment deliberately describes the markup in prose instead of
+  showing it. It used to contain literal examples, and every regex-based tool
+  that reads these docs -- the answer counter, the session-start nag, ad-hoc
+  checks -- matched the DOCUMENTATION as though it were a real question. Each
+  doc then reported one phantom unanswered question that nobody could answer,
+  so "fully answered" was unreachable. The readers strip comments now too, but
+  the fix that matters is not putting a live example in a comment.
+
+  Visual standard (VS Code hc-black / hc-light):
+    1. Separate with BORDERS, never background tints.
+    2. Focus/hover is the focus hue as a ring, never a fill.
+    3. State is never encoded in opacity — weight, case or colour+word.
+    4. Four type steps only (14/17/21/30); mono gets its own step.
+========================================================================= -->
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRD-005 — Navigation system</title>
+<style>
+  /* High-contrast stylesheet. Palette is VS Code's hc-black / hc-light from
+     src/vs/platform/theme/common/colors/baseColors.ts — not hand-picked, so it
+     carries their AAA work rather than an invented scheme.
+
+     Three rules this file exists to hold:
+       1. Separate with BORDERS, never background tints. Backgrounds stay pure
+          #000 / #FFF. No grey panel layers, no tinted cards, no filled badges.
+       2. Focus / active / hover is the focus hue as an inset ring, never a
+          background change. :focus-visible is global and never suppressed.
+       3. State is never encoded in opacity. No faded "done", no opacity:.6 for
+          secondary text — weight, uppercase, or an underline instead. */
+
+  :root{
+    --bg:#FFFFFF; --fg:#292929;
+    --border:#0F4A85;        /* contrastBorder  */
+    --focus:#006BBD;         /* focusBorder     */
+    --link:#0F4A85;
+    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
+
+    --fs-sm:14px;    /* meta, ids, mono, chips, eyebrow labels, badges */
+    --fs-base:17px;  /* body, list rows, controls */
+    --fs-head:21px;  /* section headings */
+    --fs-title:30px; /* page / panel title */
+
+    --measure:70ch;
+
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --radius:0;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#000000; --fg:#FFFFFF;
+      --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
+      --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#FFFFFF; --fg:#292929; --border:#0F4A85; --focus:#006BBD; --link:#0F4A85;
+    --negative:#A81C0B; --positive:#0A5C21; --caution:#7A4A00; --accent:#6B21A8;
+  }
+  :root[data-theme="dark"]{
+    --bg:#000000; --fg:#FFFFFF; --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
+    --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
+  }
+
+  *{box-sizing:border-box}
+  html{font-size:16px;}
+  body{font-family:var(--font); font-size:var(--fs-base); line-height:1.65;
+    color:var(--fg); background:var(--bg); margin:0; display:flex; min-height:100vh;}
+
+  :focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+
+  code{font-family:var(--mono); font-size:var(--fs-sm); background:none;
+    border:1px solid var(--border); padding:0 .25em;}
+  pre{background:none; border:1px solid var(--border); padding:12px 14px; overflow-x:auto;
+    font-family:var(--mono); font-size:var(--fs-sm); line-height:1.55;}
+  pre code{border:none; padding:0;}
+
+  nav{width:296px; flex:none; border-right:1px solid var(--border); background:var(--bg);
+    padding:22px 14px; position:sticky; top:0; height:100vh; overflow-y:auto;}
+  nav .brand{display:flex; align-items:center; gap:8px; font-weight:700;
+    font-size:var(--fs-base); margin-bottom:16px; padding:0 6px;}
+  nav .brand .logo{width:18px; height:18px; border:1px solid var(--border); background:none;}
+  nav a{display:block; padding:6px 10px; color:var(--fg); text-decoration:none;
+    font-size:var(--fs-base); margin-bottom:2px; border:1px solid transparent;}
+  nav a:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  nav a.cur{border-color:var(--border); font-weight:700;}
+  nav .grp{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--fg); margin:16px 6px 6px;}
+  nav .foot{font-size:var(--fs-sm); color:var(--fg); margin-top:20px; padding:0 6px;}
+
+  nav a span.navmark{font-size:var(--fs-sm); font-weight:700; line-height:1.4;
+    background:none; border-radius:0; padding:0 .35em; margin-left:.4em;
+    border:1px solid currentColor; color:var(--caution);}
+  nav a span.navmark.done{color:var(--positive); border-color:var(--positive);}
+  nav a span.navmark.todo{color:var(--caution); border-color:var(--caution); background:none;}
+  nav div.navsummary{font-size:var(--fs-sm); font-weight:700; color:var(--fg);
+    background:none; border:1px solid var(--border); border-radius:0;
+    margin:12px 6px 4px; padding:5px 9px;}
+  nav div.navsummary .all-done{color:var(--positive);}
+
+  main{flex:1; min-width:0; padding:38px 42px 120px; max-width:1060px;}
+  .page{display:none;} .page.cur{display:block;}
+
+  h1{font-size:var(--fs-title); font-weight:700; letter-spacing:-.015em;
+    line-height:1.2; margin:2px 0 8px;}
+  h2{font-size:var(--fs-head); font-weight:700; line-height:1.3; margin:34px 0 8px;}
+  h3{font-size:var(--fs-head); font-weight:700; text-transform:uppercase;
+    letter-spacing:.03em; line-height:1.3; margin:24px 0 6px;}
+  h1 code,h2 code,h3 code{font-size:var(--fs-head);}
+  .sub{font-size:var(--fs-base); margin:0 0 20px;}
+  p{margin:11px 0;}
+  main a{color:var(--link); text-decoration:underline;}
+
+  .page > p, .page > ul, .page > ol, .page > .sub, .callout, blockquote{
+    max-width:var(--measure);}
+
+  .callout{padding:12px 16px; margin:16px 0; border:1px solid var(--border); background:none;}
+  .callout.key{border-left:3px solid var(--accent);}
+  .callout.good{border-left:3px solid var(--positive);}
+  .callout.warn{border-left:3px solid var(--caution);}
+  .callout.bad{border-left:3px solid var(--negative);}
+  .callout .tag{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; display:block; margin-bottom:4px;}
+  .callout.key .tag{color:var(--accent);} .callout.good .tag{color:var(--positive);}
+  .callout.warn .tag{color:var(--caution);} .callout.bad .tag{color:var(--negative);}
+
+  .tbl-wrap{overflow-x:auto; margin:18px 0;}
+  table{border-collapse:collapse; width:100%; font-size:var(--fs-base);}
+  th,td{padding:10px 12px; text-align:left; border:1px solid var(--border); vertical-align:top;}
+  thead th{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.04em; color:var(--fg); white-space:nowrap;}
+  td code{font-size:var(--fs-sm);}
+
+  ul,ol{margin:10px 0; padding-left:24px;} li{margin:7px 0;}
+  .foot{font-size:var(--fs-sm);}
+
+  .rec{border:1px solid var(--border); border-left:3px solid var(--positive);
+    padding:8px 13px; margin:13px 0;}
+  .rec .lbl{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--positive); display:block; margin-bottom:3px;}
+
+  .pill{display:inline-block; font-size:var(--fs-sm); font-weight:700; padding:1px 8px;
+    border:1px solid var(--border); background:none; color:var(--fg); vertical-align:middle;}
+  .pill.dec{color:var(--caution); border-color:var(--caution);}
+  .pill.red{color:var(--negative); border-color:var(--negative);}
+  .pill.grn{color:var(--positive); border-color:var(--positive);}
+
+  blockquote{border-left:3px solid var(--border); margin:10px 0; padding-left:13px;
+    font-size:var(--fs-base);}
+
+  .sev{font-weight:700;}
+  .sev.r{color:var(--negative);} .sev.o{color:var(--caution);} .sev.y{color:var(--caution);}
+  .verdict{font-weight:700; white-space:nowrap;}
+  .verdict.clean{color:var(--positive);} .verdict.tangled{color:var(--caution);}
+  .verdict.bound{color:var(--negative);}
+
+  .response{margin:16px 0 6px; border:1px solid var(--border);
+    border-left:3px solid var(--caution); background:none; padding:9px 13px;}
+  .response label{display:block; font-size:var(--fs-sm); font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--caution); margin-bottom:5px;}
+  .response .discuss{margin:0 0 10px; padding:9px 12px; border:1px solid var(--border);
+    border-left:3px solid var(--accent); background:none;
+    font-size:var(--fs-base); line-height:1.55; color:var(--fg);}
+  .response .discuss code{font-size:var(--fs-sm);}
+  .response.filled:not(.mini) textarea{border-left:3px solid var(--positive);}
+  aside.review{border:1px solid var(--border); border-left:3px solid var(--accent);
+    padding:9px 13px; margin:10px 0 16px;}
+  aside.review .who{font-size:var(--fs-sm); font-weight:700; color:var(--accent);
+    margin-bottom:5px; display:block;}
+  aside.review p{margin:6px 0;}
+  .response textarea{width:100%; min-height:52px; resize:vertical; font-family:var(--font);
+    font-size:var(--fs-base); color:var(--fg); background:var(--bg);
+    border:1px solid var(--border); padding:7px 10px; line-height:1.5; overflow:hidden;}
+  .response textarea:focus{outline:none; box-shadow:inset 0 0 0 2px var(--focus);}
+  .response.filled{border-left-color:var(--positive);}
+  .response.filled label{color:var(--positive);}
+
+  tr.row-note td{padding:3px 9px 9px; border:1px solid var(--border);}
+  tr.row-note .response.mini{margin:0; border:none; background:none; padding:0;}
+  tr.row-note .response.mini textarea{display:block; width:100%; min-height:0; height:1.9em;
+    resize:none; overflow:hidden; font-family:var(--font); font-size:var(--fs-base);
+    line-height:1.4; color:var(--fg); background:var(--bg);
+    border:1px solid var(--border); padding:4px 9px;}
+  tr.row-note .response.mini textarea:focus{color:var(--fg);
+    box-shadow:inset 0 0 0 2px var(--focus); border-color:var(--focus);}
+  tr.row-note .response.mini.filled textarea{border-color:var(--positive);}
+
+  .savebar{position:fixed; bottom:14px; right:19px; display:flex; align-items:center;
+    gap:11px; z-index:50; background:var(--bg); border:1px solid var(--border);
+    padding:7px 9px 7px 16px;}
+  .savebar .stat{font-size:var(--fs-sm); color:var(--fg);}
+  .savebar button{font-family:var(--font); font-size:var(--fs-base); font-weight:700;
+    cursor:pointer; border:1px solid var(--border); background:none; color:var(--fg);
+    padding:6px 14px;}
+  .savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  .savebar button.ghost{border-color:var(--border); color:var(--fg); padding:6px 10px;}
+</style>
+
+</head><body>
+
+<nav>
+  <div class="brand"><span class="logo"></span> PRD-005</div>
+  <div class="grp">Navigation</div>
+  <a href="#p0" data-page="p0" class="cur">0 · The problem</a>
+  <a href="#p1" data-page="p1">1 · Categories</a>
+  <a href="#p2" data-page="p2">2 · Nav placement</a>
+  <a href="#p3" data-page="p3">3 · Sprint reports</a>
+  <a href="#p4" data-page="p4">4 · Landing pages</a>
+  <a href="#p5" data-page="p5">5 · Generated pages</a>
+  <div class="foot">Answer each page to shape how navigation works across the harness. Your answers gate the implementation issues.</div>
+</nav>
+
+<main>
+
+<section class="page cur" id="p0">
+  <h1>Navigation is broken</h1>
+  <p class="sub">Every page type needs a way to reach every other page type. Right now, most can't.</p>
+
+  <p>The harness produces four kinds of pages: <strong>PRDs</strong> (dialogue docs with response boxes), <strong>issues</strong> (the tracker view), <strong>sprint reports</strong>, and <strong>docs</strong> (everything else — quickstart guides, adapter specs, conference lists). A reader on any of these should be able to get to any of the others without going back to the terminal.</p>
+
+  <p>Today that doesn't work. Here is what's broken:</p>
+
+  <div class="callout bad"><span class="tag">Generated pages are dead ends</span>
+    TRACKER.html, DOCS.html, PRDS.html, and REPORTS.html are generated by <code>doctracker.py</code> and <code>bin/tracker render</code>. They have no sidebar and no consistent nav bar. Once you're on the tracker, you can't get to a PRD without editing the URL or going back to the terminal.
+  </div>
+
+  <div class="callout bad"><span class="tag">Sprint reports are invisible</span>
+    Sprint reports (SPRINT-REPORT-*.html) are not tracked in <code>manifest.json</code>. The Reports landing page shows zero docs. There's no way to discover them through the UI.
+  </div>
+
+  <div class="callout warn"><span class="tag">Nav categories don't match reality</span>
+    The current DOCNAV patch injects five links — issues, PRDs, reports, docs, other — but "other" just points to DOCS.html (same as "docs"), and INDEX.html ("questions") was removed because it wasn't useful. The categories were never decided by the owner.
+  </div>
+
+  <p>The five questions on the following pages will define the navigation system. Each one gates an implementation issue.</p>
+</section>
+
+<section class="page" id="p1">
+  <h1>What are the categories?</h1>
+  <p class="sub">The nav needs a fixed set of categories. Each gets a link and a landing page.</p>
+
+  <p>Right now the codebase assumes four categories based on handle prefixes: <code>prd-*</code> for PRDs, <code>doc-*</code> for docs, <code>BUILD-REPORT-*</code> or <code>sprint-*</code> for reports, and everything else as "other." The DOCNAV patch renders five links (issues, PRDs, reports, docs, other), but "docs" and "other" go to the same page.</p>
+
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Category</th><th>What's in it</th><th>Landing page today</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Issues</strong></td><td>Tracked issues from <code>.entropy-machines/issues.json</code></td><td>TRACKER.html (exists, generated by <code>bin/tracker render</code>)</td></tr>
+      <tr><td><strong>PRDs</strong></td><td>Dialogue docs with <code>prd-*</code> handles</td><td>PRDS.html (exists, generated by <code>doctracker.py</code>)</td></tr>
+      <tr><td><strong>Reports</strong></td><td>Sprint reports (<code>SPRINT-REPORT-*.html</code>)</td><td>REPORTS.html (exists but empty — reports aren't in manifest)</td></tr>
+      <tr><td><strong>Docs</strong></td><td>Everything else — quickstart, adapter spec, conference list</td><td>DOCS.html (exists, shows all docs regardless of type)</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="response" data-resp="prd005-q1-categories">
+    <label>Your call</label>
+    <div class="discuss">The table above shows four categories: issues, PRDs, reports, docs. "Docs" is the catch-all for anything that isn't a PRD or a report. The current code also renders an "other" link, but it just goes to DOCS.html — it has no separate landing page. Should the nav have exactly these four categories? Should "other" be a fifth, or should uncategorized pages (like the conference list) live under "docs"? If you have a different set of categories in mind, name them here — this is the list every nav element will render.</div>
+    <textarea placeholder="Type your answer…">Are build reports and sprint the samething? if so, we need to collapse into just sprint.
+
+should be able to create other categories, etc. that in the future if we want or include other nav options as well.
+</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q1-categories">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Confirmed — BUILD-REPORT is dead. We'll rename any existing <code>BUILD-REPORT-*</code> files to <code>SPRINT-REPORT-*</code> and update all references in <code>categorize()</code>, templates, and generators. One prefix, one category.</p>
+    <p><strong>Final category list: Issues, PRDs, Reports, Docs.</strong> Four categories, not five — "other" was redundant (same destination as "docs"). The DOCNAV patch drops to four links.</p>
+    <p>For extensibility: the category list lives in one constant. Adding a category later = one entry + its landing page generator. No structural change needed.</p>
+  </aside>
+</section>
+
+<section class="page" id="p2">
+  <h1>Where does the nav go?</h1>
+  <p class="sub">Sidebar, header bar, or both — and does every page type get the same treatment?</p>
+
+  <p>PRDs and other dialogue docs have a 296px sidebar with page-internal navigation (p0, p1, p2…). The sidebar is where DOCNAV currently injects category links — below the page nav, above the footer. Generated pages (TRACKER.html, DOCS.html) have no sidebar at all; some have a small header bar with a few links, but it's inconsistent.</p>
+
+  <p>The question is whether category nav should be:</p>
+
+  <ul>
+    <li><strong>Option A — Sidebar for docs, header for generated pages.</strong> Docs keep the category links in the sidebar (where they already are). Generated pages get a consistent header bar. Two different implementations, but each fits its page type.</li>
+    <li><strong>Option B — Header bar everywhere.</strong> Every page gets a horizontal nav bar at the top with category links. Docs keep their sidebar for page-internal nav only. One implementation, consistent across page types.</li>
+    <li><strong>Option C — Something else.</strong> Maybe category nav is a top bar and page nav is a sidebar, and both are always present. Or maybe generated pages should get a sidebar too.</li>
+  </ul>
+
+  <div class="response" data-resp="prd005-q2-nav-placement">
+    <label>Your call</label>
+    <div class="discuss">The sidebar currently holds both page-internal nav (p0, p1…) and the DOCNAV category links. Adding more links there risks crowding it, especially on smaller screens. A header bar is simpler and consistent, but it means changing the layout of every dialogue doc. Generated pages need nav regardless — they're dead ends today. Which option works, or what's your alternative?</div>
+    <textarea placeholder="Type your answer…">For now A</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q2-nav-placement">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Confirmed — sidebar for every page type. Dialogue docs already have one with category links below page nav. Generated pages (TRACKER, DOCS, PRDS, REPORTS) and one-off docs gain a sidebar with the same category links.</p>
+    <p>Generated pages currently have no sidebar at all, so their templates need a layout refactor — flexbox wrapper with a <code>&lt;nav&gt;</code> column. One-time change per template, then every page in the system has the same navigation surface.</p>
+  </aside>
+</section>
+
+<section class="page" id="p3">
+  <h1>How do sprint reports get into the system?</h1>
+  <p class="sub">Reports aren't tracked anywhere the nav can find them.</p>
+
+  <p>Sprint reports (<code>SPRINT-REPORT-*.html</code>) live in the docs directory alongside PRDs, but they're not in <code>manifest.json</code>. The manifest only tracks dialogue docs — pages with response boxes that <code>doctracker.py</code> manages. Sprint reports are generated by <code>bin/sprint-report</code> and don't have response boxes.</p>
+
+  <p>This means:</p>
+  <ul>
+    <li>REPORTS.html (the landing page) is empty — <code>doctracker.py</code> has nothing to list.</li>
+    <li>Sprint reports don't get <code>enhance.py</code> patches (no theme selector, no DOCNAV, no live reload).</li>
+    <li>There's no way to discover sprint reports through the UI.</li>
+  </ul>
+
+  <div class="response" data-resp="prd005-q3-reports-manifest">
+    <label>Your call</label>
+    <div class="discuss">There are two clean options. <strong>(A)</strong> Add sprint reports to <code>manifest.json</code> alongside PRDs — <code>bin/sprint-report</code> would register each report when it generates one, and <code>doctracker.py</code> would list them on REPORTS.html the same way it lists PRDs on PRDS.html. This also means they'd get <code>enhance.py</code> patches. <strong>(B)</strong> Have the Reports landing page scan the docs directory for <code>SPRINT-REPORT-*.html</code> files directly, without touching the manifest. Simpler, but sprint reports stay outside the tracking system and don't get enhance patches. Which approach, or something else?</div>
+    <textarea placeholder="Type your answer…">Probably A.
+
+Seems like sprint-reports were initially created as a one off instead of being cohesive to the project itself. 
+
+Do we need to do to cleanup here?</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q3-reports-manifest">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Yes, cleanup needed. Three things:</p>
+    <p><strong>1.</strong> Update <code>bin/sprint-report</code> to register each new report in <code>manifest.json</code> when it generates one — same entry format as PRDs, minus the response-box fields.</p>
+    <p><strong>2.</strong> Backfill <code>manifest.json</code> entries for existing <code>SPRINT-REPORT-*</code> files (and rename any lingering <code>BUILD-REPORT-*</code> files while we're at it — per your Q1 answer, that prefix is dead).</p>
+    <p><strong>3.</strong> Once tracked, sprint reports start getting <code>enhance.py</code> patches — theme toggle, DOCNAV category links, live reload. They were one-offs before; now they're first-class.</p>
+  </aside>
+</section>
+
+<section class="page" id="p4">
+  <h1>What do landing pages show?</h1>
+  <p class="sub">A list of links, or cards with metadata and action flags?</p>
+
+  <p>Each category gets a landing page. Right now PRDS.html shows each PRD as a row with its title, a status dot (open/resolved), an "N to answer" badge, and a "gates N issues" badge. TRACKER.html is a full issue table with status, effort, blockers. DOCS.html is a simple list.</p>
+
+  <p>You said docs should be "flagged if I need to take any action." What counts as needing action?</p>
+
+  <ul>
+    <li><strong>Unanswered questions</strong> — the doc has response boxes waiting for you.</li>
+    <li><strong>Unread agent replies</strong> — an agent folded a reply you haven't seen.</li>
+    <li><strong>Status</strong> — the doc is marked "open" or "in review."</li>
+    <li><strong>Something else</strong> — maybe a manual flag, or a gate that's holding up issues.</li>
+  </ul>
+
+  <div class="response" data-resp="prd005-q4-landing-content">
+    <label>Your call</label>
+    <div class="discuss">The landing pages need to tell you at a glance whether a doc needs your attention. The current PRDS.html uses count badges ("3 to answer", "gates 2 issues"). Is that enough, or do you want something different — like a single "action needed" flag, or a more detailed card with last-updated timestamps? And should all landing pages look the same, or should TRACKER.html keep its current table format while PRDs/reports/docs use a simpler card layout?</div>
+    <textarea placeholder="Type your answer…">Counts as action
+
+- unanswered questions
+- status
+- flag that the PRD, sprint review, etc. hasn&#x27;t been accepted by me.</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q4-landing-content">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Confirmed. Each landing page row shows three signals:</p>
+    <p><strong>1. Unanswered questions</strong> — count badge ("3 to answer"). Already on PRDS.html.</p>
+    <p><strong>2. Status</strong> — open / in-review / resolved badge. Computed from response box state.</p>
+    <p><strong>3. Acceptance flag</strong> — "not accepted" indicator until the owner signs off. This is new — no mechanism exists yet.</p>
+  </aside>
+
+  <div class="response" data-resp="prd005-q4-acceptance-mechanism">
+    <label>Follow-up</label>
+    <div class="discuss">The acceptance flag needs a mechanism. Two options: <strong>(A)</strong> A button in the save bar that sets <code>data-accepted="true"</code> on the doc root and writes it to disk — visible, immediate, stays with the doc. <strong>(B)</strong> A CLI command like <code>bin/accept prd-005</code> that sets a field in the manifest entry — scriptable, but the doc itself doesn't know its own state. Which one, or both?</div>
+    <textarea placeholder="Type your answer…">review our factory in browser-wrap for what that looks an d works like. --- option A is the best.
+</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q4-acceptance-mechanism">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Reviewed. The factory already has this — <code>docstate.py:set_ready()</code> is exactly the pattern. It's owner-click-only by construction (<code>OWNER_CLICK</code> constant), sets a <code>ready</code> flag in the manifest, queues a review event, and bumps the version for live-reload. There is deliberately no CLI verb and no agent path to it.</p>
+    <p>Option A confirmed: save bar button. The existing <code>set_ready()</code> handles PRDs ("ready to build" = accepted, file issues). We extend this to all doc types — sprint reports get the same checkbox, same <code>OWNER_CLICK</code> guard, same "not accepted" indicator on landing pages until you tick it.</p>
+    <p>No new mechanism needed — just widen <code>set_ready()</code>'s scope from PRDs to every tracked doc, and surface the flag on landing page rows.</p>
+  </aside>
+</section>
+
+<section class="page" id="p5">
+  <h1>How do generated pages get nav?</h1>
+  <p class="sub">Three approaches, each with a trade-off.</p>
+
+  <p>Generated pages (TRACKER.html, DOCS.html, PRDS.html, REPORTS.html) are written by Python scripts and currently have no consistent nav. They need category links like every other page. The question is how they get them:</p>
+
+  <ul>
+    <li><strong>Option A — Bake it into the generator templates.</strong> Each generator (<code>doctracker.py</code>, <code>bin/tracker render</code>) includes the category nav HTML directly in its template. Simple, but the nav HTML is duplicated across generators, and updating it means touching every template.</li>
+    <li><strong>Option B — Have <code>enhance.py</code> patch them.</strong> The same way it patches dialogue docs. Currently generated pages are in the <code>GENERATED</code> set and get skipped by enhance — that would change. Centralizes the nav in one place, but enhance.py would need to handle pages without a sidebar.</li>
+    <li><strong>Option C — Have <code>serve.py</code> inject it at serve time.</strong> The server injects nav HTML into every response. No files are modified on disk. But the nav only works when served — opening a file directly shows no nav.</li>
+  </ul>
+
+  <div class="response" data-resp="prd005-q5-generated-nav">
+    <label>Your call</label>
+    <div class="discuss">Option B (enhance.py) is the most consistent — one place for the nav, applied to every page type. But it means generated pages can no longer skip enhance, and enhance needs to handle the no-sidebar case (inject a header bar instead). Option A is simplest but means nav duplication. Option C only works when served. Which approach, or a mix?</div>
+    <textarea placeholder="Type your answer…">A... unsure how this isn&#x27;t the best option given that it creates a uniform for all generated pages. 
+
+One off docs are technically also generated pages. this should be included for those as well.</textarea>
+  </div>
+
+  <aside class="review" data-review="prd005-q5-generated-nav">
+    <div class="who">Agent · <time>2026-09-04</time></div>
+    <p>Confirmed. Bake category nav sidebar into every template:</p>
+    <p><strong>1.</strong> <code>doctracker.py</code> templates — PRDS.html, REPORTS.html, DOCS.html</p>
+    <p><strong>2.</strong> <code>bin/tracker render</code> template — TRACKER.html</p>
+    <p><strong>3.</strong> <code>lib/doc-template.html</code> — new one-off docs get it out of the box</p>
+    <p>Existing one-off docs keep getting nav through <code>enhance.py</code>'s DOCNAV patch (already works). The sidebar layout matches dialogue docs — category links in a <code>&lt;nav&gt;</code> column. Four links, rarely changes.</p>
+  </aside>
+</section>
+
+</main>
+
+<div class="savebar">
+  <span class="stat" id="saveStat">Unsaved changes…</span>
+  <button class="ghost" id="clearBtn" title="Clear all responses">✕</button>
+  <button id="saveBtn">💾 Save</button>
+</div>
+<script type="application/json" id="responses-data">{
+ "prd005-q1-categories": "Are build reports and sprint the samething? if so, we need to collapse into just sprint.\n\nshould be able to create other categories, etc. that in the future if we want or include other nav options as well.\n",
+ "prd005-q2-nav-placement": "For now A",
+ "prd005-q3-reports-manifest": "Probably A.\n\nSeems like sprint-reports were initially created as a one off instead of being cohesive to the project itself. \n\nDo we need to do to cleanup here?",
+ "prd005-q4-landing-content": "Counts as action\n\n- unanswered questions\n- status\n- flag that the PRD, sprint review, etc. hasn't been accepted by me.",
+ "prd005-q4-acceptance-mechanism": "review our factory in browser-wrap for what that looks an d works like. --- option A is the best.\n",
+ "prd005-q5-generated-nav": "A... unsure how this isn't the best option given that it creates a uniform for all generated pages. \n\nOne off docs are technically also generated pages. this should be included for those as well."
+}</script>
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('nav a[data-page]'));
+  function show(id){
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('cur', p.id===id); });
+    links.forEach(function(l){ l.classList.toggle('cur', l.dataset.page===id); });
+    try{ history.replaceState(null,'','#'+id); }catch(e){}
+    window.scrollTo(0,0);
+    document.querySelectorAll('#'+id+' .response textarea').forEach(function(t){ autoGrow(t); });
+  }
+  links.forEach(function(l){ l.addEventListener('click', function(ev){ ev.preventDefault(); show(l.dataset.page); }); });
+  if (location.hash && document.getElementById(location.hash.slice(1))) show(location.hash.slice(1));
+  window.addEventListener('hashchange', function(){ var h=location.hash.slice(1); if(h && document.getElementById(h)) show(h); });
+  var KEY='prd-005-navigation';
+  var boxes=[].slice.call(document.querySelectorAll('.response'));
+  var stat=document.getElementById('saveStat');
+  var dataEl=document.getElementById('responses-data');
+  var fileHandle=null;
+  function ta(b){return b.querySelector('textarea');}
+  function key(b){return b.getAttribute('data-resp');}
+  function markFilled(b){ if(ta(b).value.trim()) b.classList.add('filled'); else b.classList.remove('filled'); }
+  function autoGrow(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+  function load(){
+    var saved={};
+    try{ saved=JSON.parse(dataEl.textContent||'{}')||{}; }catch(e){}
+    try{ var ls=JSON.parse(localStorage.getItem(KEY)||'{}'); Object.keys(ls).forEach(function(k){ if(ls[k]&&ls[k].trim()) saved[k]=ls[k]; }); }catch(e){}
+    boxes.forEach(function(b){ var v=saved[key(b)]; if(typeof v==='string') ta(b).value=v; markFilled(b); autoGrow(ta(b)); });
+  }
+  function collect(){ var o={}; boxes.forEach(function(b){ o[key(b)]=ta(b).value; }); return o; }
+  function autosave(){ try{ localStorage.setItem(KEY,JSON.stringify(collect())); }catch(e){} }
+  document.getElementById('saveBtn').addEventListener('click',async function(){
+    dataEl.textContent=JSON.stringify(collect(),null,2);
+    boxes.forEach(function(b){ ta(b).textContent=ta(b).value; });
+    var html='<!doctype html>\n'+document.documentElement.outerHTML;
+    if(window.showSaveFilePicker){
+      try{
+        if(!fileHandle) fileHandle=await window.showSaveFilePicker({suggestedName:'prd-005-navigation.html',types:[{description:'HTML',accept:{'text/html':['.html']}}]});
+        var w=await fileHandle.createWritable(); await w.write(html); await w.close();
+        stat.textContent='Saved to file'; return;
+      }catch(err){ if(err&&err.name==='AbortError'){stat.textContent='Save cancelled';return;} }
+    }
+    var blob=new Blob([html],{type:'text/html'}); var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='prd-005-navigation.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    stat.textContent='Downloaded — overwrite the original';
+  });
+  document.getElementById('clearBtn').addEventListener('click',function(){
+    if(!confirm('Clear all responses?'))return;
+    boxes.forEach(function(b){ ta(b).value=''; markFilled(b); autoGrow(ta(b)); });
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    dataEl.textContent='{}'; stat.textContent='Cleared';
+  });
+  boxes.forEach(function(b){ ta(b).addEventListener('input',function(){ markFilled(b); autoGrow(ta(b)); autosave(); stat.textContent='Unsaved changes…'; }); });
+  load();
+  window.addEventListener('resize',function(){ boxes.forEach(function(b){ autoGrow(ta(b)); }); });
+})();
+</script>
+
+</body></html>

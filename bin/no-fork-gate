@@ -1,0 +1,9 @@
+#!/bin/sh
+# PreToolUse hook: refuse subagent_type: "fork" on the Agent tool.
+# Forks inherit the full conversation context and waste tokens.
+# Use a fresh agent with explicit context instead.
+
+if echo "$TOOL_INPUT" | grep -q '"subagent_type"[[:space:]]*:[[:space:]]*"fork"'; then
+  echo "DENIED: subagent_type 'fork' is prohibited. Use a fresh agent (general-purpose or other) with explicit context in the prompt instead of forking your full conversation." >&2
+  exit 2
+fi
