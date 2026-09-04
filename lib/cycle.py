@@ -79,7 +79,7 @@ def cmd_set(m, args):
     if args[1] == "ready":
         sys.exit(
             "cycle.py: 'ready' is not a status and has no CLI verb.\n"
-            "  It is the owner's checkbox at the top left of each PRD, and the\n"
+            "  It is the owner's checkbox at the top left of each doc, and the\n"
             "  only thing that sets it is that click (docstate.OWNER_CLICK).\n"
             "  Statuses say who holds the ball: open / in-review / resolved / held.")
     ds.set_status(m, did, args[1])

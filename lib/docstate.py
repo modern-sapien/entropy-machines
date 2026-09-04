@@ -160,18 +160,23 @@ def set_status(m, did, status, label=""):
 # here requires importing this module and passing this constant on purpose,
 # which is hand-editing the manifest with extra steps.
 #
-# Why it matters: "this PRD is ready to build" is the judgment that turns a
-# document into a batch of filed issues and, eventually, into unattended work.
-# Every other transition in this file is reversible bookkeeping. This one
-# spends the owner's night.
+# Why it matters: "this doc is accepted" is the judgment that turns a document
+# into actionable work — on a PRD, a batch of filed issues; on a report, a
+# closed sprint; on any other doc, "the owner has signed off." Every other
+# transition in this file is reversible bookkeeping. This one spends the
+# owner's night.
 OWNER_CLICK = "owner-click:UNATTENDED-OPS-2026-08-09"
 
 
 def set_ready(m, did, ready, by):
-    """Mark a PRD ready to build, or take it back. Owner click only.
+    """Mark a doc as accepted (ready), or take it back. Owner click only.
+
+    Applies to every tracked doc type — PRDs, reports, and docs alike. On a
+    PRD it means "ready to build"; on a report it means "sprint closed"; on
+    any other doc it means the owner has signed off.
 
     `ready` is a FLAG, not a status: status says who holds the ball ("open" =
-    your turn), and a PRD can be resolved without being ready to build or ready
+    your turn), and a doc can be resolved without being accepted, or accepted
     while a follow-up question is still open. Overloading status would have
     made those two states unrepresentable.
     """
@@ -180,7 +185,7 @@ def set_ready(m, did, ready, by):
             "set_ready is the owner's click and nothing else.\n"
             "  There is deliberately no CLI verb and no agent path here — the "
             "checkbox in the doc is the whole interface.\n"
-            "  If a PRD needs to be marked ready, ask the owner to tick it.")
+            "  If a doc needs to be marked accepted, ask the owner to tick it.")
     e = m["docs"][did]
     if ready:
         e["ready"] = {"at": now(), "by": "owner"}
