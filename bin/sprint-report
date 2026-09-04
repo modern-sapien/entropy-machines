@@ -270,6 +270,76 @@ def build_open_items(progress: list) -> str:
     return "".join(parts)
 
 
+def _handle_from_filename(filename):
+    """Derive a manifest handle from a sprint report filename.
+    SPRINT-REPORT-sprint-2.html -> sprint-report-sprint-2"""
+    return os.path.splitext(filename)[0].lower()
+
+
+def _title_from_file(path):
+    """Extract <title> from an HTML file for backfill."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            head = f.read(4096)
+        m = re.search(r"<title>(.*?)</title>", head, re.S)
+        if m:
+            return html.unescape(m.group(1)).strip()
+    except OSError:
+        pass
+    # Fallback: humanise the filename
+    base = os.path.splitext(os.path.basename(path))[0]
+    return base.replace("-", " ")
+
+
+def register_manifest(docs_path, filename, title):
+    """Register a sprint report in manifest.json and backfill any other
+    SPRINT-REPORT-*.html files not yet tracked.
+
+    Uses docstate for atomic load/store so we stay consistent with the rest
+    of the doc pipeline. Returns a list of handles that were added."""
+    import glob
+    import docstate
+    docstate.init(docs_path)
+
+    m = docstate.load()
+    docs = m.setdefault("docs", {})
+    existing_files = {e.get("file") for e in docs.values()}
+    added = []
+
+    # Register the just-generated report
+    handle = _handle_from_filename(filename)
+    if handle not in docs and filename not in existing_files:
+        docs[handle] = {
+            "file": filename,
+            "title": title,
+            "status": "open",
+            "version": 0,
+        }
+        added.append(handle)
+
+    # Backfill any other sprint reports already on disk but not in manifest
+    for path in sorted(glob.glob(os.path.join(docs_path, "SPRINT-REPORT-*.html"))):
+        fname = os.path.basename(path)
+        h = _handle_from_filename(fname)
+        if h not in docs and fname not in existing_files:
+            docs[h] = {
+                "file": fname,
+                "title": _title_from_file(path),
+                "status": "open",
+                "version": 0,
+            }
+            existing_files.add(fname)
+            added.append(h)
+
+    if added:
+        docstate.store(m)
+        docstate.write_state(m)
+        docstate.write_index(m)
+        docstate.render_doctracker()
+
+    return added
+
+
 def main():
     tracker = load_tracker()
     done, progress, notstarted = categorize_issues(tracker)
@@ -293,8 +363,9 @@ def main():
         pill_text += ", %d in progress" % len(progress)
 
     # Fill placeholders
+    title = "Sprint Report: %s" % SPRINT_NAME
     replacements = {
-        "{{TITLE}}": "Sprint Report: %s" % SPRINT_NAME,
+        "{{TITLE}}": title,
         "{{SPRINT_NAME}}": SPRINT_NAME,
         "{{SPRINT_DATE}}": today,
         "{{SUBTITLE}}": "%s · %d commits on %s" % (today, commit_count, branch),
@@ -336,6 +407,14 @@ def main():
             print("sprint-report: %s already up to date" % out_name, flush=True)
     except Exception as exc:
         print("sprint-report: enhance.py failed: %s" % exc, file=sys.stderr)
+
+    # Register in manifest.json (+ backfill any existing sprint reports)
+    try:
+        added = register_manifest(DOCS_PATH, out_name, title)
+        for h in added:
+            print("sprint-report: registered %s in manifest.json" % h, flush=True)
+    except Exception as exc:
+        print("sprint-report: manifest registration failed: %s" % exc, file=sys.stderr)
 
     print("sprint-report: done. Serve with: bin/serve", flush=True)
 
