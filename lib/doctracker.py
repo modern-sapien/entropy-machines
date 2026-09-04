@@ -98,10 +98,10 @@ def mark_superseded(boxes):
     down the same conversation. A gap at the END of a chain is a demand,
     because nothing came after it.
 
-    Chain, not section: a build report is one long scroll with no <section>
+    Chain, not section: a sprint report is one long scroll with no <section>
     ids, so scoping by section made every box in the file one chain and let an
     answer anywhere silence a question anywhere above it — which would have
-    hidden both of the asks folded into BUILD-REPORT-2026-08-13 on 2026-08-23.
+    hidden both of the asks folded into SPRINT-REPORT-2026-08-13 on 2026-08-23.
     """
     later = []
     seen = {}
@@ -169,7 +169,7 @@ def categorize(docs):
 
     Returns a dict: {category: [doc, ...]} where category is one of
     'prd', 'report', 'doc', 'other'.  Same grouping the old DOCNAV JS
-    used — prd-* handles, BUILD-REPORT-* files or sprint-* handles,
+    used — prd-* handles, SPRINT-REPORT-* files or sprint-* handles,
     doc-* handles, and everything else.
     """
     cats = {"prd": [], "report": [], "doc": [], "other": []}
@@ -178,7 +178,7 @@ def categorize(docs):
         f = d["file"]
         if re.match(r"^prd-", h, re.I):
             cats["prd"].append(d)
-        elif re.match(r"^BUILD-REPORT-", f, re.I) or re.match(r"^sprint-", h, re.I):
+        elif re.match(r"^SPRINT-REPORT-", f, re.I) or re.match(r"^sprint-", h, re.I):
             cats["report"].append(d)
         elif re.match(r"^doc-", h, re.I):
             cats["doc"].append(d)

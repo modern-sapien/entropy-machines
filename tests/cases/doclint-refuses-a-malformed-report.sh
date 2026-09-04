@@ -39,9 +39,9 @@ make_doc() {
 # ---------------------------------------------------------------------------
 # PASS: a doc built from the shipped template
 # ---------------------------------------------------------------------------
-cp "$TPL" "$DOCS/BUILD-REPORT-FROM-TEMPLATE.html"
+cp "$TPL" "$DOCS/SPRINT-REPORT-FROM-TEMPLATE.html"
 
-run "$LINT" "$DOCS/BUILD-REPORT-FROM-TEMPLATE.html"
+run "$LINT" "$DOCS/SPRINT-REPORT-FROM-TEMPLATE.html"
 assert_rc 0 "a doc built from lib/REPORT-TEMPLATE.html passes"
 assert_out "all local and answerable" "and says so"
 assert_no_traceback
@@ -203,7 +203,7 @@ assert_rc 1 "with no arguments it finds the docs directory from a subdirectory"
 assert_out "broadcast.html" "and reports the bad doc sitting in it"
 
 rm -f "$DOCS"/*.html
-cp "$TPL" "$DOCS/BUILD-REPORT-FROM-TEMPLATE.html"
+cp "$TPL" "$DOCS/SPRINT-REPORT-FROM-TEMPLATE.html"
 run_in "$REPO/src" "$LINT"
 assert_rc 0 "a docs directory holding only conforming docs passes"
 assert_out "1 doc(s) checked" "counting what it actually read"

@@ -236,7 +236,7 @@ def queue_review(did, file, kind="save"):
                session while the owner was still typing. Answer it, but do not
                treat it as the reader being finished.
       "ready"  the owner's tick (set_ready). That IS the finished signal: it is
-               owner-click-only by construction, and on a build report it means
+               owner-click-only by construction, and on a sprint report it means
                the sprint is closed. Added 2026-08-11 — before it, a tick wrote
                a manifest flag and nothing else, so "auto pick up on submit"
                had no event to key on.

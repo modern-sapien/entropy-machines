@@ -27,7 +27,7 @@ fixture_init
 THEMES="$HARNESS/lib/themes"
 TPL="$HARNESS/lib/REPORT-TEMPLATE.html"
 DOCS="$REPO/entropy-machines-docs"
-DOC="BUILD-REPORT-THEMED.html"
+DOC="SPRINT-REPORT-THEMED.html"
 
 # Janus — the default theme, violet-accented high contrast.
 JN_BG="--bg:#0a0a0d;"

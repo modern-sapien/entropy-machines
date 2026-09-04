@@ -709,10 +709,10 @@ REPORTNAV = r"""<style id="__reportnav-css">
   #__todobar{ position:static; }
 </style>
 <script id="__reportnav-patch">
-// Section nav for a build report, derived from the <h2>s at view time.
+// Section nav for a sprint report, derived from the <h2>s at view time.
 //
 // WHY DERIVED, NOT AUTHORED: the one thing this has to survive is a report
-// written in a hurry. BUILD-REPORT-2026-08-17-trace-record.html dropped the
+// written in a hurry. SPRINT-REPORT-2026-08-17-trace-record.html dropped the
 // <nav> element out of the template body while keeping its CSS and the comment
 // telling you not to — which cost the owner BOTH the section nav and the
 // sprint-close checkbox (__prdready-patch bails at `if(!file||!nav) return`).
