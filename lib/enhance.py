@@ -688,19 +688,31 @@ def _ensure_static_nav_categories(src):
     carries them without JavaScript. This function patches existing docs
     that predate the change.
     """
-    # Already has static category links — nothing to do.
-    if 'href="TRACKER.html"' in src and 'href="DOCS.html"' in src:
+    # Already has static category links IN THE NAV — nothing to do.
+    # Must check only the <nav>…</nav> section, not the whole document:
+    # PRDs 002-004 carry href="TRACKER.html" etc. inside <script> blocks
+    # (the old dynamic nav patches), and a whole-source search false-
+    # positives on those, leaving the nav itself without category links.
+    nav_start = src.find('<nav')
+    nav_close = src.find('</nav>', nav_start) if nav_start >= 0 else -1
+    if nav_start >= 0 and nav_close >= 0:
+        nav_section = src[nav_start:nav_close]
+        if 'href="TRACKER.html"' in nav_section and 'href="DOCS.html"' in nav_section:
+            return src, False
+    elif nav_start < 0:
+        # No <nav> at all — nothing to patch.
         return src, False
 
     # Find the <nav> and insert categories before the .foot div if present,
-    # otherwise before </nav>.
-    foot = re.search(r'(\n\s*<div class="foot")', src)
+    # otherwise before </nav>.  Scope the .foot search to inside the <nav>
+    # so a .foot elsewhere in the doc does not mislead.
+    foot = re.search(r'(\n\s*<div class="foot")', src[nav_start:nav_close] if nav_close >= 0 else src[nav_start:])
     if foot:
-        return (src[:foot.start()] + '\n' + _STATIC_NAV_CATEGORIES + src[foot.start():],
+        ins = nav_start + foot.start()
+        return (src[:ins] + '\n' + _STATIC_NAV_CATEGORIES + src[ins:],
                 True)
-    nav_end = src.find('</nav>')
-    if nav_end >= 0:
-        return (src[:nav_end] + _STATIC_NAV_CATEGORIES + '\n' + src[nav_end:],
+    if nav_close >= 0:
+        return (src[:nav_close] + _STATIC_NAV_CATEGORIES + '\n' + src[nav_close:],
                 True)
     return src, False
 
