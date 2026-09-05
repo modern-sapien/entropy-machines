@@ -58,9 +58,55 @@ import datetime
 import html
 import json
 import os
+import re
 import sys
 
 BUCKET_ORDER = ["ready", "inflight", "held", "gated", "blocked", "done"]
+
+# Path to the unified base template — ONE source of truth for the sidebar nav.
+_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              'doc-template.html')
+
+_NAV_CATEGORIES_CACHE = None
+
+_DEFAULT_NAV_CATEGORIES = (
+    '  <div class="grp">Categories</div>\n'
+    '  <a href="TRACKER.html">issues</a>\n'
+    '  <a href="PRDS.html">PRDs</a>\n'
+    '  <a href="REPORTS.html">reports</a>\n'
+    '  <a href="DOCS.html">docs</a>')
+
+
+def _read_nav_categories():
+    """Read the category links from doc-template.html — the ONE base template.
+
+    The sidebar nav's category links are defined in doc-template.html and
+    extracted here so tracker-view.py does not duplicate them.  Falls back to
+    a built-in constant if the template file is missing or unparseable.
+    """
+    global _NAV_CATEGORIES_CACHE
+    if _NAV_CATEGORIES_CACHE is not None:
+        return _NAV_CATEGORIES_CACHE
+    try:
+        with open(_TEMPLATE_PATH, encoding='utf-8') as f:
+            src = f.read()
+        m = re.search(
+            r'(<div class="grp">Categories</div>'
+            r'(?:\s*<a href="[^"]*">[^<]*</a>)+)',
+            src)
+        _NAV_CATEGORIES_CACHE = m.group(1).strip() if m else _DEFAULT_NAV_CATEGORIES
+    except OSError:
+        _NAV_CATEGORIES_CACHE = _DEFAULT_NAV_CATEGORIES
+    return _NAV_CATEGORIES_CACHE
+
+
+def _base_nav(brand):
+    """Build the standard sidebar <nav> with the given brand text."""
+    cats = _read_nav_categories()
+    return ('<nav>\n'
+            '  <div class="brand"><span class="logo"></span> %s</div>\n'
+            '  %s\n'
+            '</nav>' % (brand, cats))
 
 
 def refuse(msg_lines, code=2):
@@ -200,6 +246,7 @@ def build_payload(store, project, store_rel):
 def render(payload, out_path):
     blob = json.dumps(payload, ensure_ascii=False, sort_keys=True).replace("</", "<\\/")
     doc = (TEMPLATE
+           .replace("__NAV__", _base_nav("Issue tracker"))
            .replace("__PROJECT__", html.escape(payload["project"] or "this repo"))
            .replace("__GENERATED__", html.escape(payload["generated"]))
            .replace("__STORE__", html.escape(payload["store"]))
@@ -490,14 +537,7 @@ footer{border-top:1px solid var(--line);margin:0 18px;padding:12px 0 40px;
 .note dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 </style></head>
 <body>
-<nav>
-  <div class="brand"><span class="logo"></span> Issue tracker</div>
-  <div class="grp">Categories</div>
-  <a href="TRACKER.html">issues</a>
-  <a href="PRDS.html">PRDs</a>
-  <a href="REPORTS.html">reports</a>
-  <a href="DOCS.html">docs</a>
-</nav>
+__NAV__
 <div class="content">
 <header>
   <h1>__PROJECT__ <span>· issue tracker</span></h1>
