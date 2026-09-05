@@ -55,7 +55,7 @@ ISSUE_AGREE_RV = "1"
 UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
 UNSAVED_CUE_RV = "1"
 DOCNAV_MARK = 'id="__docnav-patch"'
-DOCNAV_RV = "2"
+DOCNAV_RV = "3"
 LIVERELOAD_MARK = 'id="__livereload-patch"'
 # VERSIONED, like review-css, and for the same reason: every doc already carries
 # a copy of this patch stamped into its HTML, so a mark-only gate reads them all
@@ -682,9 +682,9 @@ DOCNAV = r'''
     +'<a href="REPORTS.html">reports</a>'
     +'<a href="DOCS.html">docs</a>'
     +'</div>';
-  var foot=nav.querySelector('.foot');
-  if(foot) nav.insertBefore(el, foot);
-  else nav.appendChild(el);
+  var grp=nav.querySelector('.grp');
+  if(grp) nav.insertBefore(el, grp);
+  else nav.insertBefore(el, nav.firstChild);
 })();
 </script>
 '''.strip()
