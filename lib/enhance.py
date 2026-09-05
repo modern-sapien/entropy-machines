@@ -55,7 +55,7 @@ ISSUE_AGREE_RV = "1"
 UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
 UNSAVED_CUE_RV = "1"
 DOCNAV_MARK = 'id="__docnav-patch"'
-DOCNAV_RV = "3"
+DOCNAV_RV = "4"
 LIVERELOAD_MARK = 'id="__livereload-patch"'
 # VERSIONED, like review-css, and for the same reason: every doc already carries
 # a copy of this patch stamped into its HTML, so a mark-only gate reads them all
@@ -661,33 +661,48 @@ TRACKERNAV = r'''
 
 
 DOCNAV = r'''
-<style id="__docnav-css">
-  nav .__docnav{border-top:1px solid var(--border,#ccc);margin-top:.6rem;padding-top:.3rem;}
-  nav .__dn-cats{display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem .4rem .5rem;}
-  nav .__dn-cats a{font-size:var(--fs-sm,12px);font-weight:700;text-decoration:none;
-    color:var(--muted,#71717a);border:1px solid var(--border,#ddd6fe);padding:.1rem .5rem;}
-  nav .__dn-cats a:hover{color:var(--accent,#7c3aed);border-color:currentColor;}
-</style>
 <script id="__docnav-patch" data-dn="__RV__">
-// Cross-doc navigation: 4 category links, each to its own landing page.
-// No manifest.json fetch needed — the landing pages handle browsing.
-(function(){
-  var nav=document.querySelector('nav');
-  if(!nav) return;
-  var el=document.createElement('div');
-  el.className='__docnav';
-  el.innerHTML='<div class="__dn-cats">'
-    +'<a href="TRACKER.html">issues</a>'
-    +'<a href="PRDS.html">PRDs</a>'
-    +'<a href="REPORTS.html">reports</a>'
-    +'<a href="DOCS.html">docs</a>'
-    +'</div>';
-  var grp=nav.querySelector('.grp');
-  if(grp) nav.insertBefore(el, grp);
-  else nav.insertBefore(el, nav.firstChild);
-})();
+/* Category links are static in the nav. No-op — kept for the gate mark. */
 </script>
 '''.strip()
+
+
+# The category links that every doc's <nav> should contain, as static HTML.
+# Source of truth is doc-template.html; this constant is a fallback so
+# enhance.py works even if the template file is absent.
+_STATIC_NAV_CATEGORIES = (
+    '  <div class="grp">Categories</div>\n'
+    '  <a href="TRACKER.html">issues</a>\n'
+    '  <a href="PRDS.html">PRDs</a>\n'
+    '  <a href="REPORTS.html">reports</a>\n'
+    '  <a href="DOCS.html">docs</a>'
+)
+
+
+def _ensure_static_nav_categories(src):
+    """Add static category links to the <nav> if absent.
+
+    Before this change, category links were injected at runtime by a
+    <script> block that created DOM elements on load. The brief for
+    i-unify-page-template moves them into the source HTML so every page
+    carries them without JavaScript. This function patches existing docs
+    that predate the change.
+    """
+    # Already has static category links — nothing to do.
+    if 'href="TRACKER.html"' in src and 'href="DOCS.html"' in src:
+        return src, False
+
+    # Find the <nav> and insert categories before the .foot div if present,
+    # otherwise before </nav>.
+    foot = re.search(r'(\n\s*<div class="foot")', src)
+    if foot:
+        return (src[:foot.start()] + '\n' + _STATIC_NAV_CATEGORIES + src[foot.start():],
+                True)
+    nav_end = src.find('</nav>')
+    if nav_end >= 0:
+        return (src[:nav_end] + _STATIC_NAV_CATEGORIES + '\n' + src[nav_end:],
+                True)
+    return src, False
 
 
 REPORTNAV = r"""<style id="__reportnav-css">
@@ -1428,6 +1443,12 @@ def apply(src, name="doc.html"):
         if upgraded != src:
             src = upgraded
             changed.append("tracker-nav v" + TRACKERNAV_RV)
+    # Static category links in the <nav> — the source-of-truth approach that
+    # replaces the old runtime JS injection. Links live in the HTML, not in a
+    # script that creates them on load.
+    src, cats_added = _ensure_static_nav_categories(src)
+    if cats_added:
+        changed.append("doc-nav-static")
     if DOCNAV_MARK not in src:
         src = src.replace("</body>", DOCNAV.replace("__RV__", DOCNAV_RV) + "\n</body>", 1)
         changed.append("doc-nav v" + DOCNAV_RV)
