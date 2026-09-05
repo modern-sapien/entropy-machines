@@ -30,7 +30,7 @@
    nothing here and correctly falls through to the default. */
 :root[data-theme=light]{
   --bg:#fff; --panel:#fff;
-  --fg:#292929; --dim:rgba(41,41,41,.75);
+  --fg:#2d1b69; --dim:rgba(41,41,41,.75);
   --border:#0F4A85; --focus:#006BBD; --link:#0F4A85;
   --positive:#0A5C21; --caution:#7A4A00; --negative:#A81C0B; --accent:#6B21A8;
 }

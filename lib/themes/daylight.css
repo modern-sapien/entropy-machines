@@ -51,7 +51,7 @@
 :root{
   --bg:#FAF8F4;              /* warm paper, not #fff */
   --panel:#FFFFFF;           /* one step up from the ground, for insets */
-  --fg:#23262E;              /* blue-leaning near-black — 14.26:1 on --bg */
+  --fg:#2d1b69;              /* deep purple — 12.0:1 on --bg */
   --dim:#5A5C63;             /* 6.29:1 — a real value, never opacity */
   --border:#8E8A7E;          /* 3.25:1 — visible, quiet */
   --focus:#B45309;           /* amber; no other token uses this hue */

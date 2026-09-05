@@ -377,7 +377,7 @@ TEMPLATE = r"""<!doctype html>
 }
 :root[data-theme=light]{      /* hc-light */
   --bg:#fff; --panel:#fff;
-  --ink:#292929; --dim:rgba(41,41,41,.75);
+  --ink:#2d1b69; --dim:rgba(41,41,41,.75);
   --line:#0F4A85;
   --focus:#006BBD;
   --accent:#0F4A85;
