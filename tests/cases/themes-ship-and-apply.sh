@@ -350,7 +350,7 @@ assert_rc 0 "the doc ON DISK still carries its own tokens; serving rewrote nothi
 # Structure is shared, not duplicated: the parts a theme does not own survive.
 run grep -F -- "data-resp" "$TEST_TMP/daylight.html"
 assert_rc 0 "the themed doc still carries its answer boxes"
-run grep -F -- "max-width:860px" "$TEST_TMP/daylight.html"
+run grep -F -- "max-width:1060px" "$TEST_TMP/daylight.html"
 assert_rc 0 "and its layout, which no theme file defines"
 
 # ---------------------------------------------------------------------------

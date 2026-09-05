@@ -148,8 +148,9 @@
 /* entropy-machines-theme:end */
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
-  font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+  font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex;min-height:100vh}
+main{flex:1;min-width:0;padding:38px 42px 120px;max-width:1060px}
 a{color:var(--link)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 
@@ -194,12 +195,27 @@ ul,ol{padding-left:20px}
 li{margin:3px 0}
 hr{border:0;border-top:1px solid var(--border);margin:28px 0}
 
-nav{border:1px solid var(--border);padding:10px 12px;margin:0 0 22px;
+/* ---- sidebar nav (cross-doc categories) ---- */
+body > nav{width:296px;flex:none;border-right:1px solid var(--border);background:var(--bg);
+  padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+body > nav .brand{display:flex;align-items:center;gap:8px;font-weight:700;
+  font-size:var(--fs-base);margin-bottom:16px;padding:0 6px}
+body > nav .brand .logo{width:18px;height:18px;border:1px solid var(--border);background:none}
+body > nav a{display:block;padding:6px 10px;color:var(--fg);text-decoration:none;
+  font-size:var(--fs-base);margin-bottom:2px;border:1px solid transparent}
+body > nav a:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+body > nav a.cur{border-color:var(--border);font-weight:700}
+body > nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--fg);margin:16px 6px 6px}
+body > nav .foot{font-size:var(--fs-sm);color:var(--fg);margin-top:20px;padding:0 6px}
+
+/* ---- in-main section nav ---- */
+main nav{border:1px solid var(--border);padding:10px 12px;margin:0 0 22px;
   display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
-nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
+main nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em}
-nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--border)}
-nav a:hover{border-bottom-color:var(--focus)}
+main nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--border)}
+main nav a:hover{border-bottom-color:var(--focus)}
 
 .links{border:1px solid var(--border);padding:8px 12px;margin:0 0 18px;
   display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
@@ -229,6 +245,16 @@ nav a:hover{border-bottom-color:var(--focus)}
 .savebar button.ghost{padding:6px 10px}
 </style></head>
 <body>
+
+<nav>
+  <div class="brand"><span class="logo"></span> {{TITLE}}</div>
+  <div class="grp">Categories</div>
+  <a href="TRACKER.html">issues</a>
+  <a href="PRDS.html">PRDs</a>
+  <a href="REPORTS.html">reports</a>
+  <a href="DOCS.html">docs</a>
+</nav>
+
 <main>
 
 <nav aria-label="document">
