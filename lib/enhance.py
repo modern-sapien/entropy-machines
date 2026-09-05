@@ -703,12 +703,14 @@ def _ensure_static_nav_categories(src):
         # No <nav> at all — nothing to patch.
         return src, False
 
-    # Find the <nav> and insert categories before the .foot div if present,
-    # otherwise before </nav>.  Scope the .foot search to inside the <nav>
-    # so a .foot elsewhere in the doc does not mislead.
-    foot = re.search(r'(\n\s*<div class="foot")', src[nav_start:nav_close] if nav_close >= 0 else src[nav_start:])
-    if foot:
-        ins = nav_start + foot.start()
+    # Find the <nav> and insert categories right after the .brand div,
+    # so they appear above page-specific context links.  Scope the .brand
+    # search to inside the <nav> so a .brand elsewhere does not mislead.
+    nav_slice = src[nav_start:nav_close] if nav_close >= 0 else src[nav_start:]
+    brand_end = re.search(r'(</div>)', nav_slice)
+    if brand_end:
+        # The first </div> inside <nav> closes the .brand div.
+        ins = nav_start + brand_end.end()
         return (src[:ins] + '\n' + _STATIC_NAV_CATEGORIES + src[ins:],
                 True)
     if nav_close >= 0:
