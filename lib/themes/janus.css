@@ -39,10 +39,10 @@
 :root[data-theme=light]{
   --bg:#faf9fc;              /* Janus product light background */
   --panel:#ffffff;
-  --fg:#18181b;              /* Janus light text — 17.4:1 on --bg */
-  --dim:rgba(24,24,27,.7);
+  --fg:#18181b;              /* near-black text — 17.4:1 on --bg */
+  --dim:rgba(24,24,27,.7);   /* muted text — derived from --fg */
   --border:#7c3aed;          /* violet border, saturated for light ground */
-  --focus:#d97706;           /* amber — darker for light ground contrast */
+  --focus:#7c3aed;           /* violet — same as border/link (5-color palette) */
   --link:#7c3aed;            /* Janus light link */
-  --positive:#0A5C21; --caution:#92400e; --negative:#b91c1c; --accent:#6d28d9;
+  --positive:#0A5C21; --caution:#7c3aed; --negative:#b91c1c; --accent:#7c3aed;
 }

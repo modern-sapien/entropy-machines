@@ -469,15 +469,15 @@ TODOBANNER = r'''
      background tints; no filled badges). Vars fall back for docs still on the
      old sheet. */
   #__todobar{ position:sticky; top:0; z-index:40; margin:0 0 1.1rem;
-    border:2px solid var(--caution,#a16207); background:var(--bg,#fff);
-    color:var(--caution,#a16207); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
+    border:2px solid var(--caution,#7c3aed); background:var(--bg,#fff);
+    color:var(--caution,#7c3aed); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
   #__todobar[hidden]{ display:none; }
   #__todobar .hd{ font-weight:700; text-transform:uppercase; letter-spacing:.04em;
     font-size:var(--fs-sm,.72rem); display:block; margin-bottom:.35rem; }
-  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#a16207);
+  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#7c3aed);
     background:none; border:1px solid currentColor; padding:.14rem .6rem;
     margin:.16rem .3rem .16rem 0; text-decoration:none; }
-  #__todobar a:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
+  #__todobar a:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
 </style>
 <script id="__todobanner-patch" data-tb="__RV__">
 // An in-page "these need you" bar. Same source of truth as the nav marks —
@@ -559,7 +559,7 @@ LIVERELOAD = r'''
   #__replybar[hidden]{ display:none; }
   #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
     background:none; border:1px solid currentColor; padding:.2rem .7rem; }
-  #__replybar button:hover{ outline:2px solid var(--focus,#006BBD); outline-offset:1px; }
+  #__replybar button:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
 <script id="__livereload-patch" data-lr="__RV__">
@@ -728,7 +728,7 @@ REPORTNAV = r"""<style id="__reportnav-css">
   main nav .seclinks a{ font-size:var(--fs-sm,12px); font-weight:700;
     text-decoration:none; color:var(--dim,#666);
     border:1px solid var(--border,#ccc); padding:2px 8px; }
-  main nav .seclinks a:hover{ color:var(--accent,#0F4A85); border-color:currentColor; }
+  main nav .seclinks a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
   main nav .seclinks a:target,
   main nav .seclinks a.here{ color:var(--focus,#F38518); border-color:currentColor; }
   main section{ scroll-margin-top:4.5rem; }
@@ -1184,8 +1184,8 @@ DOCSTATUS = r'''
     text-transform:uppercase; letter-spacing:.04em;
     padding:2px 8px; margin-left:.5rem; border:1px solid currentColor;
     display:inline-block; vertical-align:middle; }
-  .__docstatus.st-open{ color:var(--caution,#a16207); }
-  .__docstatus.st-in-review{ color:var(--info,#006BBD); }
+  .__docstatus.st-open{ color:var(--caution,#7c3aed); }
+  .__docstatus.st-in-review{ color:var(--accent,#7c3aed); }
   .__docstatus.st-resolved{ color:var(--positive,#0A5C21); }
 </style>
 <script id="__docstatus-patch" data-dstatus="__RV__">
@@ -1388,7 +1388,7 @@ UNSAVED_CUE = r'''
   }
   function update(){
     if(hasPendingEdits()){
-      bar.style.borderColor='var(--caution,#a16207)';
+      bar.style.borderColor='var(--caution,#7c3aed)';
       bar.style.borderWidth='2px';
     }else{
       bar.style.borderColor=origBorder;

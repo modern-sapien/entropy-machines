@@ -375,14 +375,14 @@ TEMPLATE = r"""<!doctype html>
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
-:root[data-theme=light]{      /* hc-light */
+:root[data-theme=light]{      /* 5-color palette */
   --bg:#fff; --panel:#fff;
-  --ink:#292929; --dim:rgba(41,41,41,.75);
-  --line:#0F4A85;
-  --focus:#006BBD;
-  --accent:#0F4A85;
-  --ready:#0A5C21; --prog:#7A4A00; --blocked:#A81C0B; --held:#6B21A8;
-  --gated:#0F4A85; --done:#292929;
+  --ink:#18181b; --dim:rgba(24,24,27,.7);
+  --line:#7c3aed;
+  --focus:#7c3aed;
+  --accent:#7c3aed;
+  --ready:#0A5C21; --prog:#7c3aed; --blocked:#b91c1c; --held:#7c3aed;
+  --gated:#7c3aed; --done:#18181b;
 }
 *{box-sizing:border-box}
 body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink);
