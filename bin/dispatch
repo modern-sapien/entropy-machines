@@ -3,11 +3,12 @@
 #
 #   bin/dispatch i-foo --files "src/x.ts tests/x.test.ts" --brief "one-line task"
 #
-# Exit 0 means SAFE TO DISPATCH; anything else names the hazard. It emits a
-# structured JSON block (--- AGENT CALL --- / --- END AGENT CALL ---) with
-# the exact Agent tool parameters — subagent_type, isolation, name,
-# description, prompt — so the orchestrator's call is mechanical: pass the
-# JSON fields to the Agent tool, nothing to remember or infer. It refuses
+# Exit 0 means SAFE TO DISPATCH; anything else names the hazard. It emits
+# TWO structured JSON blocks (--- AGENT CALL --- / --- END AGENT CALL ---)
+# with the exact Agent tool parameters — the WORKER (implements in a
+# worktree) and the VERIFIER (polls for HANDOFF.md, then runs the full
+# handoff pipeline and commits). The orchestrator pastes both blocks in one
+# message and walks away — nothing to remember, no manual landing. It refuses
 # the mistakes that have each burned a real run:
 #
 #   1. NON-ROOT CWD. A worktree is created in whatever repo the dispatching
@@ -667,6 +668,9 @@ trap 'rm -f "$prompt_tmp"' EXIT
     echo "$carry"
     echo
   fi
+  echo "THIRD, write the file .dispatch-issue at the root of your worktree,"
+  echo "containing ONLY this line: $id"
+  echo "This identifies your worktree to the auto-verifier polling for it."
   echo "Before you finish, write HANDOFF.md at the root of your worktree."
   echo "Exactly these four keys, ONE LINE each, no prose:"
   echo "  changed: what you changed"
@@ -684,7 +688,7 @@ python3 -c '
 import json, sys
 prompt = open(sys.argv[1]).read()
 call = {
-    "subagent_type": "isolated-worker",
+    "subagent_type": "general-purpose",
     "isolation": "worktree",
     "name": sys.argv[2],
     "description": "Implement " + sys.argv[2],
@@ -694,12 +698,18 @@ print(json.dumps(call, indent=2))
 ' "$prompt_tmp" "$id"
 echo "--- END AGENT CALL ---"
 echo
-echo "Pass the JSON block above directly to the Agent tool — subagent_type and"
-echo "isolation are set. Do not change them."
-echo "Non-Claude-Code runner: see agents/isolated-worker.md for requirements."
+echo "--- AUTO-VERIFY ---"
+echo "bin/auto-verify $id"
+echo "--- END AUTO-VERIFY ---"
+echo
+echo "Pass the AGENT block to the Agent tool AND run the AUTO-VERIFY command"
+echo "via the Bash tool (run_in_background: true) — both in ONE message."
+echo "The worker implements; bin/auto-verify polls for HANDOFF.md at zero token"
+echo "cost, then emits a verifier Agent call. Paste that call when notified."
+echo "The verifier runs interrogate → lift → test → verify. YOU review and commit."
 echo "  issue: $id | advisory --files: $files | ENFORCED denylist: $deny_field"
 echo
-echo "WHEN YOU LAND IT, before committing:"
+echo "To skip auto-verification and land manually:"
 echo "  bin/handoff $id --interrogate                     # the questions; send them to the LIVE agent"
 echo "  bin/handoff $id --record-interrogation --answer \"...\"   # what it said"
 echo "  bin/handoff $id --from <agent-worktree> --lift    # copies the files IN, refusing any that drifted"

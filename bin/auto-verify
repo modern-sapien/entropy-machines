@@ -1,0 +1,123 @@
+#!/bin/sh
+# bin/auto-verify — zero-cost poller that emits a verifier Agent call.
+#
+#   bin/auto-verify <issue-id>
+#
+# Polls for HANDOFF.md in the worker's worktree (matched by .dispatch-issue
+# marker). Zero tokens while polling — pure shell. When found, outputs a
+# structured Agent JSON block with the worktree path baked in. The
+# orchestrator receives this via task notification and pastes it.
+#
+# Run via Bash(run_in_background: true) alongside the worker Agent call.
+
+set -e
+
+id="$1"
+if [ -z "$id" ]; then
+  echo "usage: bin/auto-verify <issue-id>" >&2
+  exit 1
+fi
+
+ENTROPY_MACHINES_ROOT=$(git rev-parse --show-toplevel)
+ctx="$ENTROPY_MACHINES_ROOT/.dispatch-context/$id.md"
+NOTES_PY="$ENTROPY_MACHINES_ROOT/lib/notes.py"
+
+# ---------------------------------------------------------------------------
+# POLL — zero tokens. Pure shell, 30-second intervals, 20-minute timeout.
+# ---------------------------------------------------------------------------
+main_wt="$ENTROPY_MACHINES_ROOT"
+worker_wt=""
+polls=0
+max_polls=40
+
+echo "auto-verify($id): polling for .dispatch-issue=$id + HANDOFF.md (30s intervals, max ${max_polls})"
+while [ -z "$worker_wt" ] && [ "$polls" -lt "$max_polls" ]; do
+  for wt in $(git worktree list --porcelain | grep '^worktree ' | sed 's/worktree //'); do
+    [ "$wt" = "$main_wt" ] && continue
+    if [ -f "$wt/.dispatch-issue" ] && [ "$(cat "$wt/.dispatch-issue" | tr -d '[:space:]')" = "$id" ]; then
+      if [ -f "$wt/HANDOFF.md" ]; then
+        worker_wt="$wt"
+        break
+      fi
+    fi
+  done
+  if [ -z "$worker_wt" ]; then
+    sleep 30
+    polls=$((polls + 1))
+  fi
+done
+
+if [ -z "$worker_wt" ]; then
+  echo "auto-verify($id): TIMEOUT — no HANDOFF.md after $max_polls polls" >&2
+  exit 1
+fi
+
+echo "auto-verify($id): HANDOFF.md found at $worker_wt"
+
+# ---------------------------------------------------------------------------
+# EMIT — a structured Agent call for the verifier. The orchestrator pastes
+# this to the Agent tool. The verifier runs in the SAME session, so it can
+# SendMessage to the worker for real interrogation.
+# ---------------------------------------------------------------------------
+prompt_file="$ENTROPY_MACHINES_ROOT/.dispatch-context/.verifier-prompt-$id.tmp"
+trap 'rm -f "$prompt_file"' EXIT
+
+cat > "$prompt_file" << VEOF
+VERIFIER for issue $id.
+
+A worker agent named "$id" completed implementation in worktree: $worker_wt
+Dispatch context (full issue detail): $ctx
+
+Read BOTH files before doing anything else.
+
+## STEP 1 — INTERROGATE THE WORKER
+
+Run: bin/handoff $id --interrogate
+This prints the questions. Use ListAgents to find the worker agent named
+"$id" and get its address. Send ALL questions via SendMessage:
+  SendMessage({to: "<agent-address>", message: "<the questions>"})
+Wait for the worker to respond (it resumes). Record the answers:
+  bin/handoff $id --record-interrogation --answer "<answers>"
+
+If the worker cannot be reached (no longer listed), answer from artifacts:
+  1. Read $worker_wt/HANDOFF.md (changed/found/assumed/next)
+  2. Read the changed files in the worktree
+At least one answer must be substantive.
+
+## STEP 2 — LIFT
+
+Run: bin/handoff $id --from $worker_wt --lift
+If any files are rejected (main drifted), merge manually: read the worker's
+version and main's current version, apply the semantic diff onto main.
+
+## STEP 3 — TEST
+
+Run: tests/run
+All tests must pass. Fix failures caused by the lift.
+
+## STEP 4 — VERIFY (do NOT commit)
+
+Run: bin/handoff $id --from $worker_wt --verified "auto-verified: tests passed"
+If HANDOFF.md had found: none AND next: none, add --clean.
+If it had real found: or next: values, pass --found "..." --next "..."
+
+DO NOT stage, commit, or push. Report what you verified and stop.
+The orchestrator is the last pass — they review your work and commit.
+VEOF
+
+echo
+echo "--- AGENT CALL ---"
+python3 -c '
+import json, sys
+prompt = open(sys.argv[1]).read()
+call = {
+    "subagent_type": "general-purpose",
+    "name": "verify-" + sys.argv[2],
+    "description": "Verify and land " + sys.argv[2],
+    "prompt": prompt
+}
+print(json.dumps(call, indent=2))
+' "$prompt_file" "$id"
+echo "--- END AGENT CALL ---"
+echo
+echo "Pass the JSON block above to the Agent tool to start verification."
