@@ -438,7 +438,22 @@ for s in suites:
   link_paths=$(cfg_get worktree.linkPaths)
 
   mkdir -p "$ctxdir"
+  # PRESERVE EXISTING CONTENT. The orchestrator may have already written a
+  # spec into this file before dispatching — that spec is the agent's primary
+  # input and must appear FIRST and intact. Read it before the redirect
+  # truncates the file; if present, it is emitted before the dispatch
+  # boilerplate under a clear separator.
+  existing_ctx=""
+  if [ -s "$ctx" ]; then
+    existing_ctx=$(cat "$ctx")
+  fi
   {
+    if [ -n "$existing_ctx" ]; then
+      printf '%s\n' "$existing_ctx"
+      echo
+      echo "---"
+      echo
+    fi
     echo "# Dispatch context — $id"
     echo
     echo "Written by bin/dispatch on $(date -u '+%Y-%m-%dT%H:%M:%SZ') from $ENTROPY_MACHINES_ROOT ($branch @ $head)."
