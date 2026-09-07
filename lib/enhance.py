@@ -696,34 +696,36 @@ def _ensure_static_nav_categories(src):
     has_cats = ('href="TRACKER.html"' in nav_section
                 and 'href="DOCS.html"' in nav_section)
 
-    # If categories exist but appear AFTER the brand, strip and re-insert
-    # at the top so every doc's nav has categories first.
+    # Categories should appear right after the brand div, before page sections.
+    # If categories exist but NOT right after brand, strip and re-insert.
     if has_cats:
-        brand_pos = nav_section.find('<div class="brand"')
+        brand_end_m = re.search(r'<div class="brand"[^>]*>.*?</div>', nav_section)
         cats_pos = nav_section.find('<div class="grp">Categories</div>')
-        if brand_pos >= 0 and cats_pos > brand_pos:
+        cats_right_after_brand = (brand_end_m and cats_pos > brand_end_m.start()
+                                  and cats_pos <= brand_end_m.end() + 5)
+        if brand_end_m and not cats_right_after_brand:
             cats_block = re.search(
-                r'\n? *<div class="grp">Categories</div>\n'
-                r'( *<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>\n){3}'
-                r' *<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>',
+                r'\n?\s*<div class="grp">Categories</div>\n'
+                r'(\s*<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>\n){3}'
+                r'\s*<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>',
                 src[nav_start:nav_close])
             if cats_block:
                 stripped = (src[:nav_start + cats_block.start()]
                             + src[nav_start + cats_block.end():])
                 nav_close2 = stripped.find('</nav>', nav_start)
                 nav_slice2 = stripped[nav_start:nav_close2]
-                brand_start2 = nav_slice2.find('<div class="brand"')
-                if brand_start2 >= 0:
-                    ins = nav_start + brand_start2
-                    return (stripped[:ins] + _STATIC_NAV_CATEGORIES + '\n'
+                brand_end2 = re.search(r'<div class="brand"[^>]*>.*?</div>', nav_slice2)
+                if brand_end2:
+                    ins = nav_start + brand_end2.end()
+                    return (stripped[:ins] + '\n' + _STATIC_NAV_CATEGORIES
                             + stripped[ins:], True)
         return src, False
 
-    # No categories yet — insert before the brand div.
-    brand_start = nav_section.find('<div class="brand"')
-    if brand_start >= 0:
-        ins = nav_start + brand_start
-        return (src[:ins] + _STATIC_NAV_CATEGORIES + '\n' + src[ins:],
+    # No categories yet — insert right after the brand div.
+    brand_end_m = re.search(r'<div class="brand"[^>]*>.*?</div>', nav_section)
+    if brand_end_m:
+        ins = nav_start + brand_end_m.end()
+        return (src[:ins] + '\n' + _STATIC_NAV_CATEGORIES + src[ins:],
                 True)
     if nav_close >= 0:
         return (src[:nav_close] + _STATIC_NAV_CATEGORIES + '\n' + src[nav_close:],

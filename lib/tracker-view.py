@@ -104,9 +104,9 @@ def _base_nav(brand):
     """Build the standard sidebar <nav> with the given brand text."""
     cats = _read_nav_categories()
     return ('<nav>\n'
-            '  %s\n'
             '  <div class="brand"><span class="logo"></span> %s</div>\n'
-            '</nav>' % (cats, brand))
+            '  %s\n'
+            '</nav>' % (brand, cats))
 
 
 def refuse(msg_lines, code=2):
@@ -384,7 +384,7 @@ body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--fg)
 .sidebar a.cur{border-color:var(--accent);font-weight:700}
 .sidebar .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.06em;color:var(--fg);margin:16px 6px 6px}
-.sidebar .grp:first-child{margin-top:0}
+.sidebar .grp:first-of-type{margin-top:0}
 .content{flex:1;min-width:0}
 a{color:var(--accent)}
 code,.mono{font-family:var(--mono);font-size:var(--fs-sm)}

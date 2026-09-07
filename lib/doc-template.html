@@ -85,7 +85,7 @@
   nav a.cur{border-color:var(--accent); font-weight:700;}
   nav .grp{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.06em; color:var(--fg); margin:16px 6px 6px;}
-  nav .grp:first-child{margin-top:0;}
+  nav .grp:first-of-type{margin-top:0;}
   nav .foot{font-size:var(--fs-sm); color:var(--fg); margin-top:20px; padding:0 6px;}
 
   /* serve.py injects #__navmark-css late in <body>, so it wins on source order
@@ -240,12 +240,12 @@
 })();</script>
 
 <nav>
+  <div class="brand"><span class="logo"></span> {{DOC_SHORT_NAME}}</div>
   <div class="grp">Categories</div>
   <a href="TRACKER.html">issues</a>
   <a href="PRDS.html">PRDs</a>
   <a href="REPORTS.html">reports</a>
   <a href="DOCS.html">docs</a>
-  <div class="brand"><span class="logo"></span> {{DOC_SHORT_NAME}}</div>
   <div class="grp">{{Section name}}</div>
   <a href="#p0" data-page="p0" class="cur">0 · {{page title}}</a>
   <div class="foot">{{How to use this doc, and what happens after it is answered.}}</div>
