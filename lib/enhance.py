@@ -687,30 +687,43 @@ def _ensure_static_nav_categories(src):
     carries them without JavaScript. This function patches existing docs
     that predate the change.
     """
-    # Already has static category links IN THE NAV — nothing to do.
-    # Must check only the <nav>…</nav> section, not the whole document:
-    # PRDs 002-004 carry href="TRACKER.html" etc. inside <script> blocks
-    # (the old dynamic nav patches), and a whole-source search false-
-    # positives on those, leaving the nav itself without category links.
     nav_start = src.find('<nav')
     nav_close = src.find('</nav>', nav_start) if nav_start >= 0 else -1
-    if nav_start >= 0 and nav_close >= 0:
-        nav_section = src[nav_start:nav_close]
-        if 'href="TRACKER.html"' in nav_section and 'href="DOCS.html"' in nav_section:
-            return src, False
-    elif nav_start < 0:
-        # No <nav> at all — nothing to patch.
+    if nav_start < 0:
         return src, False
 
-    # Find the <nav> and insert categories right after the .brand div,
-    # so they appear above page-specific context links.  Scope the .brand
-    # search to inside the <nav> so a .brand elsewhere does not mislead.
-    nav_slice = src[nav_start:nav_close] if nav_close >= 0 else src[nav_start:]
-    brand_end = re.search(r'(</div>)', nav_slice)
-    if brand_end:
-        # The first </div> inside <nav> closes the .brand div.
-        ins = nav_start + brand_end.end()
-        return (src[:ins] + '\n' + _STATIC_NAV_CATEGORIES + src[ins:],
+    nav_section = src[nav_start:nav_close] if nav_close >= 0 else src[nav_start:]
+    has_cats = ('href="TRACKER.html"' in nav_section
+                and 'href="DOCS.html"' in nav_section)
+
+    # If categories exist but appear AFTER the brand, strip and re-insert
+    # at the top so every doc's nav has categories first.
+    if has_cats:
+        brand_pos = nav_section.find('<div class="brand"')
+        cats_pos = nav_section.find('<div class="grp">Categories</div>')
+        if brand_pos >= 0 and cats_pos > brand_pos:
+            cats_block = re.search(
+                r'\n? *<div class="grp">Categories</div>\n'
+                r'( *<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>\n){3}'
+                r' *<a href="(?:TRACKER|PRDS|REPORTS|DOCS)\.html">[^<]+</a>',
+                src[nav_start:nav_close])
+            if cats_block:
+                stripped = (src[:nav_start + cats_block.start()]
+                            + src[nav_start + cats_block.end():])
+                nav_close2 = stripped.find('</nav>', nav_start)
+                nav_slice2 = stripped[nav_start:nav_close2]
+                brand_start2 = nav_slice2.find('<div class="brand"')
+                if brand_start2 >= 0:
+                    ins = nav_start + brand_start2
+                    return (stripped[:ins] + _STATIC_NAV_CATEGORIES + '\n'
+                            + stripped[ins:], True)
+        return src, False
+
+    # No categories yet — insert before the brand div.
+    brand_start = nav_section.find('<div class="brand"')
+    if brand_start >= 0:
+        ins = nav_start + brand_start
+        return (src[:ins] + _STATIC_NAV_CATEGORIES + '\n' + src[ins:],
                 True)
     if nav_close >= 0:
         return (src[:nav_close] + _STATIC_NAV_CATEGORIES + '\n' + src[nav_close:],
