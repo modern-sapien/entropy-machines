@@ -69,9 +69,9 @@ def _base_nav(brand):
     """Build the standard sidebar <nav> with the given brand text."""
     cats = _read_nav_categories()
     return ('<nav>\n'
-            '  <div class="brand"><span class="logo"></span> %s</div>\n'
             '  %s\n'
-            '</nav>' % (brand, cats))
+            '  <div class="brand"><span class="logo"></span> %s</div>\n'
+            '</nav>' % (cats, brand))
 
 
 def init(docs_dir=None):
@@ -308,6 +308,7 @@ body>nav a:hover{box-shadow:inset 0 0 0 2px var(--accent)}
 body>nav a.cur{border-color:var(--accent);font-weight:700}
 body>nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.06em;color:var(--fg);margin:16px 6px 6px}
+body>nav .grp:first-child{margin-top:0}
 .content{flex:1;min-width:0}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -591,6 +592,7 @@ body>nav a:hover{box-shadow:inset 0 0 0 2px var(--accent)}
 body>nav a.cur{border-color:var(--accent);font-weight:700}
 body>nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.06em;color:var(--fg);margin:16px 6px 6px}
+body>nav .grp:first-child{margin-top:0}
 .content{flex:1;min-width:0}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
