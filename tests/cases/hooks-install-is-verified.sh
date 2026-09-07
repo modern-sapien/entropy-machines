@@ -39,7 +39,7 @@ baked=$(sed -n 's/^export ENTROPY_MACHINES_HOME="\(.*\)"$/\1/p' "$REPO/.git/hook
 assert_same "$HARNESS" "$baked" "the shim bakes in the harness directory, absolute"
 
 # --- dispatch is satisfied now ---------------------------------------------
-run "$HARNESS/bin/dispatch" i-early --files "src/main.c" --brief "b"
+run "$HARNESS/bin/dispatch" i-early --files "src/main.c" --brief "b" --force
 assert_rc 0 "with the hooks installed, dispatch proceeds"
 
 # --- the installer catches a dead install ----------------------------------

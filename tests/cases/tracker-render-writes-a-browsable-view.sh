@@ -156,7 +156,7 @@ assert_out "ready= $CLI_READY" \
 # cannot answer "who has this and what were they told".
 fixture_hooks
 run env ENTROPY_ACTOR=orchestrator "$HARNESS/bin/dispatch" i-ready \
-    --files "src/main.c" --brief "wire the picker to the engine"
+    --files "src/main.c" --brief "wire the picker to the engine" --force
 assert_rc 0 "dispatch an issue so there is a DISPATCH note"
 
 run "$HARNESS/bin/tracker" render

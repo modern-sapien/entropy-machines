@@ -17,7 +17,7 @@ assert_rc 0 "file the issue"
 run "$HARNESS/bin/tracker" set i-second title="the second issue"
 assert_rc 0 "file a second issue"
 
-run "$HARNESS/bin/dispatch" i-worker --files "src/main.c" --brief "make main.c return 1"
+run "$HARNESS/bin/dispatch" i-worker --files "src/main.c" --brief "make main.c return 1" --force
 assert_rc 0 "a clean dispatch succeeds"
 assert_out "i-worker claimed" "it claims the issue in the same act"
 assert_out "context written" "it writes the agent's context file"
@@ -49,14 +49,14 @@ assert_rc 0 "and the scope"
 
 # Per-issue, not one shared file: a dispatch round briefs N agents back to back
 # and a fixed filename means agent A reads agent B's brief as its own.
-run "$HARNESS/bin/dispatch" i-second --files "docs/CONFIG.md" --brief "a different job"
+run "$HARNESS/bin/dispatch" i-second --files "docs/CONFIG.md" --brief "a different job" --force
 assert_rc 0 "a second dispatch in the same round"
 assert_file "$REPO/.dispatch-context/i-second.md" "gets its own context file"
 run grep -qF "make main.c return 1" "$CTX"
 assert_rc 0 "and the first agent's file is untouched"
 
 # --- --dry-run records nothing ---------------------------------------------
-run "$HARNESS/bin/dispatch" i-phantom --files "src/main.c" --brief "just looking" --dry-run
+run "$HARNESS/bin/dispatch" i-phantom --files "src/main.c" --brief "just looking" --force --dry-run
 assert_rc 0 "--dry-run runs every check"
 assert_out "nothing recorded" "and says it recorded nothing"
 run "$HARNESS/bin/tracker" notes --issue i-phantom
@@ -67,7 +67,7 @@ assert_same "" "$OUT" "a --dry-run leaves no phantom claim behind"
 # be worse than an unclaimed issue — but the claim cannot be made, and the
 # whole point of claiming in the same act is that a second session must not
 # read an issue with a live agent on it as free work. So it has to be loud.
-run "$HARNESS/bin/dispatch" i-unfiled --files "src/main.c" --brief "never filed"
+run "$HARNESS/bin/dispatch" i-unfiled --files "src/main.c" --brief "never filed" --force
 assert_rc 0 "dispatching an unfiled id still records the brief"
 assert_out "WARNING" "but warns"
 assert_out "could not claim i-unfiled" "that the issue could not be claimed"

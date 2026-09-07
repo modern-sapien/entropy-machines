@@ -25,7 +25,11 @@
 #      none of this agent's business.
 #   3. ALREADY-LANDED WORK. If git log already mentions the issue id, the
 #      task may be partly or fully done. The audit comes before the dispatch.
-#   4. UNRECORDED BRIEFS. The brief + file scope are appended to the tracker
+#   4. RECENTLY-TOUCHED FILES. If any declared file was touched in the last
+#      5 commits on any branch, that file is hot — another change may still
+#      be landing, or the agent's base commit may already contain the fix.
+#      The commits are printed and the dispatch requires --force to proceed.
+#   5. UNRECORDED BRIEFS. The brief + file scope are appended to the tracker
 #      notes log in the same act, so any session can see what was handed out
 #      and scopes can be checked for overlap before agents collide in a file.
 #
@@ -82,19 +86,21 @@
 # with no obvious symptom until the agent can't find its own files. Check 1
 # is what closes that.
 #
-# --anyway skips check 3 only (the git-log hits are still printed); checks 1
-# and 2 have no override — there is no correct dispatch from a wrong cwd or
-# over your own uncommitted edits.
+# --anyway skips check 3 only (the git-log hits are still printed); --force
+# skips check 4 only (the file-history hits are still printed); checks 1 and
+# 2 have no override — there is no correct dispatch from a wrong cwd or over
+# your own uncommitted edits.
 set -e
 
-usage() { echo "usage: bin/dispatch <issue-id> --files \"<paths>\" --brief \"<text>\" [--anyway] [--dry-run]" >&2; exit 2; }
+usage() { echo "usage: bin/dispatch <issue-id> --files \"<paths>\" --brief \"<text>\" [--anyway] [--force] [--dry-run]" >&2; exit 2; }
 
-id=""; files=""; brief=""; anyway=0; dry=0
+id=""; files=""; brief=""; anyway=0; force=0; dry=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --files) files="$2"; shift 2 ;;
     --brief) brief="$2"; shift 2 ;;
     --anyway) anyway=1; shift ;;
+    --force) force=1; shift ;;
     # Run every check and print the brief block, but write nothing to the
     # log. Added after a smoke test of this script left a phantom DISPATCH
     # note behind — a note that can be annotated but never removed, and that
@@ -189,6 +195,29 @@ if [ -n "$hits" ]; then
   echo "$hits" >&2
   if [ "$anyway" != "1" ]; then
     echo "  Audit what landed before briefing (bin/tracker show $id), then rerun with --anyway." >&2
+    exit 1
+  fi
+fi
+
+# CHECK 4 — recently-touched files. A declared file that was touched in the
+# last 5 commits on any branch is hot: the change may still be landing, the
+# agent may be re-doing work that already shipped, or the base commit already
+# contains the fix. The commits are printed unconditionally; the dispatch is
+# refused unless --force is given.
+file_history_hits=""
+for f in $files; do
+  fhits=$(git log -5 --all --oneline -- "$f" 2>/dev/null)
+  if [ -n "$fhits" ]; then
+    file_history_hits="${file_history_hits}${file_history_hits:+
+}  $f:
+$(echo "$fhits" | sed 's/^/    /')"
+  fi
+done
+if [ -n "$file_history_hits" ]; then
+  echo "dispatch: declared files were touched in the last 5 commits on some branch:" >&2
+  echo "$file_history_hits" >&2
+  if [ "$force" != "1" ]; then
+    echo "  Review the commits above, then rerun with --force to proceed." >&2
     exit 1
   fi
 fi

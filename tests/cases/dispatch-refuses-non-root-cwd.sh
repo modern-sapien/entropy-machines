@@ -28,5 +28,5 @@ assert_no_file "$REPO/.dispatch-context/i-somewhere.md" "and writes no context f
 
 # THE CONTROL — from the root, the same dispatch is fine. Without this the
 # assertions above are also satisfied by a dispatch that refuses everything.
-run_in "$REPO" "$HARNESS/bin/dispatch" i-somewhere --files "src/main.c" --brief "b"
+run_in "$REPO" "$HARNESS/bin/dispatch" i-somewhere --files "src/main.c" --brief "b" --force
 assert_rc 0 "the same dispatch from the project root succeeds"

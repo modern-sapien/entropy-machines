@@ -28,7 +28,7 @@ commit_all "add a file outside every scope"
 assert_rc 0 "baseline commit lands before any dispatch exists"
 base=$(commit_count)
 
-run "$HARNESS/bin/dispatch" i-holder --files "src/main.c" --brief "an agent is holding main.c"
+run "$HARNESS/bin/dispatch" i-holder --files "src/main.c" --brief "an agent is holding main.c" --force
 assert_rc 0 "dispatch takes the file"
 
 # --- 1. REFUSED: id-less, inside the open scope ----------------------------
@@ -73,7 +73,7 @@ assert_no_traceback "without a traceback"
 assert_same "$((base + 2))" "$(commit_count)" "and it really landed"
 
 # --- 4. the escape hatch ---------------------------------------------------
-run "$HARNESS/bin/dispatch" i-holder2 --files "src/main.c" --brief "hold main.c again"
+run "$HARNESS/bin/dispatch" i-holder2 --files "src/main.c" --brief "hold main.c again" --force
 assert_rc 0 "a second agent takes the file"
 
 printf 'unrelated work that happens to sit in an open scope\n' >> "$REPO/src/main.c"

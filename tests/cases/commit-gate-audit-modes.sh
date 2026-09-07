@@ -27,7 +27,7 @@ printf 'not in any scope\n' > "$REPO/unrelated/notes.md"
 commit_all "a file outside every scope"
 assert_rc 0 "baseline commit lands"
 
-run "$HARNESS/bin/dispatch" i-audit --files "src/main.c" --brief "holding main.c"
+run "$HARNESS/bin/dispatch" i-audit --files "src/main.c" --brief "holding main.c" --force
 assert_rc 0 "dispatch takes the file"
 
 # --- 1. --commit REFUSES an id-less commit inside the open scope -----------

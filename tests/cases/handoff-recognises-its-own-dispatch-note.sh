@@ -19,7 +19,7 @@ fixture_new
 fixture_init
 fixture_hooks
 
-run "$HARNESS/bin/dispatch" i-real --files "src/main.c" --brief "the brief"
+run "$HARNESS/bin/dispatch" i-real --files "src/main.c" --brief "the brief" --force
 assert_rc 0 "dispatch records a DISPATCH note"
 
 # The note really is there, in the log, under this id. Anything below that

@@ -14,7 +14,7 @@ fixture_new
 fixture_init
 fixture_hooks
 
-run "$HARNESS/bin/dispatch" i-lander --files "src/main.c" --brief "do the thing"
+run "$HARNESS/bin/dispatch" i-lander --files "src/main.c" --brief "do the thing" --force
 assert_rc 0 "dispatch the agent"
 
 # --- the relays ------------------------------------------------------------

@@ -64,7 +64,7 @@ next: none
 EOF
 
 run "$HARNESS/bin/dispatch" i-docopen \
-    --files "$docs_dir/PRD-001-test.html" --brief "update the orientation doc"
+    --files "$docs_dir/PRD-001-test.html" --brief "update the orientation doc" --force
 assert_rc 0 "dispatch records"
 
 run "$HARNESS/bin/handoff" i-docopen --record-interrogation \
@@ -107,7 +107,7 @@ EOF
 rm -f "$HOME/.open-calls"
 
 run "$HARNESS/bin/dispatch" i-nodoc \
-    --files "$docs_dir/PRD-001-test.html src/main.c" --brief "code change, doc in scope but unchanged"
+    --files "$docs_dir/PRD-001-test.html src/main.c" --brief "code change, doc in scope but unchanged" --force
 assert_rc 0 "second dispatch records"
 
 run "$HARNESS/bin/handoff" i-nodoc --record-interrogation \
@@ -130,7 +130,7 @@ assert_not_out "opened http://" "no doc is opened when no doc was changed"
 rm -f "$HOME/.open-calls"
 
 run "$HARNESS/bin/dispatch" i-nofrom \
-    --files "$docs_dir/PRD-001-test.html" --brief "direct handoff, no worktree"
+    --files "$docs_dir/PRD-001-test.html" --brief "direct handoff, no worktree" --force
 assert_rc 0 "third dispatch records"
 
 run "$HARNESS/bin/handoff" i-nofrom --record-interrogation \

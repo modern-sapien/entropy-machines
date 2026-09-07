@@ -35,7 +35,7 @@ assert_same "" "$OUT" "a refused dispatch records nothing"
 git -C "$REPO" checkout -- src/main.c
 printf 'more of my own notes\n' >> "$REPO/docs-of-mine/scratch.md"
 
-run "$HARNESS/bin/dispatch" i-clean --files "src/main.c" --brief "b"
+run "$HARNESS/bin/dispatch" i-clean --files "src/main.c" --brief "b" --force
 assert_rc 0 "a dirty tree OUTSIDE the agent's scope is none of its business"
 assert_not_out "REFUSED" "and produces no refusal"
 

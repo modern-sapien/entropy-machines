@@ -18,7 +18,7 @@ fixture_hooks
 commit_all "baseline"
 base=$(commit_count)
 
-run "$HARNESS/bin/dispatch" i-agent --files "src/main.c" --brief "hold main.c"
+run "$HARNESS/bin/dispatch" i-agent --files "src/main.c" --brief "hold main.c" --force
 assert_rc 0 "dispatch takes the file"
 
 # The claim is live: this is the control that proves the assertion below is
@@ -38,7 +38,7 @@ assert_rc 0 "record the handoff"
 # OTHER check (uncommitted edits in the agent's scope) would fire first on the
 # edit this case is holding, and that is not what is being asked here.
 git -C "$REPO" stash -q --include-untracked
-run "$HARNESS/bin/dispatch" i-next --files "src/main.c" --brief "the next agent" --dry-run
+run "$HARNESS/bin/dispatch" i-next --files "src/main.c" --brief "the next agent" --force --dry-run
 assert_rc 0 "dispatch runs"
 assert_not_out "LIVE claim" "bin/dispatch sees the claim as released"
 git -C "$REPO" stash pop -q

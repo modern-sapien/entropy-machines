@@ -30,7 +30,7 @@ SPEC
 spec_before=$(cat "$CTX")
 
 # --- dispatch over it — must NOT destroy the spec -------------------------
-run "$HARNESS/bin/dispatch" i-spec --files "src/main.c" --brief "implement the spec"
+run "$HARNESS/bin/dispatch" i-spec --files "src/main.c" --brief "implement the spec" --force
 assert_rc 0 "dispatch succeeds when the context file already exists"
 
 # The spec must appear in the file, intact and BEFORE the dispatch boilerplate
@@ -78,7 +78,7 @@ assert_rc 0 "file a fresh issue"
 CTX_FRESH="$REPO/.dispatch-context/i-fresh.md"
 assert_no_file "$CTX_FRESH" "no pre-existing context file for the fresh issue"
 
-run "$HARNESS/bin/dispatch" i-fresh --files "src/main.c" --brief "start from scratch"
+run "$HARNESS/bin/dispatch" i-fresh --files "src/main.c" --brief "start from scratch" --force
 assert_rc 0 "dispatch without a pre-existing file succeeds"
 assert_file "$CTX_FRESH" "the context file is created"
 

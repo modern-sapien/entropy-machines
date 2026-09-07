@@ -30,11 +30,11 @@ for i in i-holder i-collider i-elsewhere i-after; do
   assert_rc 0 "file $i"
 done
 
-run "$HARNESS/bin/dispatch" i-holder --files "src/main.c" --brief "the first agent"
+run "$HARNESS/bin/dispatch" i-holder --files "src/main.c" --brief "the first agent" --force
 assert_rc 0 "the first dispatch takes the file"
 
 # --- overlapping -----------------------------------------------------------
-run "$HARNESS/bin/dispatch" i-collider --files "src/main.c" --brief "the second agent"
+run "$HARNESS/bin/dispatch" i-collider --files "src/main.c" --brief "the second agent" --force
 assert_out "WARNING" "an overlapping dispatch is flagged"
 assert_out "LIVE claim" "as a live claim"
 assert_out "src/main.c" "and the contended file is named"
@@ -50,7 +50,7 @@ assert_rc 0 "the context file names the file the other agent is holding"
 # --- NOT overlapping -------------------------------------------------------
 # The control: the warning is a judgement about overlap, not a thing printed
 # whenever any dispatch is live.
-run "$HARNESS/bin/dispatch" i-elsewhere --files "other/thing.txt" --brief "a third agent, elsewhere"
+run "$HARNESS/bin/dispatch" i-elsewhere --files "other/thing.txt" --brief "a third agent, elsewhere" --force
 assert_rc 0 "a non-overlapping dispatch succeeds"
 assert_not_out "LIVE claim" "and raises no live-claim warning"
 
@@ -64,7 +64,7 @@ run "$HARNESS/bin/handoff" i-holder --changed "made main.c return 1" \
     --clean --no-interrogation "the agent's session had already ended"
 assert_rc 0 "record the handoff for i-holder"
 
-run "$HARNESS/bin/dispatch" i-probe --files "src/main.c" --brief "probe" --dry-run
+run "$HARNESS/bin/dispatch" i-probe --files "src/main.c" --brief "probe" --force --dry-run
 assert_rc 0 "a dry-run dispatch after only ONE of two holders handed off"
 assert_out "LIVE claim" "still warns — the release is per-issue, not a global flag"
 
@@ -73,6 +73,6 @@ run "$HARNESS/bin/handoff" i-collider --changed "made main.c return 1" \
     --clean --no-interrogation "the agent's session had already ended"
 assert_rc 0 "record the handoff for i-collider"
 
-run "$HARNESS/bin/dispatch" i-after --files "src/main.c" --brief "after the handoff"
+run "$HARNESS/bin/dispatch" i-after --files "src/main.c" --brief "after the handoff" --force
 assert_rc 0 "dispatching over a released file succeeds"
 assert_not_out "LIVE claim" "and no longer warns about a claim that was handed off"
