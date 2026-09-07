@@ -96,63 +96,18 @@
    the block between them tokens-only, and put no layout in there. Nothing
    below the end marker is themed: structural CSS is shared by every theme,
    which is the point of having themes instead of a second template. */
-/* entropy-machines-theme:begin */
-/* janus — the Janus brand theme, and the default.
-   High contrast, violet-anchored, DARK FIRST.
-
-   The bare :root is the dark palette (matching the Janus product's dark-first
-   identity); [data-theme=light] is the override. Both directions of the toggle
-   therefore work: whichever state a theme does not name falls through to its
-   own bare :root.
-
-   THE BRAND HUE IS VIOLET. Janus's product palette is #a78bfa (dark link)
-   and #7c3aed (light link), lifted from src/shared/brand.ts. This theme
-   uses them as --link in their respective states. The surrounding palette is
-   built to clear WCAG AAA (7:1 body text, 4.5:1 large text and UI) while
-   keeping the violet instantly recognisable.
-
-   THE CONTRAST IS REAL, NOT DECORATIVE. Unlike the product's UI palette
-   (which softens for comfort), this theme maximises legibility: pure black
-   ground, full-white ink, borders loud enough to be a signal. It is the
-   high-contrast counterpart of a hypothetical "janus-soft" reading theme,
-   the same way high-contrast.css pairs with daylight.css.
-
-   A THEME FILE IS TOKENS ONLY — no layout, no component rules, no @font-face,
-   no remote URL. Selected by docs.theme in config.json; bin/serve inlines it
-   between a doc's entropy-machines-theme:begin and entropy-machines-theme:end markers and never
-   links to it. See docs/CONFIG.md. */
 :root{
-  --bg:#0a0a0d;              /* Janus product dark background */
-  --panel:#18181b;           /* Janus dark surface */
-  --fg:#fafafa;              /* Janus dark text — 19.2:1 on --bg */
-  --dim:rgba(250,250,250,.7); /* muted text on dark */
-  --border:#a78bfa;          /* violet border — the brand signal */
-  --focus:#f59e0b;           /* amber — unmistakable, no hue collision */
-  --link:#a78bfa;            /* Janus dark link */
-  --positive:#23D18B; --caution:#fbbf24; --negative:#ef4444; --accent:#c084fc;
+  --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-  --good:var(--positive); --muted:var(--dim);
-  --warn-deep:var(--caution); --code-bg:var(--panel);
 }
-:root[data-theme=light]{
-  --bg:#faf9fc;              /* Janus product light background */
-  --panel:#ffffff;
-  --fg:#18181b;              /* near-black text — 17.4:1 on --bg */
-  --dim:rgba(24,24,27,.7);   /* muted text — derived from --fg */
-  --border:#7c3aed;          /* violet border, saturated for light ground */
-  --focus:#7c3aed;           /* violet — same as border/link (5-color palette) */
-  --link:#7c3aed;            /* Janus light link */
-  --positive:#0A5C21; --caution:#7c3aed; --negative:#b91c1c; --accent:#7c3aed;
-}
-/* entropy-machines-theme:end */
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
   font:var(--fs-base)/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
   display:flex;min-height:100vh}
 main{flex:1;min-width:0;padding:38px 42px 120px;max-width:1060px}
-a{color:var(--link)}
-:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
 h1{font-size:var(--fs-title);font-weight:700;margin:0 0 4px;line-height:1.3}
 h2{font-size:var(--fs-head);font-weight:700;margin:32px 0 8px;letter-spacing:.2px}
@@ -161,90 +116,112 @@ p,li,td,th{font-size:var(--fs-base)}
 .sub,.meta,figcaption{font-size:var(--fs-sm);color:var(--fg)}
 .eyebrow{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em;margin:0 0 6px}
-code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--border);
+code{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--accent);
   border-radius:2px;padding:0 4px}
 h1 code{font-size:var(--fs-head)}
-pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--border);
+pre{font-family:var(--mono);font-size:var(--fs-sm);border:1px solid var(--accent);
   border-radius:4px;padding:10px 12px;overflow-x:auto;line-height:1.5}
 pre code{border:0;padding:0;font-size:inherit}
 
-header{border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:8px;
+header{border-bottom:1px solid var(--accent);padding-bottom:12px;margin-bottom:8px;
   display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
 header .sub{margin:0}
-#theme{margin-left:auto;background:var(--panel);border:1px solid var(--border);
-  color:var(--fg);border-radius:4px;padding:6px 10px;cursor:pointer;
-  font-family:inherit;font-size:var(--fs-sm);font-weight:600}
-#theme:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+#themeBtn:hover{box-shadow:inset 0 0 0 2px var(--accent)}
+#theme:hover{box-shadow:inset 0 0 0 2px var(--accent)}
 
 .pill{display:inline-block;font-size:var(--fs-sm);font-weight:700;padding:1px 8px;
-  border-radius:10px;border:1px solid var(--border);color:var(--fg)}
+  border-radius:10px;border:1px solid var(--accent);color:var(--fg)}
 .pill.ok{color:var(--positive);border-color:var(--positive)}
-.pill.warn{color:var(--caution);border-color:var(--caution)}
+.pill.warn{color:var(--accent);border-color:var(--accent)}
 .pill.bad{color:var(--negative);border-color:var(--negative)}
 .pill.alt{color:var(--accent);border-color:var(--accent)}
 
-.card{border:1px solid var(--border);border-radius:4px;padding:12px 14px;margin:12px 0}
+.card{border:1px solid var(--accent);border-radius:4px;padding:12px 14px;margin:12px 0}
 .card > :first-child{margin-top:0}
 .card > :last-child{margin-bottom:0}
-.card.flag{border-color:var(--focus)}
+.card.flag{border-color:var(--accent)}
 table{width:100%;border-collapse:collapse;margin:12px 0;display:block;overflow-x:auto}
-th,td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+th,td{border:1px solid var(--accent);padding:6px 10px;text-align:left;vertical-align:top}
 th{font-weight:700}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 ul,ol{padding-left:20px}
 li{margin:3px 0}
-hr{border:0;border-top:1px solid var(--border);margin:28px 0}
+hr{border:0;border-top:1px solid var(--accent);margin:28px 0}
 
 /* ---- sidebar nav (cross-doc categories) ---- */
-body > nav{width:296px;flex:none;border-right:1px solid var(--border);background:var(--bg);
+body > nav{width:296px;flex:none;border-right:1px solid var(--accent);background:var(--bg);
   padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
 body > nav .brand{display:flex;align-items:center;gap:8px;font-weight:700;
   font-size:var(--fs-base);margin-bottom:16px;padding:0 6px}
-body > nav .brand .logo{width:18px;height:18px;border:1px solid var(--border);background:none}
+body > nav .brand .logo{width:18px;height:18px;border:1px solid var(--accent);background:none}
 body > nav a{display:block;padding:6px 10px;color:var(--fg);text-decoration:none;
   font-size:var(--fs-base);margin-bottom:2px;border:1px solid transparent}
-body > nav a:hover{box-shadow:inset 0 0 0 2px var(--focus)}
-body > nav a.cur{border-color:var(--border);font-weight:700}
+body > nav a:hover{box-shadow:inset 0 0 0 2px var(--accent)}
+body > nav a.cur{border-color:var(--accent);font-weight:700}
 body > nav .grp{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.06em;color:var(--fg);margin:16px 6px 6px}
 body > nav .foot{font-size:var(--fs-sm);color:var(--fg);margin-top:20px;padding:0 6px}
 
 /* ---- in-main section nav ---- */
-main nav{border:1px solid var(--border);padding:10px 12px;margin:0 0 22px;
+main nav{border:1px solid var(--accent);padding:10px 12px;margin:0 0 22px;
   display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
 main nav .brand{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
   letter-spacing:.09em}
-main nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--border)}
-main nav a:hover{border-bottom-color:var(--focus)}
+main nav a{font-size:var(--fs-sm);text-decoration:none;border-bottom:1px solid var(--accent)}
+main nav a:hover{border-bottom-color:var(--accent)}
 
-.links{border:1px solid var(--border);padding:8px 12px;margin:0 0 18px;
+.links{border:1px solid var(--accent);padding:8px 12px;margin:0 0 18px;
   display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
 .links .k{font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;
-  letter-spacing:.09em;color:var(--dim)}
+  letter-spacing:.09em;color:var(--fg)}
 .links a{font-family:var(--mono);font-size:var(--fs-sm);text-decoration:none;
-  border:1px solid var(--border);padding:1px 6px}
+  border:1px solid var(--accent);padding:1px 6px}
 .links a:hover{border-color:currentColor}
 .links .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
 
-.response{border:1px solid var(--border);padding:12px 14px;margin:16px 0}
+.response{border:1px solid var(--accent);padding:12px 14px;margin:16px 0}
 .response label{display:block;font-size:var(--fs-sm);font-weight:700;
   text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}
 .response .discuss{font-size:var(--fs-base);margin:0 0 10px}
 .response textarea{display:block;width:100%;min-height:76px;padding:8px;
-  background:var(--bg);color:var(--fg);border:1px solid var(--border);
+  background:var(--bg);color:var(--fg);border:1px solid var(--accent);
   font:var(--fs-base)/1.5 var(--mono);resize:vertical}
-.response textarea:focus-visible{outline:none;border-color:var(--focus);
-  box-shadow:inset 0 0 0 1px var(--focus)}
+.response textarea:focus-visible{outline:none;border-color:var(--accent);
+  box-shadow:inset 0 0 0 1px var(--accent)}
 .savebar{position:fixed;bottom:14px;right:19px;display:flex;align-items:center;
-  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--border);
+  gap:11px;z-index:50;background:var(--bg);border:1px solid var(--accent);
   padding:7px 9px 7px 16px}
 .savebar .stat{font-size:var(--fs-sm)}
 .savebar button{font:700 var(--fs-base) inherit;cursor:pointer;
-  border:1px solid var(--border);background:none;color:var(--fg);padding:6px 14px}
-.savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus)}
+  border:1px solid var(--accent);background:none;color:var(--fg);padding:6px 14px}
+.savebar button:hover{box-shadow:inset 0 0 0 2px var(--accent)}
 .savebar button.ghost{padding:6px 10px}
 </style></head>
 <body>
+<script id="__theme-flash-patch">(function(){
+  const THEMES = {
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+};
+  function applyTheme(name) {
+  var t = THEMES[name];
+  if (!t) return;
+  var s = document.documentElement.style;
+  s.setProperty('--bg', t.bg);
+  s.setProperty('--fg', t.fg);
+  s.setProperty('--accent', t.accent);
+  s.setProperty('--positive', t.positive);
+  s.setProperty('--negative', t.negative);
+  try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
+}
+  try {
+    var name = localStorage.getItem('entropy-machines-theme');
+    if (name && THEMES[name]) { applyTheme(name); }
+  } catch(e) {}
+})();</script>
 
 <nav>
   <div class="brand"><span class="logo"></span> {{TITLE}}</div>
@@ -270,7 +247,7 @@ main nav a:hover{border-bottom-color:var(--focus)}
     <h1>{{HEADLINE — what this sprint was for, in the owner's words}}</h1>
     <p class="sub">{{N}} commits on <code>{{BRANCH}}</code> · verified by re-running, not by relaying</p>
   </div>
-  <button id="theme">◐ theme</button>
+  
 </header>
 
 <!-- Citation band: one link per issue DELIVERED, one per issue OPENED. The
@@ -368,15 +345,15 @@ Numbers, not adjectives.}}</code></pre>
 <style id="__reportnav-css">
   /* Sticky so the section list is reachable from anywhere in a long report;
      borders only, per the 2026-08-07 doc standard. */
-  main nav{ position:sticky; top:0; z-index:45; background:var(--bg,#fff); }
+  main nav{ position:sticky; top:0; z-index:45; background:var(--bg); }
   main nav .seclinks{ display:flex; flex-wrap:wrap; gap:.3rem;
     margin:.35rem 0 0; flex-basis:100%; }
-  main nav .seclinks a{ font-size:var(--fs-sm,12px); font-weight:700;
-    text-decoration:none; color:var(--dim,#666);
-    border:1px solid var(--line,#ccc); padding:2px 8px; }
-  main nav .seclinks a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+  main nav .seclinks a{ font-size:var(--fs-sm); font-weight:700;
+    text-decoration:none; color:var(--fg);
+    border:1px solid var(--accent); padding:2px 8px; }
+  main nav .seclinks a:hover{ color:var(--accent); border-color:currentColor; }
   main nav .seclinks a:target,
-  main nav .seclinks a.here{ color:var(--focus,#F38518); border-color:currentColor; }
+  main nav .seclinks a.here{ color:var(--accent); border-color:currentColor; }
   main section{ scroll-margin-top:4.5rem; }
   /* Both this nav and __todobar are sticky at top:0 and __todobar is inserted
      ABOVE the nav, so they would overlap. The nav carries the same per-section
@@ -497,16 +474,6 @@ Numbers, not adjectives.}}</code></pre>
 </script>
 
 <script>
-  const r = document.documentElement;
-  try { if (localStorage.reportTheme) r.dataset.theme = localStorage.reportTheme; } catch(e){}
-  document.getElementById('theme').onclick = () => {
-    const next = r.dataset.theme === 'light' ? 'dark' : 'light';
-    r.dataset.theme = next;
-    try { localStorage.reportTheme = next; } catch(e){}
-  };
-</script>
-
-<script>
   // 💾 posts to bin/serve, which merges the answers into THIS file on disk.
   // The endpoint takes the filename in the query string and a flat
   // {key: answer} body — see docs/SERVE.md. bin/serve also injects its own
@@ -538,10 +505,10 @@ Numbers, not adjectives.}}</code></pre>
   })();
 </script>
 <style id="__disk-save-css">
-  .box-status{font-size:var(--fs-sm,12px); font-weight:700; text-transform:uppercase;
+  .box-status{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.04em; margin-top:6px; padding:0;}
-  .box-status.awaiting{color:var(--caution,#f59e0b);}
-  .box-status.saved{color:var(--positive,#23D18B);}
+  .box-status.awaiting{color:var(--accent);}
+  .box-status.saved{color:var(--positive);}
 </style>
 <script id="__disk-save-patch" data-ds="3">
 (function(){
@@ -730,12 +697,12 @@ Numbers, not adjectives.}}</code></pre>
 </script>
 <style id="__navmark-css">
   nav a[data-page]{ overflow:hidden; }
-  nav a .navmark{ float:right; font-size:var(--fs-sm,12px); font-weight:700; line-height:1.5; margin-left:.4rem; }
-  nav a .navmark.done{ color:var(--good); }
-  nav a .navmark.todo{ color:var(--warn-deep); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
+  nav a .navmark{ float:right; font-size:var(--fs-sm); font-weight:700; line-height:1.5; margin-left:.4rem; }
+  nav a .navmark.done{ color:var(--positive); }
+  nav a .navmark.todo{ color:var(--accent); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
   @media (prefers-color-scheme:dark){ nav a .navmark.todo{ background:#241d10; } }
-  nav .navsummary{ font-size:var(--fs-sm,12px); font-weight:700; color:var(--muted); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--code-bg); }
-  nav .navsummary .all-done{ color:var(--good); }
+  nav .navsummary{ font-size:var(--fs-sm); font-weight:700; color:var(--fg); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--bg); }
+  nav .navsummary .all-done{ color:var(--positive); }
 </style>
 <script id="__navmark-patch" data-nm="2">
 // Live per-section review state in the sidebar. Independent of the main doc
@@ -789,15 +756,15 @@ Numbers, not adjectives.}}</code></pre>
      background tints; no filled badges). Vars fall back for docs still on the
      old sheet. */
   #__todobar{ position:sticky; top:0; z-index:40; margin:0 0 1.1rem;
-    border:2px solid var(--caution,#7c3aed); background:var(--bg,#fff);
-    color:var(--caution,#7c3aed); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
+    border:2px solid var(--accent); background:var(--bg);
+    color:var(--accent); padding:.6rem .85rem; font-size:var(--fs-base); }
   #__todobar[hidden]{ display:none; }
   #__todobar .hd{ font-weight:700; text-transform:uppercase; letter-spacing:.04em;
-    font-size:var(--fs-sm,.72rem); display:block; margin-bottom:.35rem; }
-  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#7c3aed);
+    font-size:var(--fs-sm); display:block; margin-bottom:.35rem; }
+  #__todobar a{ display:inline-block; font-weight:700; color:var(--accent);
     background:none; border:1px solid currentColor; padding:.14rem .6rem;
     margin:.16rem .3rem .16rem 0; text-decoration:none; }
-  #__todobar a:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__todobar a:hover{ outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 <script id="__todobanner-patch" data-tb="2">
 // An in-page "these need you" bar. Same source of truth as the nav marks —
@@ -868,10 +835,10 @@ Numbers, not adjectives.}}</code></pre>
   /* Borders, never tints (2026-08-07 doc standard). Vars fall back for docs
      still on the old sheet. */
   nav .tracknav{ display:flex; flex-wrap:wrap; gap:.35rem; margin:.45rem .4rem .6rem; }
-  nav .tracknav a{ font-size:var(--fs-sm,12px); font-weight:700; text-decoration:none;
-    color:var(--muted,#71717a); border:1px solid var(--border,#ddd6fe);
+  nav .tracknav a{ font-size:var(--fs-sm); font-weight:700; text-decoration:none;
+    color:var(--fg); border:1px solid var(--accent);
     padding:.1rem .5rem; }
-  nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+  nav .tracknav a:hover{ color:var(--accent); border-color:currentColor; }
 </style>
 <script id="__trackernav-patch" data-tn="1">
 /* Replaced by __docnav-patch category links. No-op — kept for the gate mark. */
@@ -921,12 +888,12 @@ Numbers, not adjectives.}}</code></pre>
 <style id="__collapse-css">
   .__chain-toggle{
     display:inline-block; font-family:var(--font); font-size:var(--fs-sm);
-    font-weight:700; cursor:pointer; color:var(--dim); background:none;
-    border:1px solid var(--border); padding:3px 10px; margin:8px 0;
+    font-weight:700; cursor:pointer; color:var(--fg); background:none;
+    border:1px solid var(--accent); padding:3px 10px; margin:8px 0;
   }
-  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--focus); }
+  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--accent); }
   .__chain-summary{
-    font-size:var(--fs-sm); color:var(--dim); white-space:nowrap;
+    font-size:var(--fs-sm); color:var(--fg); white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; max-width:100%; padding:2px 0;
   }
   .response.__chain-collapsed{ padding:5px 13px; }
@@ -1038,46 +1005,10 @@ Numbers, not adjectives.}}</code></pre>
   setTimeout(init,0);
 })();
 </script>
-<script id="__theme-toggle-patch" data-tt="1">
-// Theme toggle: cycles system -> light -> dark -> system.
-// Creates the themeBtn in the savebar if absent, so docs that do not template
-// the button still get one when enhanced.
-(function(){
-  var KEY='entropy-machines-theme';
-  var MODES=['system','light','dark'];
-  var ICONS={system:'◐', light:'☀︎', dark:'☽'};
-  var TITLES={system:'Theme: system', light:'Theme: light', dark:'Theme: dark'};
-  var btn=document.getElementById('themeBtn');
-  if(!btn){
-    var bar=document.querySelector('.savebar');
-    if(!bar) return;
-    btn=document.createElement('button');
-    btn.id='themeBtn'; btn.className='ghost'; btn.title='Switch theme';
-    var save=document.getElementById('saveBtn');
-    if(save) bar.insertBefore(btn, save);
-    else bar.appendChild(btn);
-  }
-  function current(){
-    try{ var v=localStorage.getItem(KEY); if(MODES.indexOf(v)>=0) return v; }catch(e){}
-    return 'system';
-  }
-  function apply(mode){
-    if(mode==='system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', mode);
-    btn.textContent=ICONS[mode];
-    btn.title=TITLES[mode];
-    try{ if(mode==='system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); }catch(e){}
-  }
-  apply(current());
-  btn.addEventListener('click', function(){
-    var i=MODES.indexOf(current());
-    apply(MODES[(i+1)%MODES.length]);
-  });
-})();
-</script>
+
 <style id="__lockbox-css">
   .response.locked textarea{background:var(--bg); color:var(--fg);
-    border:1px solid var(--border); cursor:default;}
+    border:1px solid var(--accent); cursor:default;}
   .response.locked label{color:var(--positive);}
 </style>
 <script id="__lockbox-patch" data-lb="1">
@@ -1102,7 +1033,7 @@ Numbers, not adjectives.}}</code></pre>
 })();
 </script>
 <style id="__readmark-css">
-  .__readmark{ font-size:var(--fs-sm,12px); color:var(--dim,#666);
+  .__readmark{ font-size:var(--fs-sm); color:var(--fg);
     font-weight:400; margin-left:.5rem; letter-spacing:.02em; }
 </style>
 <script id="__readmark-patch" data-rm="1">
@@ -1162,13 +1093,13 @@ Numbers, not adjectives.}}</code></pre>
 })();
 </script>
 <style id="__docstatus-css">
-  .__docstatus{ font-size:var(--fs-sm,12px); font-weight:700;
+  .__docstatus{ font-size:var(--fs-sm); font-weight:700;
     text-transform:uppercase; letter-spacing:.04em;
     padding:2px 8px; margin-left:.5rem; border:1px solid currentColor;
     display:inline-block; vertical-align:middle; }
-  .__docstatus.st-open{ color:var(--caution,#7c3aed); }
-  .__docstatus.st-in-review{ color:var(--accent,#7c3aed); }
-  .__docstatus.st-resolved{ color:var(--positive,#0A5C21); }
+  .__docstatus.st-open{ color:var(--accent); }
+  .__docstatus.st-in-review{ color:var(--accent); }
+  .__docstatus.st-resolved{ color:var(--positive); }
 </style>
 <script id="__docstatus-patch" data-dstatus="1">
 // Show the doc-level status in the sidebar brand area.
@@ -1241,13 +1172,13 @@ Numbers, not adjectives.}}</code></pre>
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */
   #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
-    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
-    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
-    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+    display:flex; align-items:center; gap:.7rem; background:var(--bg);
+    border:2px solid var(--positive); color:var(--positive);
+    padding:.5rem .8rem; font-size:var(--fs-base); font-weight:700; }
   #__replybar[hidden]{ display:none; }
   #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
     background:none; border:1px solid currentColor; padding:.2rem .7rem; }
-  #__replybar button:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__replybar button:hover{ outline:2px solid var(--accent); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
 <script id="__livereload-patch" data-lr="3">
@@ -1329,6 +1260,44 @@ Numbers, not adjectives.}}</code></pre>
       .catch(function(){ /* server gone: stay quiet, the doc still works */ });
   }
   setInterval(tick, 5000); tick();
+})();
+</script>
+<script id="__theme-selector-patch">
+(function(){
+  const THEMES = {
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+};
+  function applyTheme(name) {
+  var t = THEMES[name];
+  if (!t) return;
+  var s = document.documentElement.style;
+  s.setProperty('--bg', t.bg);
+  s.setProperty('--fg', t.fg);
+  s.setProperty('--accent', t.accent);
+  s.setProperty('--positive', t.positive);
+  s.setProperty('--negative', t.negative);
+  try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
+}
+  var sel = document.getElementById('themeBtn');
+  if (!sel) return;
+  var names = Object.keys(THEMES);
+  if (!sel.options.length) {
+    names.forEach(function(name) {
+      var o = document.createElement('option');
+      o.value = name;
+      o.textContent = name.replace(/-/g, ' ');
+      sel.appendChild(o);
+    });
+  }
+  var stored = '';
+  try { stored = localStorage.getItem('entropy-machines-theme') || ''; } catch(e) {}
+  if (stored && THEMES[stored]) { sel.value = stored; }
+  else { sel.value = 'janus-dark'; }
+  sel.addEventListener('change', function() { applyTheme(sel.value); });
 })();
 </script>
 </body></html>

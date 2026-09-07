@@ -69,68 +69,9 @@ case "$docs_dir" in
 esac
 mkdir -p "$docs_path"
 
-# ---------------------------------------------------------------------------
-# THEME. docs.theme names a file in lib/themes/, and its tokens are INLINED
-# into every doc served and into the dashboard — never <link>ed. A doc in this
-# factory is a standalone local file the owner may open straight off disk or
-# move somewhere else, and an external-looking stylesheet reference is the
-# exact thing bin/doclint exists to refuse.
-#
-# An unknown name is REFUSED here, before anything binds a port, and the
-# refusal lists what exists. No silent fallback: docs/CONFIG.md rule 2 says a
-# key with a bad value is refused by name, and a server that quietly served
-# the default would look identical to one that applied the theme.
-#
-# Like docs.dir above, docs.theme has no entry in lib/config.py's DEFAULTS —
-# that shared file is not this command's to extend — so a project that never
-# set it fails the lookup, and that failure IS the default path.
-# ---------------------------------------------------------------------------
-THEMES_DIR="$ENTROPY_MACHINES_HOME/lib/themes"
-
-list_themes() {
-  for _f in "$THEMES_DIR"/*.css; do
-    if [ -f "$_f" ]; then
-      _n=$(basename "$_f")
-      echo "    ${_n%.css}"
-    fi
-  done
-}
-
-if theme=$(python3 "$CONFIG_PY" get docs.theme 2>/dev/null); then
-  theme_source="docs.theme in config.json"
-else
-  theme="janus"
-  theme_source="the default (docs.theme is not set)"
-fi
-
-theme_bad=""
-case "$theme" in
-  '') theme_bad="it is empty" ;;
-  */*) theme_bad="it contains a path separator" ;;
-  *..*) theme_bad="it contains .." ;;
-  .*) theme_bad="it starts with a dot" ;;
-esac
-if [ -n "$theme_bad" ]; then
-  echo "serve: REFUSED — docs.theme is not a usable theme name ($theme_bad): '$theme'." >&2
-  echo "  A theme is a NAME, resolved to $THEMES_DIR/<name>.css. Available:" >&2
-  list_themes >&2
-  exit 1
-fi
-
-theme_file="$THEMES_DIR/$theme.css"
-if [ ! -r "$theme_file" ]; then
-  echo "serve: REFUSED — no such theme '$theme' (from $theme_source)." >&2
-  echo "  Looked for: $theme_file" >&2
-  if [ -n "$(list_themes)" ]; then
-    echo "  Available themes:" >&2
-    list_themes >&2
-  else
-    echo "  No themes are installed — $THEMES_DIR holds no readable .css file." >&2
-  fi
-  echo "  Set docs.theme to one of those, or add that file. Nothing was served:" >&2
-  echo "  a theme that cannot be read is not silently replaced with another one." >&2
-  exit 1
-fi
+# THEME — config-driven, not CSS files. Themes are 5-color config objects
+# embedded directly in templates and applied via style.setProperty. No theme
+# CSS files, no docs.theme config key needed for basic serving.
 
 SERVE_NO_OPEN=""
 port=""
@@ -154,8 +95,6 @@ export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
 export SERVE_NO_OPEN="$SERVE_NO_OPEN"
 export SERVE_TRACKER="$TRACKER"
-export SERVE_THEME_NAME="$theme"
-export SERVE_THEME_FILE="$theme_file"
 export SERVE_NOTES_PY="$NOTES_PY"
 export SERVE_TRACKER_BACKEND="$tracker_backend"
 export SERVE_TRACKER_FILE_PATH="$tracker_file_path"
@@ -193,8 +132,6 @@ DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
 PORT = int(os.environ["SERVE_PORT"])
 TRACKER = os.environ["SERVE_TRACKER"]
 NOTES_PY = os.environ["SERVE_NOTES_PY"]
-THEME_NAME = os.environ["SERVE_THEME_NAME"]
-THEME_FILE = os.environ["SERVE_THEME_FILE"]
 TRACKER_BACKEND = os.environ.get("SERVE_TRACKER_BACKEND", "file")
 TRACKER_FILE_PATH = os.environ.get("SERVE_TRACKER_FILE_PATH",
                                     ".entropy-machines/issues.json")
@@ -240,64 +177,8 @@ if docstate is not None:
     except Exception:  # noqa: BLE001
         pass
 
-# ---------------------------------------------------------------------------
-# THEME — read ONCE, at startup, and refused loudly if it cannot be read.
-#
-# The shell half above already checked the name and the file's readability, so
-# reaching the except here means the file went away or turned unreadable
-# between that check and this read. Either way the server does not start: a
-# transform that cannot read its input must refuse, never pass its input
-# through unchanged. Serving the doc's own baked-in tokens after being told to
-# apply another theme is indistinguishable, in the browser, from a theme that
-# does not work.
-# ---------------------------------------------------------------------------
-try:
-    with open(THEME_FILE, encoding="utf-8") as _f:
-        THEME_CSS = _f.read()
-except (OSError, UnicodeDecodeError) as exc:
-    sys.stderr.write(
-        "serve: REFUSED — cannot read the theme '%s' at %s (%s).\n"
-        "  Nothing was served. A theme that cannot be read is not silently\n"
-        "  replaced with the doc's own tokens.\n" % (THEME_NAME, THEME_FILE, exc)
-    )
-    sys.exit(1)
-
-if not THEME_CSS.strip():
-    sys.stderr.write(
-        "serve: REFUSED — the theme '%s' at %s is empty.\n"
-        "  A theme file is a :root token block; an empty one would leave every\n"
-        "  doc with no colours and no type scale at all.\n" % (THEME_NAME, THEME_FILE)
-    )
-    sys.exit(1)
-
-# The span a doc hands over to the theme. Everything between the two markers is
-# replaced, the markers themselves are kept, and NOTHING else in the file is
-# touched — no regex over the doc's CSS, no guessing at which :root rule is the
-# token block. A doc's structural CSS lives below the end marker and is shared
-# by every theme, which is the whole reason this ships themes and not a second
-# template. A doc with no markers is served exactly as it is, and said so in
-# the log, because the alternative is rewriting a span this never agreed on.
-THEME_BEGIN = "/* entropy-machines-theme:begin */"
-THEME_END = "/* entropy-machines-theme:end */"
-
-_unthemed_reported = set()
-
-
-def apply_theme(text: str, doc_name: str) -> str:
-    begin = text.find(THEME_BEGIN)
-    end = text.find(THEME_END, begin + len(THEME_BEGIN)) if begin != -1 else -1
-    if begin == -1 or end == -1:
-        if doc_name not in _unthemed_reported:
-            _unthemed_reported.add(doc_name)
-            sys.stderr.write(
-                "  theme '%s' NOT applied to %s — it has no %s / %s markers "
-                "around its token block; served with its own tokens.\n"
-                % (THEME_NAME, doc_name, THEME_BEGIN, THEME_END)
-            )
-        return text
-    head = text[: begin + len(THEME_BEGIN)]
-    body = THEME_CSS if THEME_CSS.endswith("\n") else THEME_CSS + "\n"
-    return head + "\n" + body + text[end:]
+# THEME — config-driven. Themes are 5-color config objects embedded directly
+# in templates and applied via style.setProperty. No CSS file reading needed.
 
 
 # ---------------------------------------------------------------------------
@@ -599,59 +480,61 @@ PAGE_HEAD = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>the factory</title>
 <style>
-/* entropy-machines-theme:begin */
-__THEME__
-/* entropy-machines-theme:end */
   :root{
-    --fg:var(--ink); --link:var(--accent); --negative:var(--bad);
+    --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+    --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{box-sizing:border-box;}
   body{background:var(--bg);color:var(--fg);font:var(--fs-base)/1.5 var(--font);margin:0;padding:2rem 2.5rem 4rem;}
   h1{font-size:var(--fs-title);margin:0 0 .3rem;}
-  h2{font-size:var(--fs-head);margin:2rem 0 .6rem;border-bottom:2px solid var(--border);padding-bottom:.3rem;}
+  h2{font-size:var(--fs-head);margin:2rem 0 .6rem;border-bottom:2px solid var(--accent);padding-bottom:.3rem;}
   .sub{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.04em;margin:0 0 1.5rem;}
   .empty{font-size:var(--fs-sm);font-style:italic;}
   table{border-collapse:collapse;width:100%;font-size:var(--fs-base);}
-  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top;}
+  th,td{border:1px solid var(--accent);padding:.5rem .7rem;text-align:left;vertical-align:top;}
   th{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.03em;}
   code,.mono{font:var(--fs-sm) var(--mono);}
-  a{color:var(--link);}
-  a:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+  a{color:var(--accent);}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .neg{color:var(--negative);font-weight:700;}
   .pos{color:var(--positive);font-weight:700;}
-  .caution{color:var(--caution);font-weight:700;}
+  .caution{color:var(--accent);font-weight:700;}
   .unavailable{border:2px solid var(--negative);padding:.7rem 1rem;font-weight:700;}
-  #theme{float:right;background:none;border:1px solid var(--border);color:var(--fg);
+  #theme-sel{float:right;background:var(--bg);border:1px solid var(--accent);color:var(--fg);
     padding:.35rem .7rem;cursor:pointer;font:600 var(--fs-sm) var(--font);}
-  #theme:hover{box-shadow:inset 0 0 0 2px var(--focus);}
 </style>
 <script>
-  /* Both shipped themes name one state in the bare :root and the other under
-     [data-theme=…], so stamping the root is what makes BOTH directions
-     reachable whichever theme is inlined above. Same localStorage key the
-     docs use, so the dashboard and a doc agree. */
-  (function(){
-    var r=document.documentElement;
-    try{
-      r.dataset.theme = localStorage.reportTheme ||
-        (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
-    }catch(e){}
-  })();
+(function(){
+  var THEMES={"janus-light":{bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},"janus-dark":{bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},"hc-dark":{bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},"daylight":{bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},"daylight-dark":{bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}};
+  function applyTheme(name){
+    var t=THEMES[name]; if(!t) return;
+    var s=document.documentElement.style;
+    s.setProperty('--bg',t.bg); s.setProperty('--fg',t.fg);
+    s.setProperty('--accent',t.accent); s.setProperty('--positive',t.positive);
+    s.setProperty('--negative',t.negative);
+    try{localStorage.setItem('entropy-machines-theme',name);}catch(e){}
+  }
+  try{var n=localStorage.getItem('entropy-machines-theme');if(n&&THEMES[n])applyTheme(n);}catch(e){}
+  window.__THEMES=THEMES; window.__applyTheme=applyTheme;
+})();
 </script>
 </head><body>
-<button id="theme" type="button">&#9689; theme</button>
+<select id="theme-sel"></select>
 <script>
-  (function(){
-    var r=document.documentElement, b=document.getElementById('theme');
-    b.onclick=function(){
-      var next = r.dataset.theme === 'light' ? 'dark' : 'light';
-      r.dataset.theme = next;
-      try{ localStorage.reportTheme = next; }catch(e){}
-    };
-  })();
+(function(){
+  var sel=document.getElementById('theme-sel');
+  var THEMES=window.__THEMES;
+  Object.keys(THEMES).forEach(function(n){
+    var o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
+  });
+  var saved; try{saved=localStorage.getItem('entropy-machines-theme');}catch(e){}
+  if(saved&&THEMES[saved]) sel.value=saved;
+  sel.addEventListener('change',function(){window.__applyTheme(sel.value);});
+})();
 </script>
-""".replace("__THEME__", THEME_CSS.rstrip("\n"))
+"""
 
 PAGE_TAIL = "</body></html>\n"
 
@@ -817,7 +700,6 @@ class Handler(BaseHTTPRequestHandler):
                     sys.stderr.write("  enhance.patch failed for %s: %s\n" % (name, exc))
             with open(target, encoding="utf-8") as f:
                 body = f.read()
-            body = apply_theme(body, name)
             if "</body>" in body:
                 body = body.replace("</body>", SAVE_PATCH + "</body>", 1)
             else:
@@ -967,7 +849,7 @@ def main(no_open=False):
     enhance.init(DOCS_PATH)
     print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, port), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
-    print("  theme: %s (%s)" % (THEME_NAME, THEME_FILE), flush=True)
+    print("  theme: config-driven (5-color, embedded in templates)", flush=True)
     print("  auto-enhance: active (stale docs patched on first GET)", flush=True)
     if not no_open:
         def _open_browser():

@@ -19,7 +19,6 @@
   counted, or reported as outstanding — a question written as plain prose
   renders with nowhere to answer it and the doc reports itself as answered.
 
-
   NOTE: this comment deliberately describes the markup in prose instead of
   showing it. It used to contain literal examples, and every regex-based tool
   that reads these docs -- the answer counter, the session-start nag, ad-hoc
@@ -52,51 +51,12 @@
           secondary text — weight, uppercase, or an underline instead. */
 
   :root{
-    --bg:#FFFFFF; --fg:#18181b;
-    --border:#7c3aed;
-    --focus:#7c3aed;
-    --link:#7c3aed;
-    --negative:#b91c1c; --positive:#0A5C21; --caution:#7c3aed; --accent:#7c3aed;
-
-    /* Four steps. Nothing below 14px, no half-pixels, no em ratios that compute
-       to fractions. Monospace gets its OWN step rather than a .9em of body,
-       because mono reads larger than sans at equal px.
-
-       REVISED 2026-08-06 after the first doc shipped and read as flat. The old
-       scale was 12/14/16/20: body BELOW the browser's 16px default, and h2 only
-       1.14x body, so a page of prose + inline code came out as one grey size
-       with noise in it. The steps are now ~1.25x apart with a bigger jump to
-       the title, which is what makes a heading read as a heading. */
-    --fs-sm:14px;    /* meta, ids, mono, chips, eyebrow labels, badges */
-    --fs-base:17px;  /* body, list rows, controls */
-    --fs-head:21px;  /* section headings */
-    --fs-title:30px; /* page / panel title */
-
-    /* Prose measure. Tables and code want the full column; running text does
-       not — 17px across a 1040px main is ~105 characters, well past the point
-       where the eye loses the next line. */
+    --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+    --fs-sm:14px; --fs-base:17px; --fs-head:21px; --fs-title:30px;
     --measure:70ch;
-
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
     --radius:0;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{
-      --bg:#000000; --fg:#FFFFFF;
-      --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
-      --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
-    }
-  }
-  /* The toggle stamps data-theme on the root; it must win over the media query
-     in BOTH directions, so each theme is restated rather than only the dark one. */
-  :root[data-theme="light"]{
-    --bg:#FFFFFF; --fg:#18181b; --border:#7c3aed; --focus:#7c3aed; --link:#7c3aed;
-    --negative:#b91c1c; --positive:#0A5C21; --caution:#7c3aed; --accent:#7c3aed;
-  }
-  :root[data-theme="dark"]{
-    --bg:#000000; --fg:#FFFFFF; --border:#6FC3DF; --focus:#F38518; --link:#21A6FF;
-    --negative:#F48771; --positive:#23D18B; --caution:#F5F543; --accent:#D670D6;
   }
 
   *{box-sizing:border-box}
@@ -105,24 +65,24 @@
     color:var(--fg); background:var(--bg); margin:0; display:flex; min-height:100vh;}
 
   /* Rule 2, globally. Never suppressed anywhere below. */
-  :focus-visible{outline:2px solid var(--focus); outline-offset:1px;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
 
   code{font-family:var(--mono); font-size:var(--fs-sm); background:none;
-    border:1px solid var(--border); padding:0 .25em;}
-  pre{background:none; border:1px solid var(--border); padding:12px 14px; overflow-x:auto;
+    border:1px solid var(--accent); padding:0 .25em;}
+  pre{background:none; border:1px solid var(--accent); padding:12px 14px; overflow-x:auto;
     font-family:var(--mono); font-size:var(--fs-sm); line-height:1.55;}
   pre code{border:none; padding:0;}
 
-  nav{width:296px; flex:none; border-right:1px solid var(--border); background:var(--bg);
+  nav{width:296px; flex:none; border-right:1px solid var(--accent); background:var(--bg);
     padding:22px 14px; position:sticky; top:0; height:100vh; overflow-y:auto;}
   nav .brand{display:flex; align-items:center; gap:8px; font-weight:700;
     font-size:var(--fs-base); margin-bottom:16px; padding:0 6px;}
-  nav .brand .logo{width:18px; height:18px; border:1px solid var(--border); background:none;}
+  nav .brand .logo{width:18px; height:18px; border:1px solid var(--accent); background:none;}
   nav a{display:block; padding:6px 10px; color:var(--fg); text-decoration:none;
     font-size:var(--fs-base); margin-bottom:2px; border:1px solid transparent;}
-  nav a:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  nav a:hover{box-shadow:inset 0 0 0 2px var(--accent);}
   /* Current page: a border and weight, not a fill. */
-  nav a.cur{border-color:var(--border); font-weight:700;}
+  nav a.cur{border-color:var(--accent); font-weight:700;}
   nav .grp{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.06em; color:var(--fg); margin:16px 6px 6px;}
   nav .foot{font-size:var(--fs-sm); color:var(--fg); margin-top:20px; padding:0 6px;}
@@ -136,11 +96,11 @@
      inherit. Do not delete its block from the file: it is re-injected on serve. */
   nav a span.navmark{font-size:var(--fs-sm); font-weight:700; line-height:1.4;
     background:none; border-radius:0; padding:0 .35em; margin-left:.4em;
-    border:1px solid currentColor; color:var(--caution);}
+    border:1px solid currentColor; color:var(--accent);}
   nav a span.navmark.done{color:var(--positive); border-color:var(--positive);}
-  nav a span.navmark.todo{color:var(--caution); border-color:var(--caution); background:none;}
+  nav a span.navmark.todo{color:var(--accent); border-color:var(--accent); background:none;}
   nav div.navsummary{font-size:var(--fs-sm); font-weight:700; color:var(--fg);
-    background:none; border:1px solid var(--border); border-radius:0;
+    background:none; border:1px solid var(--accent); border-radius:0;
     margin:12px 6px 4px; padding:5px 9px;}
   nav div.navsummary .all-done{color:var(--positive);}
 
@@ -156,7 +116,7 @@
   h1 code,h2 code,h3 code{font-size:var(--fs-head);}
   .sub{font-size:var(--fs-base); margin:0 0 20px;}
   p{margin:11px 0;}
-  main a{color:var(--link); text-decoration:underline;}
+  main a{color:var(--accent); text-decoration:underline;}
 
   /* Measure. Tables, code and the response boxes keep the full column; running
      text is capped so the eye finds the next line. Applied to the block, not
@@ -166,19 +126,19 @@
 
   /* Rule 1: every variant is the same pure background plus a border. The kind
      is carried by the tag's colour and the left border, not by a wash. */
-  .callout{padding:12px 16px; margin:16px 0; border:1px solid var(--border); background:none;}
+  .callout{padding:12px 16px; margin:16px 0; border:1px solid var(--accent); background:none;}
   .callout.key{border-left:3px solid var(--accent);}
   .callout.good{border-left:3px solid var(--positive);}
-  .callout.warn{border-left:3px solid var(--caution);}
+  .callout.warn{border-left:3px solid var(--accent);}
   .callout.bad{border-left:3px solid var(--negative);}
   .callout .tag{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.05em; display:block; margin-bottom:4px;}
   .callout.key .tag{color:var(--accent);} .callout.good .tag{color:var(--positive);}
-  .callout.warn .tag{color:var(--caution);} .callout.bad .tag{color:var(--negative);}
+  .callout.warn .tag{color:var(--accent);} .callout.bad .tag{color:var(--negative);}
 
   .tbl-wrap{overflow-x:auto; margin:18px 0;}
   table{border-collapse:collapse; width:100%; font-size:var(--fs-base);}
-  th,td{padding:10px 12px; text-align:left; border:1px solid var(--border); vertical-align:top;}
+  th,td{padding:10px 12px; text-align:left; border:1px solid var(--accent); vertical-align:top;}
   thead th{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.04em; color:var(--fg); white-space:nowrap;}
   td code{font-size:var(--fs-sm);}
@@ -186,35 +146,35 @@
   ul,ol{margin:10px 0; padding-left:24px;} li{margin:7px 0;}
   .foot{font-size:var(--fs-sm);}
 
-  .rec{border:1px solid var(--border); border-left:3px solid var(--positive);
+  .rec{border:1px solid var(--accent); border-left:3px solid var(--positive);
     padding:8px 13px; margin:13px 0;}
   .rec .lbl{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.05em; color:var(--positive); display:block; margin-bottom:3px;}
 
   /* Chips are outlined, never filled — a filled badge is a background tint. */
   .pill{display:inline-block; font-size:var(--fs-sm); font-weight:700; padding:1px 8px;
-    border:1px solid var(--border); background:none; color:var(--fg); vertical-align:middle;}
-  .pill.dec{color:var(--caution); border-color:var(--caution);}
+    border:1px solid var(--accent); background:none; color:var(--fg); vertical-align:middle;}
+  .pill.dec{color:var(--accent); border-color:var(--accent);}
   .pill.red{color:var(--negative); border-color:var(--negative);}
   .pill.grn{color:var(--positive); border-color:var(--positive);}
 
-  blockquote{border-left:3px solid var(--border); margin:10px 0; padding-left:13px;
+  blockquote{border-left:3px solid var(--accent); margin:10px 0; padding-left:13px;
     font-size:var(--fs-base);}
 
   .sev{font-weight:700;}
-  .sev.r{color:var(--negative);} .sev.o{color:var(--caution);} .sev.y{color:var(--caution);}
+  .sev.r{color:var(--negative);} .sev.o{color:var(--accent);} .sev.y{color:var(--accent);}
   .verdict{font-weight:700; white-space:nowrap;}
-  .verdict.clean{color:var(--positive);} .verdict.tangled{color:var(--caution);}
+  .verdict.clean{color:var(--positive);} .verdict.tangled{color:var(--accent);}
   .verdict.bound{color:var(--negative);}
 
   /* ---- response boxes: page-level ----
      min-height:52px and overflow:hidden are load-bearing for the skill's
      auto-grow (it measures scrollHeight); do not "tidy" them away. */
-  .response{margin:16px 0 6px; border:1px solid var(--border);
-    border-left:3px solid var(--caution); background:none; padding:9px 13px;}
+  .response{margin:16px 0 6px; border:1px solid var(--accent);
+    border-left:3px solid var(--accent); background:none; padding:9px 13px;}
   .response label{display:block; font-size:var(--fs-sm); font-weight:700;
-    text-transform:uppercase; letter-spacing:.05em; color:var(--caution); margin-bottom:5px;}
-  .response .discuss{margin:0 0 10px; padding:9px 12px; border:1px solid var(--border);
+    text-transform:uppercase; letter-spacing:.05em; color:var(--accent); margin-bottom:5px;}
+  .response .discuss{margin:0 0 10px; padding:9px 12px; border:1px solid var(--accent);
     border-left:3px solid var(--accent); background:none;
     font-size:var(--fs-base); line-height:1.55; color:var(--fg);}
   .response .discuss code{font-size:var(--fs-sm);}
@@ -224,36 +184,59 @@
   main aside.review{border-left-color:var(--accent);}
   .response textarea{width:100%; min-height:52px; resize:vertical; font-family:var(--font);
     font-size:var(--fs-base); color:var(--fg); background:var(--bg);
-    border:1px solid var(--border); padding:7px 10px; line-height:1.5; overflow:hidden;}
-  .response textarea:focus{outline:none; box-shadow:inset 0 0 0 2px var(--focus);}
+    border:1px solid var(--accent); padding:7px 10px; line-height:1.5; overflow:hidden;}
+  .response textarea:focus{outline:none; box-shadow:inset 0 0 0 2px var(--accent);}
   /* Answered state: colour + weight on the label, never a fade or a fill. */
   .response.filled{border-left-color:var(--positive);}
   .response.filled label{color:var(--positive);}
 
   /* ---- response boxes: row-level (compact) ----
      1.9em height is the skill's explicit override of the 52px above; keep it. */
-  tr.row-note td{padding:3px 9px 9px; border:1px solid var(--border);}
+  tr.row-note td{padding:3px 9px 9px; border:1px solid var(--accent);}
   tr.row-note .response.mini{margin:0; border:none; background:none; padding:0;}
   tr.row-note .response.mini textarea{display:block; width:100%; min-height:0; height:1.9em;
     resize:none; overflow:hidden; font-family:var(--font); font-size:var(--fs-base);
     line-height:1.4; color:var(--fg); background:var(--bg);
-    border:1px solid var(--border); padding:4px 9px;}
+    border:1px solid var(--accent); padding:4px 9px;}
   tr.row-note .response.mini textarea:focus{color:var(--fg);
-    box-shadow:inset 0 0 0 2px var(--focus); border-color:var(--focus);}
+    box-shadow:inset 0 0 0 2px var(--accent); border-color:var(--accent);}
   tr.row-note .response.mini.filled textarea{border-color:var(--positive);}
 
   .savebar{position:fixed; bottom:14px; right:19px; display:flex; align-items:center;
-    gap:11px; z-index:50; background:var(--bg); border:1px solid var(--border);
+    gap:11px; z-index:50; background:var(--bg); border:1px solid var(--accent);
     padding:7px 9px 7px 16px;}
   .savebar .stat{font-size:var(--fs-sm); color:var(--fg);}
   .savebar button{font-family:var(--font); font-size:var(--fs-base); font-weight:700;
-    cursor:pointer; border:1px solid var(--border); background:none; color:var(--fg);
+    cursor:pointer; border:1px solid var(--accent); background:none; color:var(--fg);
     padding:6px 14px;}
-  .savebar button:hover{box-shadow:inset 0 0 0 2px var(--focus);}
-  .savebar button.ghost{border-color:var(--border); color:var(--fg); padding:6px 10px;}
+  .savebar button:hover{box-shadow:inset 0 0 0 2px var(--accent);}
+  .savebar button.ghost{border-color:var(--accent); color:var(--fg); padding:6px 10px;}
 </style>
 </head><body>
-<script id="__theme-flash-patch">try{var t=localStorage.getItem('entropy-machines-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script id="__theme-flash-patch">(function(){
+  const THEMES = {
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+};
+  function applyTheme(name) {
+  var t = THEMES[name];
+  if (!t) return;
+  var s = document.documentElement.style;
+  s.setProperty('--bg', t.bg);
+  s.setProperty('--fg', t.fg);
+  s.setProperty('--accent', t.accent);
+  s.setProperty('--positive', t.positive);
+  s.setProperty('--negative', t.negative);
+  try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
+}
+  try {
+    var name = localStorage.getItem('entropy-machines-theme');
+    if (name && THEMES[name]) { applyTheme(name); }
+  } catch(e) {}
+})();</script>
 
 <nav>
   <div class="brand"><span class="logo"></span> {{DOC_SHORT_NAME}}</div>
@@ -361,10 +344,10 @@
 })();
 </script>
 <style id="__disk-save-css">
-  .box-status{font-size:var(--fs-sm,12px); font-weight:700; text-transform:uppercase;
+  .box-status{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.04em; margin-top:6px; padding:0;}
-  .box-status.awaiting{color:var(--caution,#f59e0b);}
-  .box-status.saved{color:var(--positive,#23D18B);}
+  .box-status.awaiting{color:var(--accent);}
+  .box-status.saved{color:var(--positive);}
 </style>
 <script id="__disk-save-patch" data-ds="3">
 (function(){
@@ -424,15 +407,15 @@
      background tints; no filled badges). Vars fall back for docs still on the
      old sheet. */
   #__todobar{ position:sticky; top:0; z-index:40; margin:0 0 1.1rem;
-    border:2px solid var(--caution,#7c3aed); background:var(--bg,#fff);
-    color:var(--caution,#7c3aed); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
+    border:2px solid var(--accent); background:var(--bg);
+    color:var(--accent); padding:.6rem .85rem; font-size:var(--fs-base); }
   #__todobar[hidden]{ display:none; }
   #__todobar .hd{ font-weight:700; text-transform:uppercase; letter-spacing:.04em;
-    font-size:var(--fs-sm,.72rem); display:block; margin-bottom:.35rem; }
-  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#7c3aed);
+    font-size:var(--fs-sm); display:block; margin-bottom:.35rem; }
+  #__todobar a{ display:inline-block; font-weight:700; color:var(--accent);
     background:none; border:1px solid currentColor; padding:.14rem .6rem;
     margin:.16rem .3rem .16rem 0; text-decoration:none; }
-  #__todobar a:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__todobar a:hover{ outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 <script id="__todobanner-patch" data-tb="2">
 // An in-page "these need you" bar. Same source of truth as the nav marks —
@@ -501,12 +484,12 @@
 </script>
 <style id="__navmark-css">
   nav a[data-page]{ overflow:hidden; }
-  nav a .navmark{ float:right; font-size:var(--fs-sm,12px); font-weight:700; line-height:1.5; margin-left:.4rem; }
-  nav a .navmark.done{ color:var(--good); }
-  nav a .navmark.todo{ color:var(--warn-deep); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
+  nav a .navmark{ float:right; font-size:var(--fs-sm); font-weight:700; line-height:1.5; margin-left:.4rem; }
+  nav a .navmark.done{ color:var(--positive); }
+  nav a .navmark.todo{ color:var(--accent); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
   @media (prefers-color-scheme:dark){ nav a .navmark.todo{ background:#241d10; } }
-  nav .navsummary{ font-size:var(--fs-sm,12px); font-weight:700; color:var(--muted); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--code-bg); }
-  nav .navsummary .all-done{ color:var(--good); }
+  nav .navsummary{ font-size:var(--fs-sm); font-weight:700; color:var(--fg); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--bg); }
+  nav .navsummary .all-done{ color:var(--positive); }
 </style>
 <script id="__navmark-patch" data-nm="2">
 // Live per-section review state in the sidebar. Independent of the main doc
@@ -558,10 +541,10 @@
   /* Borders, never tints (2026-08-07 doc standard). Vars fall back for docs
      still on the old sheet. */
   nav .tracknav{ display:flex; flex-wrap:wrap; gap:.35rem; margin:.45rem .4rem .6rem; }
-  nav .tracknav a{ font-size:var(--fs-sm,12px); font-weight:700; text-decoration:none;
-    color:var(--muted,#71717a); border:1px solid var(--border,#ddd6fe);
+  nav .tracknav a{ font-size:var(--fs-sm); font-weight:700; text-decoration:none;
+    color:var(--fg); border:1px solid var(--accent);
     padding:.1rem .5rem; }
-  nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+  nav .tracknav a:hover{ color:var(--accent); border-color:currentColor; }
 </style>
 <script id="__trackernav-patch" data-tn="1">
 /* Replaced by __docnav-patch category links. No-op — kept for the gate mark. */
@@ -572,25 +555,25 @@
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */
   #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
-    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
-    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
-    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+    display:flex; align-items:center; gap:.7rem; background:var(--bg);
+    border:2px solid var(--positive); color:var(--positive);
+    padding:.5rem .8rem; font-size:var(--fs-base); font-weight:700; }
   #__replybar[hidden]{ display:none; }
   #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
     background:none; border:1px solid currentColor; padding:.2rem .7rem; }
-  #__replybar button:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__replybar button:hover{ outline:2px solid var(--accent); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */
   #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
-    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
-    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
-    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+    display:flex; align-items:center; gap:.7rem; background:var(--bg);
+    border:2px solid var(--positive); color:var(--positive);
+    padding:.5rem .8rem; font-size:var(--fs-base); font-weight:700; }
   #__replybar[hidden]{ display:none; }
   #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
     background:none; border:1px solid currentColor; padding:.2rem .7rem; }
-  #__replybar button:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__replybar button:hover{ outline:2px solid var(--accent); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
 <script id="__livereload-patch" data-lr="3">
@@ -852,12 +835,12 @@
 <style id="__collapse-css">
   .__chain-toggle{
     display:inline-block; font-family:var(--font); font-size:var(--fs-sm);
-    font-weight:700; cursor:pointer; color:var(--dim); background:none;
-    border:1px solid var(--border); padding:3px 10px; margin:8px 0;
+    font-weight:700; cursor:pointer; color:var(--fg); background:none;
+    border:1px solid var(--accent); padding:3px 10px; margin:8px 0;
   }
-  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--focus); }
+  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--accent); }
   .__chain-summary{
-    font-size:var(--fs-sm); color:var(--dim); white-space:nowrap;
+    font-size:var(--fs-sm); color:var(--fg); white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; max-width:100%; padding:2px 0;
   }
   .response.__chain-collapsed{ padding:5px 13px; }
@@ -969,46 +952,10 @@
   setTimeout(init,0);
 })();
 </script>
-<script id="__theme-toggle-patch" data-tt="1">
-// Theme toggle: cycles system -> light -> dark -> system.
-// Creates the themeBtn in the savebar if absent, so docs that do not template
-// the button still get one when enhanced.
-(function(){
-  var KEY='entropy-machines-theme';
-  var MODES=['system','light','dark'];
-  var ICONS={system:'◐', light:'☀︎', dark:'☽'};
-  var TITLES={system:'Theme: system', light:'Theme: light', dark:'Theme: dark'};
-  var btn=document.getElementById('themeBtn');
-  if(!btn){
-    var bar=document.querySelector('.savebar');
-    if(!bar) return;
-    btn=document.createElement('button');
-    btn.id='themeBtn'; btn.className='ghost'; btn.title='Switch theme';
-    var save=document.getElementById('saveBtn');
-    if(save) bar.insertBefore(btn, save);
-    else bar.appendChild(btn);
-  }
-  function current(){
-    try{ var v=localStorage.getItem(KEY); if(MODES.indexOf(v)>=0) return v; }catch(e){}
-    return 'system';
-  }
-  function apply(mode){
-    if(mode==='system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', mode);
-    btn.textContent=ICONS[mode];
-    btn.title=TITLES[mode];
-    try{ if(mode==='system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); }catch(e){}
-  }
-  apply(current());
-  btn.addEventListener('click', function(){
-    var i=MODES.indexOf(current());
-    apply(MODES[(i+1)%MODES.length]);
-  });
-})();
-</script>
+
 <style id="__lockbox-css">
   .response.locked textarea{background:var(--bg); color:var(--fg);
-    border:1px solid var(--border); border-left:3px solid var(--positive);
+    border:1px solid var(--accent); border-left:3px solid var(--positive);
     cursor:default;}
   .response.locked label{color:var(--positive);}
 </style>
@@ -1034,7 +981,7 @@
 })();
 </script>
 <style id="__readmark-css">
-  .__readmark{ font-size:var(--fs-sm,12px); color:var(--dim,#666);
+  .__readmark{ font-size:var(--fs-sm); color:var(--fg);
     font-weight:400; margin-left:.5rem; letter-spacing:.02em; }
 </style>
 <script id="__readmark-patch" data-rm="1">
@@ -1094,13 +1041,13 @@
 })();
 </script>
 <style id="__docstatus-css">
-  .__docstatus{ font-size:var(--fs-sm,12px); font-weight:700;
+  .__docstatus{ font-size:var(--fs-sm); font-weight:700;
     text-transform:uppercase; letter-spacing:.04em;
     padding:2px 8px; margin-left:.5rem; border:1px solid currentColor;
     display:inline-block; vertical-align:middle; }
-  .__docstatus.st-open{ color:var(--caution,#7c3aed); }
-  .__docstatus.st-in-review{ color:var(--accent,#7c3aed); }
-  .__docstatus.st-resolved{ color:var(--positive,#0A5C21); }
+  .__docstatus.st-open{ color:var(--accent); }
+  .__docstatus.st-in-review{ color:var(--accent); }
+  .__docstatus.st-resolved{ color:var(--positive); }
 </style>
 <script id="__docstatus-patch" data-dstatus="1">
 // Show the doc-level status in the sidebar brand area.
@@ -1168,6 +1115,49 @@
   init();
   document.addEventListener('DOMContentLoaded', init);
   setTimeout(init, 0);
+})();
+</script>
+<script id="__theme-selector-patch">
+(function(){
+  const THEMES = {
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+};
+  function applyTheme(name) {
+  var t = THEMES[name];
+  if (!t) return;
+  var s = document.documentElement.style;
+  s.setProperty('--bg', t.bg);
+  s.setProperty('--fg', t.fg);
+  s.setProperty('--accent', t.accent);
+  s.setProperty('--positive', t.positive);
+  s.setProperty('--negative', t.negative);
+  try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
+}
+  var bar = document.querySelector('.savebar');
+  if (!bar) return;
+  var sel = document.createElement('select');
+  sel.id = 'themeBtn'; sel.title = 'Theme';
+  var old = document.getElementById('themeBtn');
+  if (old) old.parentNode.removeChild(old);
+  var save = document.getElementById('saveBtn');
+  if (save) bar.insertBefore(sel, save);
+  else bar.appendChild(sel);
+  var names = Object.keys(THEMES);
+  names.forEach(function(name) {
+    var o = document.createElement('option');
+    o.value = name;
+    o.textContent = name.replace(/-/g, ' ');
+    sel.appendChild(o);
+  });
+  var stored = '';
+  try { stored = localStorage.getItem('entropy-machines-theme') || ''; } catch(e) {}
+  if (stored && THEMES[stored]) { sel.value = stored; }
+  else { sel.value = 'janus-dark'; }
+  sel.addEventListener('change', function() { applyTheme(sel.value); });
 })();
 </script>
 </body></html>

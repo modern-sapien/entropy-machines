@@ -42,10 +42,10 @@ COLLAPSE_RV = "1"
 LOCKBOX_MARK = 'id="__lockbox-patch"'
 LOCKBOX_RV = "1"
 THEMEFLASH_MARK = 'id="__theme-flash-patch"'
-THEMEFLASH_RV = "2"
+THEMEFLASH_RV = "3"
 THEMETOGGLE_MARK = 'id="__theme-toggle-patch"'
-THEMETOGGLE_RV = "2"
-THEME_OPTIONS_MARK = 'id="__theme-options-patch"'
+THEMETOGGLE_RV = "3"
+THEME_OPTIONS_MARK = 'id="__theme-options-patch"'  # kept for stripping legacy patches
 READMARK_MARK = 'id="__readmark-patch"'
 READMARK_RV = "1"
 DOCSTATUS_MARK = 'id="__docstatus-patch"'
@@ -83,7 +83,6 @@ DISK_SAVE_RV = "3"
 GATE_MARKS = (DISK_SAVE_MARK, DISK_WINS_MARK, BOXSTATE_MARK, NAVMARK_MARK,
               TODOBANNER_MARK, TRACKERNAV_MARK, COLLAPSE_MARK,
               LOCKBOX_MARK, THEMEFLASH_MARK, THEMETOGGLE_MARK,
-              THEME_OPTIONS_MARK,
               READMARK_MARK, DOCSTATUS_MARK, UNSAVED_CUE_MARK,
               DOCNAV_MARK,
               LIVERELOAD_MARK, AUTOSAVE_MARK)
@@ -283,10 +282,10 @@ DISK_WINS = r'''
 
 DISK_SAVE = r'''
 <style id="__disk-save-css">
-  .box-status{font-size:var(--fs-sm,12px); font-weight:700; text-transform:uppercase;
+  .box-status{font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
     letter-spacing:.04em; margin-top:6px; padding:0;}
-  .box-status.awaiting{color:var(--caution,#f59e0b);}
-  .box-status.saved{color:var(--positive,#23D18B);}
+  .box-status.awaiting{color:var(--accent);}
+  .box-status.saved{color:var(--positive);}
 </style>
 <script id="__disk-save-patch" data-ds="__RV__">
 (function(){
@@ -405,12 +404,12 @@ BOXSTATE = r'''
 NAVMARK = r'''
 <style id="__navmark-css">
   nav a[data-page]{ overflow:hidden; }
-  nav a .navmark{ float:right; font-size:var(--fs-sm,12px); font-weight:700; line-height:1.5; margin-left:.4rem; }
-  nav a .navmark.done{ color:var(--good); }
-  nav a .navmark.todo{ color:var(--warn-deep); background:#fdf6e3; padding:.02rem .34rem; border-radius:99px; }
+  nav a .navmark{ float:right; font-size:var(--fs-sm); font-weight:700; line-height:1.5; margin-left:.4rem; }
+  nav a .navmark.done{ color:var(--positive); }
+  nav a .navmark.todo{ color:var(--negative); background:var(--bg); padding:.02rem .34rem; border-radius:99px; }
   @media (prefers-color-scheme:dark){ nav a .navmark.todo{ background:#241d10; } }
-  nav .navsummary{ font-size:var(--fs-sm,12px); font-weight:700; color:var(--muted); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--code-bg); }
-  nav .navsummary .all-done{ color:var(--good); }
+  nav .navsummary{ font-size:var(--fs-sm); font-weight:700; color:var(--fg); margin:.5rem .4rem .2rem; padding:.3rem .55rem; border-radius:6px; background:var(--bg); }
+  nav .navsummary .all-done{ color:var(--positive); }
 </style>
 <script id="__navmark-patch" data-nm="__RV__">
 // Live per-section review state in the sidebar. Independent of the main doc
@@ -469,15 +468,15 @@ TODOBANNER = r'''
      background tints; no filled badges). Vars fall back for docs still on the
      old sheet. */
   #__todobar{ position:sticky; top:0; z-index:40; margin:0 0 1.1rem;
-    border:2px solid var(--caution,#7c3aed); background:var(--bg,#fff);
-    color:var(--caution,#7c3aed); padding:.6rem .85rem; font-size:var(--fs-base,.9rem); }
+    border:2px solid var(--accent); background:var(--bg);
+    color:var(--accent); padding:.6rem .85rem; font-size:var(--fs-base); }
   #__todobar[hidden]{ display:none; }
   #__todobar .hd{ font-weight:700; text-transform:uppercase; letter-spacing:.04em;
-    font-size:var(--fs-sm,.72rem); display:block; margin-bottom:.35rem; }
-  #__todobar a{ display:inline-block; font-weight:700; color:var(--caution,#7c3aed);
+    font-size:var(--fs-sm); display:block; margin-bottom:.35rem; }
+  #__todobar a{ display:inline-block; font-weight:700; color:var(--accent);
     background:none; border:1px solid currentColor; padding:.14rem .6rem;
     margin:.16rem .3rem .16rem 0; text-decoration:none; }
-  #__todobar a:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__todobar a:hover{ outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 <script id="__todobanner-patch" data-tb="__RV__">
 // An in-page "these need you" bar. Same source of truth as the nav marks —
@@ -553,13 +552,13 @@ LIVERELOAD = r'''
 <style id="__livereload-css">
   /* Borders, never tints (2026-08-07 doc standard). */
   #__replybar{ position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:60;
-    display:flex; align-items:center; gap:.7rem; background:var(--bg,#fff);
-    border:2px solid var(--positive,#0A5C21); color:var(--positive,#0A5C21);
-    padding:.5rem .8rem; font-size:var(--fs-base,.95rem); font-weight:700; }
+    display:flex; align-items:center; gap:.7rem; background:var(--bg);
+    border:2px solid var(--positive); color:var(--positive);
+    padding:.5rem .8rem; font-size:var(--fs-base); font-weight:700; }
   #__replybar[hidden]{ display:none; }
   #__replybar button{ font: inherit; font-weight:700; cursor:pointer; color:inherit;
     background:none; border:1px solid currentColor; padding:.2rem .7rem; }
-  #__replybar button:hover{ outline:2px solid var(--focus,#7c3aed); outline-offset:1px; }
+  #__replybar button:hover{ outline:2px solid var(--accent); outline-offset:1px; }
   #__replybar .dismiss{ border:none; font-weight:400; }
 </style>
 <script id="__livereload-patch" data-lr="__RV__">
@@ -649,10 +648,10 @@ LIVERELOAD = r'''
 TRACKERNAV = r'''
 <style id="__trackernav-css">
   nav .tracknav{ display:flex; flex-wrap:wrap; gap:.35rem; margin:.45rem .4rem .6rem; }
-  nav .tracknav a{ font-size:var(--fs-sm,12px); font-weight:700; text-decoration:none;
-    color:var(--muted,#71717a); border:1px solid var(--border,#ddd6fe);
+  nav .tracknav a{ font-size:var(--fs-sm); font-weight:700; text-decoration:none;
+    color:var(--fg); border:1px solid var(--accent);
     padding:.1rem .5rem; }
-  nav .tracknav a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+  nav .tracknav a:hover{ color:var(--accent); border-color:currentColor; }
 </style>
 <script id="__trackernav-patch" data-tn="__RV__">
 /* Replaced by __docnav-patch category links. No-op — kept for the gate mark. */
@@ -722,15 +721,15 @@ def _ensure_static_nav_categories(src):
 REPORTNAV = r"""<style id="__reportnav-css">
   /* Sticky so the section list is reachable from anywhere in a long report;
      borders only, per the 2026-08-07 doc standard. */
-  main nav{ position:sticky; top:0; z-index:45; background:var(--bg,#fff); }
+  main nav{ position:sticky; top:0; z-index:45; background:var(--bg); }
   main nav .seclinks{ display:flex; flex-wrap:wrap; gap:.3rem;
     margin:.35rem 0 0; flex-basis:100%; }
-  main nav .seclinks a{ font-size:var(--fs-sm,12px); font-weight:700;
-    text-decoration:none; color:var(--dim,#666);
-    border:1px solid var(--border,#ccc); padding:2px 8px; }
-  main nav .seclinks a:hover{ color:var(--accent,#7c3aed); border-color:currentColor; }
+  main nav .seclinks a{ font-size:var(--fs-sm); font-weight:700;
+    text-decoration:none; color:var(--fg);
+    border:1px solid var(--accent); padding:2px 8px; }
+  main nav .seclinks a:hover{ color:var(--accent); border-color:currentColor; }
   main nav .seclinks a:target,
-  main nav .seclinks a.here{ color:var(--focus,#F38518); border-color:currentColor; }
+  main nav .seclinks a.here{ color:var(--accent); border-color:currentColor; }
   main section{ scroll-margin-top:4.5rem; }
   /* Both this nav and __todobar are sticky at top:0 and __todobar is inserted
      ABOVE the nav, so they would overlap. The nav carries the same per-section
@@ -858,12 +857,12 @@ COLLAPSE = r'''
 <style id="__collapse-css">
   .__chain-toggle{
     display:inline-block; font-family:var(--font); font-size:var(--fs-sm);
-    font-weight:700; cursor:pointer; color:var(--dim); background:none;
-    border:1px solid var(--border); padding:3px 10px; margin:8px 0;
+    font-weight:700; cursor:pointer; color:var(--fg); background:none;
+    border:1px solid var(--accent); padding:3px 10px; margin:8px 0;
   }
-  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--focus); }
+  .__chain-toggle:hover{ box-shadow:inset 0 0 0 2px var(--accent); }
   .__chain-summary{
-    font-size:var(--fs-sm); color:var(--dim); white-space:nowrap;
+    font-size:var(--fs-sm); color:var(--fg); white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; max-width:100%; padding:2px 0;
   }
   .response.__chain-collapsed{ padding:5px 13px; }
@@ -978,68 +977,34 @@ COLLAPSE = r'''
 '''.strip()
 
 
-THEMEFLASH = r'''<script id="__theme-flash-patch" data-tf="__RV__">try{var t=localStorage.getItem('entropy-machines-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>'''
-
-# ---- theme infrastructure ---------------------------------------------------
-# A THEME FILE IS TOKENS ONLY — :root blocks with CSS custom properties.
-# _theme_options() reads the .css files, extracts the bare :root tokens, and
-# scopes each under :root[data-theme="<name>"] so that setting data-theme
-# to the theme name activates those tokens.
-
-_theme_cache = None
-
-
-def _theme_options():
-    """Read all theme CSS files, return (scoped_css, theme_list)."""
-    global _theme_cache
-    if _theme_cache is not None:
-        return _theme_cache
-    themes_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'themes')
-    if not os.path.isdir(themes_dir):
-        _theme_cache = ('', [])
-        return _theme_cache
-    blocks = []
-    themes = []
-    for fname in sorted(os.listdir(themes_dir)):
-        if not fname.endswith('.css'):
-            continue
-        name = fname[:-4]
-        path = os.path.join(themes_dir, fname)
-        try:
-            css = open(path, encoding='utf-8').read()
-        except (OSError, UnicodeDecodeError):
-            continue
-        m = re.search(r':root\s*\{([^}]+)\}', css)
-        if not m:
-            continue
-        tokens = m.group(1)
-        blocks.append(':root[data-theme="%s"]{%s}' % (name, tokens))
-        label = name.replace('-', ' ').title()
-        themes.append({'name': name, 'label': label})
-    _theme_cache = ('\n'.join(blocks), themes)
-    return _theme_cache
-
+THEMEFLASH = r'''<script id="__theme-flash-patch" data-tf="__RV__">(function(){var THEMES={"janus-light":{bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},"janus-dark":{bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},"hc-dark":{bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},"daylight":{bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},"daylight-dark":{bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}};try{var n=localStorage.getItem('entropy-machines-theme');if(n&&THEMES[n]){var t=THEMES[n],s=document.documentElement.style;s.setProperty('--bg',t.bg);s.setProperty('--fg',t.fg);s.setProperty('--accent',t.accent);s.setProperty('--positive',t.positive);s.setProperty('--negative',t.negative);}}catch(e){}})();</script>'''
 
 def _themetoggle_body():
-    """Build the theme-selector patch body with embedded theme names."""
-    _, themes = _theme_options()
-    themes_json = json.dumps(themes)
-    return _THEMETOGGLE_TEMPLATE.replace('__THEMES_JSON__', themes_json)
+    """Build the theme-selector patch body."""
+    return _THEMETOGGLE_TEMPLATE
 
 
 _THEMETOGGLE_TEMPLATE = r'''
 <style id="__theme-toggle-css">
   .savebar select#themeBtn{
-    font:inherit; font-size:var(--fs-sm,12px);
-    background:var(--bg,#000); border:1px solid var(--border,#ddd);
+    font:inherit; font-size:var(--fs-sm);
+    background:var(--bg); border:1px solid var(--accent);
     color:inherit; padding:2px 6px; cursor:pointer;
   }
-  .savebar select#themeBtn:hover{box-shadow:inset 0 0 0 2px var(--focus);}
+  .savebar select#themeBtn:hover{box-shadow:inset 0 0 0 2px var(--accent);}
 </style>
 <script id="__theme-toggle-patch" data-tt="__RV__">
 (function(){
   var KEY='entropy-machines-theme';
-  var THEMES=__THEMES_JSON__;
+  var THEMES={"janus-light":{bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},"janus-dark":{bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},"hc-dark":{bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},"daylight":{bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},"daylight-dark":{bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}};
+  function applyTheme(name){
+    var t=THEMES[name]; if(!t) return;
+    var s=document.documentElement.style;
+    s.setProperty('--bg',t.bg); s.setProperty('--fg',t.fg);
+    s.setProperty('--accent',t.accent); s.setProperty('--positive',t.positive);
+    s.setProperty('--negative',t.negative);
+    try{localStorage.setItem(KEY,name);}catch(e){}
+  }
   var el=document.getElementById('themeBtn');
   var sel;
   if(el && el.tagName==='SELECT'){
@@ -1055,28 +1020,15 @@ _THEMETOGGLE_TEMPLATE = r'''
     else bar.appendChild(sel);
   }
   if(!sel.options.length){
-    var d=document.createElement('option');
-    d.value=''; d.textContent='Default theme';
-    sel.appendChild(d);
-    THEMES.forEach(function(t){
+    Object.keys(THEMES).forEach(function(n){
       var o=document.createElement('option');
-      o.value=t.name; o.textContent=t.label;
-      sel.appendChild(o);
+      o.value=n; o.textContent=n; sel.appendChild(o);
     });
   }
   var stored='';
   try{ stored=localStorage.getItem(KEY)||''; }catch(e){}
-  sel.value=stored;
-  sel.addEventListener('change', function(){
-    var v=sel.value;
-    if(v){
-      document.documentElement.setAttribute('data-theme', v);
-      try{ localStorage.setItem(KEY, v); }catch(e){}
-    }else{
-      document.documentElement.removeAttribute('data-theme');
-      try{ localStorage.removeItem(KEY); }catch(e){}
-    }
-  });
+  if(stored&&THEMES[stored]){sel.value=stored;}
+  sel.addEventListener('change', function(){applyTheme(sel.value);});
 })();
 </script>
 '''.strip()
@@ -1087,7 +1039,7 @@ THEMETOGGLE = _THEMETOGGLE_TEMPLATE
 LOCKBOX = r'''
 <style id="__lockbox-css">
   .response.locked textarea{background:var(--bg); color:var(--fg);
-    border:1px solid var(--border); cursor:default;}
+    border:1px solid var(--accent); cursor:default;}
   .response.locked label{color:var(--positive);}
 </style>
 <script id="__lockbox-patch" data-lb="__RV__">
@@ -1116,7 +1068,7 @@ LOCKBOX = r'''
 
 READMARK = r'''
 <style id="__readmark-css">
-  .__readmark{ font-size:var(--fs-sm,12px); color:var(--dim,#666);
+  .__readmark{ font-size:var(--fs-sm); color:var(--fg);
     font-weight:400; margin-left:.5rem; letter-spacing:.02em; }
 </style>
 <script id="__readmark-patch" data-rm="__RV__">
@@ -1180,13 +1132,13 @@ READMARK = r'''
 
 DOCSTATUS = r'''
 <style id="__docstatus-css">
-  .__docstatus{ font-size:var(--fs-sm,12px); font-weight:700;
+  .__docstatus{ font-size:var(--fs-sm); font-weight:700;
     text-transform:uppercase; letter-spacing:.04em;
     padding:2px 8px; margin-left:.5rem; border:1px solid currentColor;
     display:inline-block; vertical-align:middle; }
-  .__docstatus.st-open{ color:var(--caution,#7c3aed); }
-  .__docstatus.st-in-review{ color:var(--accent,#7c3aed); }
-  .__docstatus.st-resolved{ color:var(--positive,#0A5C21); }
+  .__docstatus.st-open{ color:var(--accent); }
+  .__docstatus.st-in-review{ color:var(--accent); }
+  .__docstatus.st-resolved{ color:var(--positive); }
 </style>
 <script id="__docstatus-patch" data-dstatus="__RV__">
 // Show the doc-level status in the sidebar brand area.
@@ -1262,12 +1214,12 @@ DOCSTATUS = r'''
 ISSUE_AGREE = r'''
 <style id="__issue-agree-css">
   /* Issue agreement checkboxes on the PRD output/issues page. */
-  .issue-agree-th{ width:3.2rem; text-align:center; font-size:var(--fs-sm,12px);
+  .issue-agree-th{ width:3.2rem; text-align:center; font-size:var(--fs-sm);
     font-weight:700; text-transform:uppercase; letter-spacing:.03em;
-    color:var(--dim,#666); }
+    color:var(--fg); }
   .issue-agree-td{ text-align:center; vertical-align:middle; }
   .issue-agree-td input[type="checkbox"]{ width:1.1rem; height:1.1rem;
-    cursor:pointer; accent-color:var(--positive,#23D18B); }
+    cursor:pointer; accent-color:var(--positive); }
 </style>
 <script id="__issue-agree-patch" data-ia="__RV__">
 // Issue agreement checkboxes. On any page whose <h1> says "Issues this PRD
@@ -1388,7 +1340,7 @@ UNSAVED_CUE = r'''
   }
   function update(){
     if(hasPendingEdits()){
-      bar.style.borderColor='var(--caution,#7c3aed)';
+      bar.style.borderColor='var(--accent)';
       bar.style.borderWidth='2px';
     }else{
       bar.style.borderColor=origBorder;
@@ -1482,15 +1434,11 @@ def apply(src, name="doc.html"):
         if upgraded != src:
             src = upgraded
             changed.append("collapse v" + COLLAPSE_RV)
-    # Theme options CSS — scoped :root[data-theme="<name>"] blocks for every
-    # theme in lib/themes/. Injected before </head> so the tokens are available
-    # when __theme-flash-patch sets data-theme right after <body>.
-    if THEME_OPTIONS_MARK not in src:
-        options_css, _ = _theme_options()
-        if options_css:
-            block = '<style id="__theme-options-patch">\n' + options_css + '\n</style>'
-            src = src.replace("</head>", block + "\n</head>", 1)
-            changed.append("theme-options")
+    # Strip legacy theme-options patch — themes are now config objects, not
+    # CSS files. The THEMES object lives in theme-flash and theme-toggle.
+    if THEME_OPTIONS_MARK in src:
+        src = re.sub(r'<style id="__theme-options-patch">[^<]*</style>\n?', '', src)
+        changed.append("strip-theme-options")
     # Theme flash prevention — right after <body> so it runs before paint.
     if THEMEFLASH_MARK not in src:
         src = src.replace("</head><body>", "</head><body>\n" + versioned_block("__theme-flash-patch"), 1)
