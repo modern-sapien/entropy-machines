@@ -1,0 +1,161 @@
+/* entropy-machines UI — the 5-color system.
+ *
+ * Exactly five custom properties carry color, always at 100% opacity:
+ * --bg, --fg, --accent, --positive, --negative. No rgba(), no opacity-based
+ * state, no var(--x, fallback) — every var() reference below has a real
+ * value on :root because src/data/themes.ts applies the stored (or
+ * default) theme via style.setProperty() before this stylesheet is ever
+ * read for paint (see the inline script in index.html). The values here
+ * are just the janus-dark defaults so nothing is undefined if JS is off.
+ *
+ * Visual rule carried over from the doc templates this UI replaces:
+ * separate with BORDERS, not background tints; state is weight/case/border,
+ * never a fill or an opacity change.
+ */
+:root {
+  --bg: #0a0a0d;
+  --fg: #fafafa;
+  --accent: #a78bfa;
+  --positive: #23D18B;
+  --negative: #ef4444;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+#root {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  border: 1px solid var(--accent);
+  padding: 0 0.25em;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  flex: none;
+  border-right: 1px solid var(--accent);
+  background: var(--bg);
+  padding: 22px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding: 0 6px;
+}
+
+.sidebar .brand .logo {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--accent);
+}
+
+.sidebar a {
+  display: block;
+  padding: 6px 10px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+
+.sidebar a:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sidebar a.cur {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.sidebar .grp {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  margin: 16px 6px 6px;
+}
+
+.sidebar .grp:first-of-type {
+  margin-top: 0;
+}
+
+.sidebar .foot {
+  margin-top: 20px;
+  padding: 0 6px;
+}
+
+/* Theme selector */
+.theme-selector {
+  width: 100%;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 6px 8px;
+}
+
+/* Page content */
+main {
+  flex: 1;
+  min-width: 0;
+  padding: 38px 42px 80px;
+  max-width: 1060px;
+}
+
+h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 2px 0 8px;
+}
+
+.sub {
+  color: var(--fg);
+  margin: 0 0 1rem;
+}

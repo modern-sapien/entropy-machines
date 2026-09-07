@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>entropy-machines</title>
+    <script>
+      // Applies the stored theme (or the janus-dark default) via
+      // style.setProperty() before anything paints, so there is no flash of
+      // the wrong theme while React boots. This mirrors src/data/themes.ts
+      // exactly — same names, same values, same storage key — because both
+      // read/write "entropy-machines-theme" in localStorage.
+      (function () {
+        var THEMES = {
+          "janus-light": { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
+          "janus-dark": { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
+          "hc-dark": { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
+          daylight: { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
+          "daylight-dark": { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+        };
+        var name = "janus-dark";
+        try {
+          var stored = localStorage.getItem("entropy-machines-theme");
+          if (stored && THEMES[stored]) name = stored;
+        } catch (e) {}
+        var t = THEMES[name];
+        var s = document.documentElement.style;
+        s.setProperty("--bg", t.bg);
+        s.setProperty("--fg", t.fg);
+        s.setProperty("--accent", t.accent);
+        s.setProperty("--positive", t.positive);
+        s.setProperty("--negative", t.negative);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
