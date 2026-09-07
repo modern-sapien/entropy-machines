@@ -51,7 +51,7 @@ READMARK_RV = "1"
 DOCSTATUS_MARK = 'id="__docstatus-patch"'
 DOCSTATUS_RV = "1"
 ISSUE_AGREE_MARK = 'id="__issue-agree-patch"'
-ISSUE_AGREE_RV = "1"
+ISSUE_AGREE_RV = "2"
 UNSAVED_CUE_MARK = 'id="__unsaved-cue-patch"'
 UNSAVED_CUE_RV = "1"
 DOCNAV_MARK = 'id="__docnav-patch"'
@@ -1288,7 +1288,7 @@ ISSUE_AGREE = r'''
       // Add checkboxes to each body row.
       var tbody=table.querySelector('tbody');
       if(!tbody) return;
-      var rows=tbody.querySelectorAll('tr');
+      var rows=tbody.querySelectorAll('tr:not(.row-note)');
       rows.forEach(function(tr){
         var id=issueId(tr);
         var td=document.createElement('td');

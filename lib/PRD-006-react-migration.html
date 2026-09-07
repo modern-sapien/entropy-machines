@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRD-006 — React migration</title>
+<style>
+  :root{
+    --bg:#faf9fc; --surface:#ffffff; --border:#ddd6fe; --text:#18181b; --muted:#71717a;
+    --accent:#7c3aed; --accent-deep:#6d28d9; --accent-soft:#f5f3ff; --accent-fg:#fafafa;
+    --danger:#b91c1c; --danger-soft:#fdecec; --warn:#f59e0b; --warn-deep:#d97706;
+    --good:#1a7f37; --good-soft:#e8f5ec; --code-bg:#f4f2f8; --radius:6px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --fs-2:.9rem; --fs-mono:.88rem;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0a0a0d; --surface:#18181b; --border:#3a2f5c; --text:#fafafa; --muted:#a1a1aa;
+      --accent:#a78bfa; --accent-deep:#8b5cf6; --accent-soft:#1f1530; --accent-fg:#0a0a0d;
+      --danger:#ef4444; --danger-soft:#2a1414; --warn:#fbbf24; --warn-deep:#f59e0b;
+      --good:#4ec97a; --good-soft:#16271c; --code-bg:#232030;
+    }
+  }
+  *{box-sizing:border-box}
+  html{font-size:16px;}
+  body{font-family:var(--font); font-size:1rem; line-height:1.6; color:var(--text);
+    background:var(--bg); margin:0; display:flex; min-height:100vh;}
+  code{font-family:var(--mono); font-size:var(--fs-mono); background:var(--code-bg,transparent);
+    color:inherit; padding:.1em .35em; border-radius:4px;}
+  pre{background:var(--code-bg,transparent); color:inherit; padding:.8rem 1rem; border-radius:8px; overflow-x:auto;
+    font-family:var(--mono); font-size:var(--fs-mono); line-height:1.55;}
+  pre code{background:none; padding:0;}
+  nav{width:262px; flex:none; border-right:1px solid var(--border); background:var(--surface);
+    padding:1.2rem .8rem; position:sticky; top:0; height:100vh; overflow-y:auto;}
+  nav .brand{display:flex; align-items:center; gap:.5rem; font-weight:700; margin-bottom:1rem; padding:0 .4rem;}
+  nav .brand .logo{width:18px; height:18px; border-radius:5px; background:var(--accent);}
+  nav a{display:block; padding:.42rem .6rem; border-radius:var(--radius); color:var(--text);
+    text-decoration:none; font-size:var(--fs-2); margin-bottom:.15rem; border-left:3px solid transparent;}
+  nav a:hover{background:var(--accent-soft);}
+  nav a.cur{background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
+  nav .grp{font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:.9rem .4rem .3rem;}
+  nav .foot{font-size:var(--fs-2); color:var(--muted); margin-top:1.2rem; padding:0 .4rem;}
+  main{flex:1; min-width:0; padding:2.2rem 2.4rem 7rem; max-width:940px;}
+  .page{display:none;} .page.cur{display:block;}
+  h1{font-size:1.5rem; font-weight:700; letter-spacing:-.01em; margin:.2rem 0 .3rem;}
+  h2{font-size:1.15rem; font-weight:700; margin:1.8rem 0 .3rem;}
+  h3{font-size:1rem; font-weight:700; margin:1.3rem 0 .2rem;}
+  .sub{color:var(--muted); font-size:1rem; margin:0 0 1rem;}
+  p{margin:.55rem 0;}
+  main a{color:var(--accent); text-decoration:none; border-bottom:1px solid var(--border);}
+  .callout{border-radius:10px; padding:.75rem 1rem; margin:1rem 0; border:1px solid var(--border); background:var(--surface);}
+  .callout.key{background:var(--accent-soft); border-color:transparent;}
+  .callout.good{background:var(--good-soft); border-color:transparent;}
+  .callout.warn{background:#fdf6e3; border-color:transparent;}
+  .callout.bad{background:var(--danger-soft); border-color:transparent;}
+  @media (prefers-color-scheme:dark){ .callout.warn{background:#241d10;} }
+  .callout .tag{font-size:var(--fs-2); font-weight:700; text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:.25rem;}
+  .callout.key .tag{color:var(--accent);} .callout.good .tag{color:var(--good);} .callout.warn .tag{color:var(--warn-deep);} .callout.bad .tag{color:var(--danger);}
+  .tbl-wrap{overflow-x:auto; margin:.9rem 0;}
+  table{border-collapse:collapse; width:100%; font-size:var(--fs-2);}
+  th,td{padding:.45rem .55rem; text-align:left; border-bottom:1px solid var(--border); vertical-align:top;}
+  thead th{font-size:var(--fs-2); font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); border-bottom:2px solid var(--border); white-space:nowrap;}
+  td code{font-size:var(--fs-mono);}
+  ul,ol{margin:.5rem 0; padding-left:1.3rem;} li{margin:.3rem 0;}
+  .foot{color:var(--muted); font-size:var(--fs-2);}
+  .rec{border-left:3px solid var(--good); background:var(--good-soft); border-radius:0 8px 8px 0; padding:.5rem .8rem; margin:.8rem 0;}
+  .rec .lbl{font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--good); display:block; margin-bottom:.2rem;}
+  .pill{display:inline-block; font-size:.72rem; font-weight:700; padding:.1rem .5rem; border-radius:99px; background:var(--accent-soft); color:var(--accent); vertical-align:middle;}
+  .pill.dec{background:#fdf6e3; color:var(--warn-deep);}
+  .pill.red{background:var(--danger-soft); color:var(--danger);}
+  .pill.grn{background:var(--good-soft); color:var(--good);}
+  @media (prefers-color-scheme:dark){ .pill.dec{background:#241d10;} }
+  blockquote{border-left:3px solid var(--border); margin:.6rem 0; padding-left:.8rem; color:var(--muted);}
+  .response{margin:1rem 0 .4rem; border-left:3px solid var(--warn); background:var(--code-bg,transparent); border-radius:0 8px 8px 0; padding:.55rem .8rem;}
+  .response label{display:block; font-size:var(--fs-2); font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--warn-deep); margin-bottom:.3rem;}
+  .response .discuss{margin:0 0 .65rem; padding:.55rem .75rem; border-left:2px solid var(--accent); background:var(--surface); border-radius:0 6px 6px 0; font-size:.93rem; line-height:1.55; color:var(--text);}
+  .response .discuss code{font-size:.84rem;}
+  .response textarea{width:100%; min-height:52px; resize:vertical; font-family:var(--font); font-size:1rem; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:.45rem .6rem; line-height:1.5; overflow:hidden;}
+  .response.filled{border-left-color:var(--good);} .response.filled label{color:var(--good);}
+  tr.row-note td{padding:.2rem .55rem .55rem; border-bottom:1px solid var(--border);}
+  tr.row-note .response.mini{margin:0; border:none; background:none; padding:0; border-radius:0;}
+  tr.row-note .response.mini textarea{display:block; width:100%; min-height:0; height:1.9em; resize:none; overflow:hidden; font-family:var(--font); font-size:.82rem; line-height:1.4; color:var(--muted); background:var(--code-bg,transparent); border:1px solid var(--border); border-radius:6px; padding:.3rem .55rem;}
+  tr.row-note .response.mini textarea:focus{color:var(--text); outline:none; border-color:var(--accent);}
+  tr.row-note .response.mini.filled textarea{border-color:var(--good); color:var(--text);}
+  .savebar{position:fixed; bottom:.9rem; right:1.2rem; display:flex; align-items:center; gap:.7rem; z-index:50; background:var(--surface); border:1px solid var(--border); border-radius:99px; padding:.45rem .55rem .45rem 1rem; box-shadow:0 6px 24px rgba(0,0,0,.18);}
+  .savebar .stat{font-size:var(--fs-2); color:var(--muted);}
+  .savebar button{font-family:var(--font); font-size:var(--fs-2); font-weight:600; cursor:pointer; border:none; border-radius:99px; padding:.42rem .9rem; color:var(--accent-fg); background:var(--accent);}
+  .savebar button.ghost{background:transparent; color:var(--muted); padding:.42rem .5rem;}
+</style>
+</head><body>
+
+<nav>
+  <div class="brand"><span class="logo"></span> PRD-006</div>
+  <div class="grp">Context</div>
+  <a href="#p0" data-page="p0" class="cur">0 · Why this migration</a>
+  <a href="#p1" data-page="p1">1 · What exists today</a>
+  <div class="grp">Architecture</div>
+  <a href="#p2" data-page="p2">2 · The SPA as collaboration surface</a>
+  <a href="#p3" data-page="p3">3 · Database design</a>
+  <a href="#p4" data-page="p4">4 · Agent API</a>
+  <a href="#p5" data-page="p5">5 · React app structure</a>
+  <div class="grp">Open questions</div>
+  <a href="#p6" data-page="p6">6 · Migration strategy</a>
+  <a href="#p7" data-page="p7">7 · Build and tooling</a>
+  <a href="#p8" data-page="p8">8 · What changes and what stays</a>
+  <div class="grp">Output</div>
+  <a href="#p9" data-page="p9">9 · Issues this PRD creates</a>
+  <div class="foot">This PRD replaces the HTML template + enhance.py system with
+    a React SPA backed by SQLite. The SPA becomes the primary surface for
+    human-agent collaboration — not just a doc viewer.</div>
+</nav>
+
+<main>
+
+<section class="page cur" id="p0">
+  <h1>PRD-006 — Why this migration</h1>
+  <p class="sub">The current system has hit two limits: one technical, one conceptual.</p>
+
+  <h2>The technical limit</h2>
+  <p><code>enhance.py</code> is 1,568 lines of regex-based HTML surgery across 10+ patch
+  passes. Every cross-cutting change (themes, nav, categories) requires touching 4+ files
+  and produces ordering bugs. The nav-category-order bug, the theme flash, the var-fallback
+  drift — these are symptoms of patching HTML strings instead of rendering from components.</p>
+
+  <h2>The conceptual limit</h2>
+  <p>The current system treats the browser as a read-and-respond surface: the user opens a
+  doc, types in response boxes, saves. Agents live in the terminal — they edit files, the
+  user reads the result in the browser, types a response, and the agent reads that response
+  from disk. Every exchange requires a round-trip through the filesystem.</p>
+
+  <p>That loop is the real bottleneck. Not enhance.py's regex — the fact that humans and agents
+  can't work in the same place at the same time.</p>
+
+  <div class="callout key"><span class="tag">The shift</span>
+    The SPA becomes the <strong>collaboration surface</strong> between humans and agents.
+    Agents read and write through an API. The user sees agent activity in real time — replies
+    appearing, issues updating, status changing — without leaving the browser. The terminal
+    becomes the agent's workspace, not the user's. The goal is that a non-technical owner
+    can run their project from the browser entirely.
+  </div>
+
+  <h2>Architecture: what moves, what stays</h2>
+  <pre><code>
+┌─────────────────────────────────────────────────────────────────────┐
+│  FACTORY LAYER  (unchanged — git-based workflow)                   │
+│                                                                     │
+│  Orchestrator ──▶ bin/dispatch ──▶ Worker (worktree branch)        │
+│                                       │                             │
+│                                       ▼                             │
+│                               bin/handoff                           │
+│                         interrogate → lift → test → verify → commit │
+│                                                                     │
+│  bin/tracker ─── same CLI ──▶ API (instead of issues.json)         │
+└─────────────────────────────────────────────────────────────────────┘
+        │ agents produce code changes via git
+        │ agents interact with docs/issues via MCP
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  PRODUCT LAYER  (what this PRD migrates)                           │
+│                                                                     │
+│  ┌───────────┐     ┌──────────────┐     ┌────────────────────┐     │
+│  │  React    │◀───▶│   Python     │◀───▶│     SQLite         │     │
+│  │  SPA      │     │   Server     │     │                    │     │
+│  │           │     │              │     │  docs, pages,      │     │
+│  │  ui/      │     │  /api/*      │     │  responses,        │     │
+│  │           │     │              │     │  replies, issues,  │     │
+│  └───────────┘     │  MCP server  │     │  settings          │     │
+│   browser          │              │     │                    │     │
+│                    └──────────────┘     └────────────────────┘     │
+│                                                                     │
+│  Replaces: enhance.py, HTML templates, issues.json, localStorage   │
+└─────────────────────────────────────────────────────────────────────┘
+        ▲
+        │ owner works here — browser only, no terminal needed
+  </code></pre>
+
+  <div class="response" data-resp="p0-direction">
+    <label>Overall direction</label>
+    <div class="discuss">This PRD is scoped to the migration itself — React SPA, SQLite database,
+    agent API. The real-time collaboration features (WebSocket push, agent presence indicators,
+    inline agent replies) are downstream work that this architecture enables but doesn't
+    implement in phase 1. Is this the right framing — build the platform first, add
+    real-time collaboration on top? Or should real-time be in the initial scope?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p1">
+  <h1>What exists today</h1>
+  <p class="sub">Inventory of what the migration replaces.</p>
+
+  <h2>Page types</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Type</th><th>Source</th><th>Count</th><th>Features</th></tr></thead>
+    <tbody>
+      <tr><td><strong>PRDs</strong></td><td><code>doc-template.html</code></td><td>5</td>
+        <td>Multi-page nav, response boxes, autosave, disk-save, live-reload, nav marks, collapse, doc status</td></tr>
+      <tr><td><strong>Tracker</strong></td><td><code>tracker-view.py</code></td><td>1 (dynamic)</td>
+        <td>List/board toggle, filters, live from issues.json</td></tr>
+      <tr><td><strong>Sprint reports</strong></td><td><code>sprint-report-template.html</code></td><td>3</td>
+        <td>Response boxes, section nav, same enhance patches</td></tr>
+      <tr><td><strong>Landing pages</strong></td><td><code>doctracker.py</code></td><td>4</td>
+        <td>Category listings (PRDS, DOCS, REPORTS, TRACKER)</td></tr>
+      <tr><td><strong>Dashboard</strong></td><td><code>bin/serve</code> inline</td><td>1</td>
+        <td>Ready issues, claim status, answered counts</td></tr>
+      <tr><td><strong>Extra docs</strong></td><td><code>doc-template.html</code></td><td>2</td>
+        <td>INDEX, CONFERENCE-LIST — same as PRDs</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>The patching stack (enhance.py)</h2>
+  <p>10 patches applied via regex to every doc on serve: disk-save, nav-marks, live-reload,
+  collapse, theme-selector, readmark, docstatus, issue-agree, unsaved-cue, doc-nav.
+  Each becomes a React component or hook.</p>
+
+  <h2>Current data stores</h2>
+  <ul>
+    <li><strong>issues.json</strong> — all tracker issues, read/written by <code>bin/tracker</code></li>
+    <li><strong>HTML files on disk</strong> — doc content + embedded response data in a <code>&lt;script&gt;</code> tag</li>
+    <li><strong>localStorage</strong> — autosaved responses, theme preference</li>
+    <li><strong>manifest.json</strong> — doc status, version tracking (via <code>docstate.py</code>)</li>
+  </ul>
+
+  <div class="response" data-resp="p1-inventory">
+    <label>Anything missing?</label>
+    <div class="discuss">This is the full inventory of what the migration touches. Are there
+    data stores, page types, or workflows not listed here? Any planned features that should
+    influence the database schema design on the next page?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p2">
+  <h1>The SPA as collaboration surface</h1>
+  <p class="sub">How humans and agents work in the same place.</p>
+
+  <h2>Today's flow (terminal-mediated)</h2>
+  <pre><code>Owner opens PRD in browser → reads → types response → saves
+Agent reads response from disk → writes reply to file → commits
+Owner reloads browser → reads reply → types response → saves
+  (repeat, with a terminal session brokering every exchange)</code></pre>
+
+  <h2>Target flow (SPA-mediated)</h2>
+  <pre><code>Owner opens PRD in browser → reads → types response → saves (POST to API)
+API writes to SQLite → notifies agent via event/webhook
+Agent reads response via API → writes reply via API → API writes to SQLite
+SPA receives update via WebSocket → owner sees reply appear in real time
+  (no terminal needed for the owner; agent works via API)</code></pre>
+
+  <h2>What this enables</h2>
+  <ul>
+    <li><strong>No file:// dependency</strong> — the SPA is the interface, the server is the brain.
+    For offline/sharing, an "Export to HTML" button snapshots any page as a standalone file.</li>
+    <li><strong>Agent presence</strong> — the SPA can show when an agent is reading a doc,
+    writing a reply, or working an issue. The owner sees work happening, not just results.</li>
+    <li><strong>Inline conversation</strong> — instead of response boxes that an agent reads
+    asynchronously from disk, responses and agent replies render as a conversation thread.
+    No round-trip through the filesystem.</li>
+    <li><strong>Non-terminal users</strong> — a project owner who isn't a developer can open
+    the SPA, review PRDs, approve issues, read sprint reports, and interact with agents
+    entirely from the browser.</li>
+  </ul>
+
+  <h2>What this does NOT require</h2>
+  <p>Real-time push (WebSockets) is a phase 2 feature. Phase 1 works with polling, same as
+  today's <code>/__docversion</code>. The architecture supports both — the database is the
+  source of truth either way. The SPA polls for changes; later, the server pushes them.</p>
+
+  <div class="response" data-resp="p2-collaboration">
+    <label>Collaboration model</label>
+    <div class="discuss">The target flow collapses the terminal out of the owner's workflow
+    entirely. Two questions: <strong>(1)</strong> How much of this should be in the initial
+    migration vs. built incrementally on top? The SPA + API + database can ship first as a
+    better version of what exists (no enhance.py, real data model), with real-time and agent
+    API added as follow-on issues. <strong>(2)</strong> Are there other roles besides
+    "owner" who would use the SPA? Reviewers, team members, stakeholders who only read
+    reports? Multi-user changes the auth and data model.</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p3">
+  <h1>Database design</h1>
+  <p class="sub">SQLite replaces issues.json, localStorage, manifest.json, and embedded response data.</p>
+
+  <h2>Why SQLite</h2>
+  <p>Single file, zero external dependencies, Python has it built in (<code>sqlite3</code>),
+  Node has excellent drivers (<code>better-sqlite3</code>). Keeps the "no external services"
+  property. The file lives at <code>.entropy-machines/entropy-machines.db</code> alongside
+  the current <code>issues.json</code>. If the project outgrows SQLite, the schema migrates
+  to Postgres with minimal code changes.</p>
+
+  <h2>Schema</h2>
+  <pre><code>-- Core content
+docs (
+  id          TEXT PRIMARY KEY,   -- "PRD-002-dialogue-workflow"
+  title       TEXT NOT NULL,      -- "PRD-002 — How dialogue docs are worked through"
+  short_name  TEXT NOT NULL,      -- "PRD-002"
+  type        TEXT NOT NULL,      -- "prd" | "report" | "doc"
+  status      TEXT DEFAULT 'open',-- "open" | "in-review" | "answered" | "closed"
+  foot        TEXT,               -- footer guidance text
+  created_at  TEXT,
+  updated_at  TEXT
+)
+
+pages (
+  id          TEXT NOT NULL,      -- "p0", "p1", ...
+  doc_id      TEXT REFERENCES docs(id),
+  position    INTEGER NOT NULL,   -- ordering
+  nav_group   TEXT,               -- "Context", "Open questions", etc.
+  nav_title   TEXT NOT NULL,      -- "What a dialogue doc is"
+  heading     TEXT NOT NULL,
+  subtitle    TEXT,
+  content     TEXT NOT NULL,      -- HTML body of the page
+  PRIMARY KEY (doc_id, id)
+)
+
+-- Response / conversation
+responses (
+  id          INTEGER PRIMARY KEY,
+  doc_id      TEXT REFERENCES docs(id),
+  page_id     TEXT,               -- matches pages.id
+  resp_key    TEXT NOT NULL,      -- "p0-key-question" (stable identity)
+  label       TEXT,               -- "Your overall read"
+  discuss     TEXT,               -- the discussion prompt HTML
+  value       TEXT DEFAULT '',    -- the owner's answer
+  updated_at  TEXT,
+  UNIQUE(doc_id, resp_key)
+)
+
+-- Agent replies (the conversation thread)
+replies (
+  id          INTEGER PRIMARY KEY,
+  response_id INTEGER REFERENCES responses(id),
+  author      TEXT NOT NULL,      -- "agent" | "owner"
+  content     TEXT NOT NULL,
+  created_at  TEXT
+)
+
+-- Issues (replaces issues.json)
+issues (
+  id          TEXT PRIMARY KEY,   -- "i-react-scaffold"
+  title       TEXT NOT NULL,
+  status      TEXT DEFAULT 'open',-- "open" | "progress" | "review" | "done"
+  source_doc  TEXT REFERENCES docs(id),  -- PRD/report/doc that created this issue (optional)
+  blocked_by  TEXT,               -- JSON array of issue ids
+  claimed_by  TEXT,
+  claimed_at  TEXT,
+  created_at  TEXT,
+  updated_at  TEXT
+)
+
+-- Issue notes (replaces the notes log)
+issue_notes (
+  id          INTEGER PRIMARY KEY,
+  issue_id    TEXT REFERENCES issues(id),
+  type        TEXT NOT NULL,      -- "dispatch" | "handoff" | "comment"
+  author      TEXT,
+  content     TEXT NOT NULL,
+  created_at  TEXT
+)
+
+-- Settings (replaces localStorage for theme, replaces manifest.json)
+settings (
+  key         TEXT PRIMARY KEY,   -- "theme", "doc:PRD-002:version", etc.
+  value       TEXT
+)</code></pre>
+
+  <h2>Relationships</h2>
+  <ul>
+    <li><code>docs</code> → has many <code>pages</code> (ordered by position)</li>
+    <li><code>docs</code> → has many <code>responses</code> (one per response box)</li>
+    <li><code>responses</code> → has many <code>replies</code> (the conversation thread)</li>
+    <li><code>issues</code> → has many <code>issue_notes</code></li>
+    <li><code>settings</code> — flat key/value, replaces scattered config</li>
+  </ul>
+
+  <h2>Migration path</h2>
+  <p>A one-time migration script reads the existing data sources and populates the database:</p>
+  <ol>
+    <li>Parse each HTML doc → extract pages, response boxes, saved answers → insert into <code>docs</code>, <code>pages</code>, <code>responses</code></li>
+    <li>Read <code>issues.json</code> → insert into <code>issues</code> + <code>issue_notes</code></li>
+    <li>Read <code>manifest.json</code> → insert into <code>settings</code></li>
+  </ol>
+
+  <div class="response" data-resp="p3-schema">
+    <label>Schema feedback</label>
+    <div class="discuss">Decisions made: <strong>(1)</strong> Issues and docs are linked —
+    <code>source_doc TEXT REFERENCES docs(id)</code> is in the schema. The tracker can show
+    "created by PRD-001" and docs can list their spawned issues. <strong>(2)</strong> Per-user
+    storage is deferred — no multi-user requirement in scope yet. Anything else on the
+    schema?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p4">
+  <h1>Agent API</h1>
+  <p class="sub">How agents interact with the system without touching files.</p>
+
+  <h2>The principle</h2>
+  <p>Agents should never need to parse HTML, read localStorage, or edit response data in a
+  file. Every action an agent takes goes through the API. Agents interact via an MCP server
+  that exposes tools (<code>post_reply</code>, <code>claim_issue</code>,
+  <code>list_responses</code>, etc.) — the agent calls tools directly without knowing the
+  underlying HTTP or database. The API writes to SQLite; the SPA sees the change.</p>
+
+  <h2>Endpoints</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Endpoint</th><th>Method</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>/api/docs</code></td><td>GET</td><td>List all docs with metadata, status, answered/total counts</td></tr>
+      <tr><td><code>/api/docs/:id</code></td><td>GET</td><td>Full doc with pages and responses</td></tr>
+      <tr><td><code>/api/docs/:id/responses</code></td><td>GET</td><td>All responses for a doc (what the owner wrote)</td></tr>
+      <tr><td><code>/api/docs/:id/responses/:key</code></td><td>GET/PUT</td><td>Read or update a single response</td></tr>
+      <tr><td><code>/api/docs/:id/responses/:key/reply</code></td><td>POST</td><td>Agent posts a reply to a specific response</td></tr>
+      <tr><td><code>/api/issues</code></td><td>GET/POST</td><td>List or create issues</td></tr>
+      <tr><td><code>/api/issues/:id</code></td><td>GET/PATCH</td><td>Read or update an issue</td></tr>
+      <tr><td><code>/api/issues/:id/notes</code></td><td>GET/POST</td><td>Read or add notes to an issue</td></tr>
+      <tr><td><code>/api/settings/:key</code></td><td>GET/PUT</td><td>Read or update a setting (theme, etc.)</td></tr>
+      <tr><td><code>/api/events</code></td><td>GET (SSE)</td><td>Server-sent events stream for real-time updates (phase 2)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>MCP server</h2>
+  <p>An MCP server wraps the REST API so agents interact through native tool calls:</p>
+  <pre><code>post_reply(doc="PRD-002", response="p0-key-question", text="...")
+list_responses(doc="PRD-002")
+claim_issue(id="i-react-scaffold")
+list_issues(status="open")
+create_issue(id="i-...", title="...")</code></pre>
+  <p>Agents never construct URLs, parse HTML, or know about HTTP. The MCP server is the
+  single agent contract — it replaces both the current file-editing pattern and the need
+  for any CLI wrapper. Agent onboarding docs update in phase 2 alongside the MCP server.</p>
+
+  <h2>What bin/tracker becomes</h2>
+  <p><code>bin/tracker</code> currently reads/writes <code>issues.json</code> directly. After
+  migration, it becomes a thin wrapper around the API — same CLI interface, different backend.
+  The dispatch/handoff pipeline keeps working unchanged.</p>
+
+  <div class="response" data-resp="p4-agent-api">
+    <label>Agent integration</label>
+    <div class="discuss">The MCP server becomes the single agent contract — agents call tools
+    like <code>post_reply</code> and <code>claim_issue</code> directly, without knowing HTTP
+    or file paths. The current file-based workflow (editing HTML, reading issues.json) is
+    fully replaced. Agent onboarding docs update in phase 2 alongside the MCP server.
+    Does this address the concern about agent impacts? Anything else to consider?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p5">
+  <h1>React app structure</h1>
+  <p class="sub">Component tree, routing, and how it maps to the current system.</p>
+
+  <h2>Project layout</h2>
+  <pre><code>ui/
+  package.json
+  vite.config.ts
+  src/
+    App.tsx                  # router + theme provider + layout shell
+    components/
+      Sidebar.tsx            # brand, categories, page/section links, foot
+      ThemeSelector.tsx       # dropdown, writes to /api/settings/theme
+      ResponseBox.tsx         # textarea + autogrow + save + reply thread
+      MiniResponseBox.tsx     # compact row-note variant
+      SaveBar.tsx             # save all responses (POST to API)
+      NavMark.tsx             # per-section answered/total badge
+      DocStatus.tsx           # doc-level status badge
+      ReplyThread.tsx         # agent/owner replies under a response
+      CollapseRound.tsx       # collapsible earlier dialogue rounds
+      IssueAgree.tsx          # accept/reject on PRD issue tables
+      ExportButton.tsx        # snapshot current page as standalone HTML
+    pages/
+      DocPage.tsx             # renders a PRD/doc from API data
+      TrackerPage.tsx         # issue board with list/board toggle + filters
+      LandingPage.tsx         # category listing (PRDS, DOCS, REPORTS)
+      DashboardPage.tsx       # ready issues, claims, answered counts
+      SprintReportPage.tsx    # sprint report renderer
+    hooks/
+      useDoc.ts              # fetch doc + pages + responses from API
+      useResponses.ts        # local state + autosave + save to API
+      useIssues.ts           # fetch/mutate issues via API
+      useTheme.ts            # theme state from API + CSS var application
+      usePolling.ts          # poll for changes (phase 1); SSE (phase 2)
+    data/
+      themes.ts              # 5 theme configs (bg/fg/accent/positive/negative)</code></pre>
+
+  <h2>Routing</h2>
+  <ul>
+    <li><code>/</code> — Dashboard</li>
+    <li><code>/docs/:slug</code> — PRDs and extra docs</li>
+    <li><code>/tracker</code> — Issue tracker</li>
+    <li><code>/reports/:slug</code> — Sprint reports</li>
+    <li><code>/prds</code>, <code>/docs</code>, <code>/reports</code> — Landing/category pages</li>
+  </ul>
+
+  <h2>Key component: ResponseBox + ReplyThread</h2>
+  <p>This is the core of the collaboration model. A <code>ResponseBox</code> renders the
+  discussion prompt, the owner's textarea, and a <code>ReplyThread</code> beneath it showing
+  agent replies. When the owner saves, the response goes to the API. When an agent posts a
+  reply, the thread updates (via polling in phase 1, push in phase 2).</p>
+
+  <div class="response" data-resp="p5-react">
+    <label>React structure</label>
+    <div class="discuss">The React app lives in <code>ui/</code> at the repo root — standard
+    convention, clean separation from the Python backend in <code>lib/</code>. Vite's dev
+    server proxies API calls to the backend during development; in production,
+    the server serves the built <code>ui/dist/</code> as static files and handles
+    API routes. React Router handles navigation — hash-based routing isn't necessary since
+    the server can catch-all to <code>index.html</code>. Anything else about the
+    component tree or routing that needs revisiting?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p6">
+  <h1>Migration strategy</h1>
+  <p class="sub">Incremental build, late delete, commit along the way.</p>
+
+  <p>Based on your input: build the new system alongside the old one. Confirm behavior
+  at each step. Delete the old system only after the new one is verified and stable.
+  Commit and push throughout so any step can be reverted.</p>
+
+  <h2>Phase 1: Foundation</h2>
+  <ul>
+    <li>Initialize Vite + React + TypeScript in <code>ui/</code></li>
+    <li>Create SQLite database schema + migration script from existing data</li>
+    <li>Add <code>/api/*</code> endpoints to the server</li>
+    <li>Build dashboard and tracker as React pages (simplest — no response boxes)</li>
+    <li>Server serves both: React app at <code>/</code>, old HTML docs still accessible</li>
+  </ul>
+
+  <h2>Phase 2: Doc renderer + agent API</h2>
+  <ul>
+    <li>Build <code>DocPage</code> with response boxes, reply threads, autosave, save via API</li>
+    <li>Build MCP server wrapping the REST API — agents interact via native tool calls</li>
+    <li>Update agent onboarding docs (AGENT-QUICKSTART, WORKFLOW) for MCP workflow</li>
+    <li>Migrate all 10 docs (5 PRDs, 3 reports, 2 extras) to database</li>
+    <li>Verify: every response preserved, every page renders correctly</li>
+    <li>Build landing pages as React components</li>
+    <li>Build "Export to HTML" for offline/sharing</li>
+  </ul>
+
+  <h2>Phase 3: Cleanup</h2>
+  <ul>
+    <li>Confirm all pages render correctly from the React app</li>
+    <li>Delete: <code>enhance.py</code>, HTML templates, theme flash, old serve paths</li>
+    <li>Delete: <code>issues.json</code> read/write paths (replaced by SQLite)</li>
+    <li><code>bin/tracker</code> now wraps the API instead of reading JSON directly</li>
+  </ul>
+
+  <h2>Phase 4: Real-time (follow-on)</h2>
+  <ul>
+    <li>Replace polling with Server-Sent Events or WebSocket</li>
+    <li>Agent presence indicators in the SPA</li>
+    <li>Live reply appearance (agent posts reply → owner sees it immediately)</li>
+    <li>Notifications (new reply on a response you wrote, issue status change)</li>
+  </ul>
+
+  <div class="response" data-resp="p6-strategy">
+    <label>Phasing</label>
+    <div class="discuss">Phase 1 ships a working React app with dashboard + tracker while
+    the old doc system keeps running. Phase 2 is the heavy lift — doc rendering and data
+    migration. Phase 3 is cleanup. Phase 4 is the real-time collaboration that makes this
+    worth doing long-term. Does this phasing make sense? Should any phase be split
+    further or reordered? Is phase 4 actually phase 2 — is real-time collaboration the
+    thing you want soonest?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p7">
+  <h1>Build and tooling</h1>
+  <p class="sub">What tools the React app uses and how development works.</p>
+
+  <h2>Stack</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Concern</th><th>Tool</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Build</td><td>Vite</td><td>Near-zero config, fast HMR, static output the Python server can serve</td></tr>
+      <tr><td>Framework</td><td>React 19</td><td>Component model, ecosystem, explicitly requested</td></tr>
+      <tr><td>Language</td><td>TypeScript</td><td>Type safety on API responses, doc schemas, component props</td></tr>
+      <tr><td>Routing</td><td>React Router v7</td><td>Handles doc/tracker/report/landing routes cleanly</td></tr>
+      <tr><td>Styling</td><td>CSS modules</td><td>5-color system stays as CSS vars on <code>:root</code>; no CSS-in-JS needed</td></tr>
+      <tr><td>State</td><td>React context</td><td>Theme + auth context; doc/issue data is server-fetched per route</td></tr>
+      <tr><td>Database</td><td>SQLite</td><td>Single file, zero services, Python built-in, easy migration to Postgres later</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Dev workflow</h2>
+  <ul>
+    <li><code>npm run dev</code> (inside <code>ui/</code>) starts Vite with HMR, proxies <code>/api/*</code> to the server</li>
+    <li><code>npm run build</code> produces <code>ui/dist/</code></li>
+    <li>Server detects <code>ui/dist/</code> and serves it; falls back to old HTML if missing</li>
+    <li>Server stays Python — it gains API endpoints but keeps its existing role</li>
+  </ul>
+
+  <h2>What about going full Node?</h2>
+  <p>Replacing the Python server with Express/Fastify would mean one language everywhere.
+  But the current server is 872 lines of tested, working code that integrates with
+  <code>bin/tracker</code>, <code>docstate.py</code>, and the dispatch/handoff pipeline.
+  Rewriting it in Node is a lot of work for marginal gain. The recommendation is: keep
+  Python as the backend, add API endpoints to the existing server, use React for the frontend.</p>
+
+  <div class="response" data-resp="p7-tooling">
+    <label>Tooling decisions</label>
+    <div class="discuss">Decisions made: <strong>(1)</strong> <code>ui/dist/</code> is NOT
+    committed to the repo — Node is a dev dependency, and <code>npm run build</code> produces
+    the static output. This keeps the repo clean and avoids rebuild-before-commit friction.
+    <strong>(2)</strong> React 19 is the framework — the ecosystem, agent familiarity, and
+    trajectory of this project toward multi-user collaboration justify it over lighter
+    alternatives. Anything else on the tooling front?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p8">
+  <h1>What changes and what stays</h1>
+  <p class="sub">Concrete before/after for each part of the system.</p>
+
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Concern</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Doc rendering</strong></td><td>HTML template + enhance.py patches</td><td>React components reading from SQLite via API</td></tr>
+      <tr><td><strong>Themes</strong></td><td>THEMES object copy-pasted into every template</td><td>One <code>themes.ts</code> + <code>useTheme</code> hook</td></tr>
+      <tr><td><strong>Navigation</strong></td><td>HTML in 4 files + enhance.py category injection</td><td>One <code>Sidebar</code> component</td></tr>
+      <tr><td><strong>Response save</strong></td><td>POST /__save → merge into HTML file on disk</td><td>POST /api/docs/:id/responses → write to SQLite</td></tr>
+      <tr><td><strong>Agent replies</strong></td><td>Edit HTML file → add reply fold → commit</td><td>POST /api/docs/:id/responses/:key/reply</td></tr>
+      <tr><td><strong>Issues</strong></td><td>issues.json read/written by bin/tracker</td><td>SQLite, accessed via API; bin/tracker wraps API</td></tr>
+      <tr><td><strong>Tracker page</strong></td><td>tracker-view.py renders HTML on each GET</td><td>React component fetches /api/issues</td></tr>
+      <tr><td><strong>Dashboard</strong></td><td>Inline HTML in server</td><td>React component fetches /api/dashboard</td></tr>
+      <tr><td><strong>Offline/sharing</strong></td><td>Double-click HTML file (partially works)</td><td>"Export to HTML" button snapshots page as standalone file</td></tr>
+      <tr><td><strong>Live reload</strong></td><td>Poll /__docversion, compare hash</td><td>Poll /api/docs/:id/version (phase 1); SSE (phase 2)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Token cost impact</h2>
+  <p>The migration significantly reduces agent token consumption per interaction.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Operation</th><th>Before (file-based)</th><th>After (MCP + API)</th></tr></thead>
+    <tbody>
+      <tr><td>Read one response</td><td>Read entire HTML file (20-40K tokens — includes CSS, JS, nav, template boilerplate)</td><td>MCP tool call returns JSON (~500 tokens)</td></tr>
+      <tr><td>Post a reply</td><td>Read file + write back full file with edit (~40-80K tokens round-trip)</td><td>MCP tool call with reply text (~200 tokens)</td></tr>
+      <tr><td>List open issues</td><td>Read issues.json (~2-5K tokens, grows with history)</td><td>MCP tool call returns filtered list (~500 tokens)</td></tr>
+      <tr><td>Update issue status</td><td>Read + write issues.json (~4-10K tokens)</td><td>MCP tool call (~100 tokens)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Agents never see HTML, CSS, or React components — they interact only with structured
+  data through MCP tools. This is a 10-20x reduction in tokens per interaction, which
+  compounds across every agent task in a sprint. Track actual token usage before and after
+  phase 2 to validate.</p>
+
+  <h2>What stays exactly the same</h2>
+  <ul>
+    <li><code>bin/dispatch</code> / <code>bin/handoff</code> — the agent workflow pipeline is git-based, unaffected</li>
+    <li><code>bin/tracker</code> CLI interface — same commands, different backend</li>
+    <li>Test suite — cases test behavior, not implementation; most pass unchanged</li>
+    <li>The 5-color theme system — same colors, same vars, applied by React instead of inline JS</li>
+    <li>Response box UX — same autogrow, same filled state, same save button</li>
+  </ul>
+
+  <div class="response" data-resp="p8-changes">
+    <label>Change assessment</label>
+    <div class="discuss">The before/after table shows that the user-facing behavior stays
+    almost identical — the same pages, the same response boxes, the same themes. What changes
+    is the plumbing underneath: components instead of patches, a database instead of scattered
+    files, an API instead of filesystem round-trips. The biggest visible change is that
+    agent replies will appear as conversation threads instead of reply folds in HTML. Does
+    this mapping look right? Anything that should stay file-based instead of moving to the
+    database?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+<section class="page" id="p9">
+  <h1>Issues this PRD creates</h1>
+  <p class="sub">The work, broken into trackable pieces across 4 phases.</p>
+
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Issue</th><th>Phase</th><th>Scope</th></tr></thead>
+    <tbody>
+      <tr><td><strong>i-react-scaffold</strong></td><td>1</td>
+        <td>Init Vite + React + TypeScript in <code>ui/</code>. Theme system, sidebar component, dev proxy config.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-scaffold"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-kitchen-sink</strong></td><td>1</td>
+        <td>Template page demonstrating all major UX components with mock data: sidebar nav (brand, categories, page sections), theme switching (all 5 themes), response box with autogrow + filled state, mini row-note box in a table, reply thread, nav marks (answered/total), collapse round, save bar. Owner QA gate — sign off on component UX before wiring real data.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-kitchensink"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-sqlite-schema</strong></td><td>1</td>
+        <td>Create SQLite schema. Write migration script that reads existing HTML docs, issues.json, manifest.json and populates the database. Verify all data preserved.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-sqlite"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-server-api</strong></td><td>1</td>
+        <td>Add <code>/api/*</code> endpoints to the server. Docs, responses, issues, settings, dashboard — all reading from SQLite.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-api"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-dashboard</strong></td><td>1</td>
+        <td>Dashboard as React page. Ready issues, claim status, per-doc answered counts — all from API.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-dashboard"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-tracker</strong></td><td>1</td>
+        <td>Tracker page as React component. List/board toggle, filters, sidebar. Reads from <code>/api/issues</code>.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-tracker"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-doc-renderer</strong></td><td>2</td>
+        <td>DocPage component: multi-page nav, response boxes with reply threads, autosave, save via API, nav marks, doc status.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-doc"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-agent-mcp</strong></td><td>2</td>
+        <td>Build MCP server wrapping the REST API. Agents call tools (<code>post_reply</code>, <code>claim_issue</code>, <code>list_responses</code>) natively — no HTTP, no file editing. Update AGENT-QUICKSTART and WORKFLOW docs for the MCP workflow.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-agentmcp"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-landings</strong></td><td>2</td>
+        <td>Landing pages (PRDS, DOCS, REPORTS) as React components. Category listings from API.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-landings"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-export-html</strong></td><td>2</td>
+        <td>"Export to HTML" button: snapshot any page as a standalone HTML file with current state. Replaces file:// access.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-export"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-react-cleanup</strong></td><td>3 <span class="pill dec">held</span></td>
+        <td>Delete enhance.py, HTML templates, theme flash, old serve paths, issues.json read/write. Rewire bin/tracker to API. Held until app is working.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-cleanup"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+
+      <tr><td><strong>i-realtime-events</strong></td><td>4 <span class="pill dec">held</span></td>
+        <td>SSE or WebSocket for real-time updates. Agent presence, live reply appearance, notifications. Held.</td></tr>
+      <tr class="row-note"><td colspan="3"><div class="response mini" data-resp="p9-realtime"><textarea rows="1" placeholder="Note on this issue…"></textarea></div></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="response" data-resp="p9-issues">
+    <label>Issue scope</label>
+    <div class="discuss">12 issues across 4 phases. Phase 1 (6 issues) ships the foundation:
+    React shell, kitchen sink QA page, database, API, dashboard, tracker. Phase 2 (4 issues)
+    ships the doc renderer, MCP server, and agent onboarding docs — this is where the old
+    system can be fully replaced. Phase 3 (1 issue) is cleanup. Phase 4 (1 issue) is
+    real-time collaboration. Are there
+    issues that should be split, combined, reordered, or cut? Any missing work not covered
+    here?</div>
+    <textarea placeholder="Type your answer…"></textarea>
+  </div>
+</section>
+
+</main>
+
+<div class="savebar">
+  <span class="stat" id="saveStat">Unsaved changes…</span>
+  <button class="ghost" id="clearBtn" title="Clear all responses">✕</button>
+  <button id="saveBtn">Save</button>
+</div>
+<script type="application/json" id="responses-data">{}</script>
+<script>
+(function(){
+  var links=[].slice.call(document.querySelectorAll('nav a[data-page]'));
+  function show(id){
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('cur', p.id===id); });
+    links.forEach(function(l){ l.classList.toggle('cur', l.dataset.page===id); });
+    try{ history.replaceState(null,'','#'+id); }catch(e){}
+    window.scrollTo(0,0);
+    document.querySelectorAll('#'+id+' .response textarea').forEach(function(t){ autoGrow(t); });
+  }
+  links.forEach(function(l){ l.addEventListener('click', function(ev){ ev.preventDefault(); show(l.dataset.page); }); });
+  if (location.hash && document.getElementById(location.hash.slice(1))) show(location.hash.slice(1));
+  window.addEventListener('hashchange', function(){ var h=location.hash.slice(1); if(h && document.getElementById(h)) show(h); });
+  var KEY='prd-006-react-migration';
+  var boxes=[].slice.call(document.querySelectorAll('.response'));
+  var stat=document.getElementById('saveStat');
+  var dataEl=document.getElementById('responses-data');
+  var fileHandle=null;
+  function ta(b){return b.querySelector('textarea');}
+  function key(b){return b.getAttribute('data-resp');}
+  function markFilled(b){ if(ta(b).value.trim()) b.classList.add('filled'); else b.classList.remove('filled'); }
+  function autoGrow(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+  function load(){
+    var saved={};
+    try{ saved=JSON.parse(dataEl.textContent||'{}')||{}; }catch(e){}
+    try{ var ls=JSON.parse(localStorage.getItem(KEY)||'{}'); Object.keys(ls).forEach(function(k){ if(ls[k]&&ls[k].trim()) saved[k]=ls[k]; }); }catch(e){}
+    boxes.forEach(function(b){ var v=saved[key(b)]; if(typeof v==='string') ta(b).value=v; markFilled(b); autoGrow(ta(b)); });
+  }
+  function collect(){ var o={}; boxes.forEach(function(b){ o[key(b)]=ta(b).value; }); return o; }
+  function autosave(){ try{ localStorage.setItem(KEY,JSON.stringify(collect())); }catch(e){} }
+  document.getElementById('saveBtn').addEventListener('click',async function(){
+    dataEl.textContent=JSON.stringify(collect(),null,2);
+    boxes.forEach(function(b){ ta(b).textContent=ta(b).value; });
+    var html='<!doctype html>\n'+document.documentElement.outerHTML;
+    if(window.showSaveFilePicker){
+      try{
+        if(!fileHandle) fileHandle=await window.showSaveFilePicker({suggestedName:'PRD-006-react-migration.html',types:[{description:'HTML',accept:{'text/html':['.html']}}]});
+        var w=await fileHandle.createWritable(); await w.write(html); await w.close();
+        stat.textContent='Saved to file'; return;
+      }catch(err){ if(err&&err.name==='AbortError'){stat.textContent='Save cancelled';return;} }
+    }
+    var blob=new Blob([html],{type:'text/html'}); var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='PRD-006-react-migration.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    stat.textContent='Downloaded — overwrite the original';
+  });
+  document.getElementById('clearBtn').addEventListener('click',function(){
+    if(!confirm('Clear all responses?'))return;
+    boxes.forEach(function(b){ ta(b).value=''; markFilled(b); autoGrow(ta(b)); });
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    dataEl.textContent='{}'; stat.textContent='Cleared';
+  });
+  boxes.forEach(function(b){ ta(b).addEventListener('input',function(){ markFilled(b); autoGrow(ta(b)); autosave(); stat.textContent='Unsaved changes…'; }); });
+  load();
+  window.addEventListener('resize',function(){ boxes.forEach(function(b){ autoGrow(ta(b)); }); });
+})();
+</script>
+</body></html>
