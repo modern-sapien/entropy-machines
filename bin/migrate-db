@@ -1,0 +1,38 @@
+#!/bin/sh
+# One-time migration into SQLite — thin wrapper around lib/migrate_db.py.
+#
+#   bin/migrate-db [--force] [--no-verify]
+#
+# Reads entropy-machines-docs/*.html + manifest.json and
+# .entropy-machines/issues.json, and writes
+# .entropy-machines/entropy-machines.db per the schema in lib/schema.sql
+# (see entropy-machines-docs/PRD-006-react-migration.html, page p3). Refuses
+# to overwrite an existing db unless --force is given. Prints a row-count
+# verification report; exits non-zero if any count mismatches its
+# independently-recounted source.
+set -e
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root migrate-db
+
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+
+docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
+case "$docs_dir" in
+  /*) docs_path="$docs_dir" ;;
+  *) docs_path="$ENTROPY_MACHINES_ROOT/$docs_dir" ;;
+esac
+
+tracker_path=$(python3 "$CONFIG_PY" get tracker.file.path 2>/dev/null) || tracker_path=".entropy-machines/issues.json"
+case "$tracker_path" in
+  /*) tracker_full="$tracker_path" ;;
+  *) tracker_full="$ENTROPY_MACHINES_ROOT/$tracker_path" ;;
+esac
+
+exec python3 "$ENTROPY_MACHINES_HOME/lib/migrate_db.py" \
+  --root "$ENTROPY_MACHINES_ROOT" \
+  --docs-dir "$docs_path" \
+  --tracker "$tracker_full" \
+  --out "$ENTROPY_MACHINES_ROOT/.entropy-machines/entropy-machines.db" \
+  "$@"
