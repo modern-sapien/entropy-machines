@@ -257,6 +257,27 @@ except urllib.error.HTTPError as e:
 ' "$1"
 }
 
+# http_json <method> <url> [json-body] — like http_get but for the /api/*
+# verbs: sends <method> with Content-Type: application/json and, if given, a
+# JSON request body. Prints the status code on the first line, then the
+# response body. json-body defaults to "" (no body at all, not even "{}") so
+# a case can also exercise the "PUT with no body" refusal.
+http_json() {
+  python3 -c 'import sys, urllib.request, urllib.error
+method, url, body = sys.argv[1], sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
+data = body.encode("utf-8") if body != "" else None
+req = urllib.request.Request(url, data=data, method=method,
+                              headers={"Content-Type": "application/json"})
+try:
+    r = urllib.request.urlopen(req, timeout=5)
+    print(r.status)
+    sys.stdout.write(r.read().decode("utf-8", "replace"))
+except urllib.error.HTTPError as e:
+    print(e.code)
+    sys.stdout.write(e.read().decode("utf-8", "replace"))
+' "$1" "$2" "${3:-}"
+}
+
 # wait_for_line <file> <substring> [tries] — poll a log file. Returns 1 on
 # timeout so the caller can assert on it rather than hanging the suite.
 wait_for_line() {

@@ -27,6 +27,10 @@
 #   POST /__docstatus            body is {"file":"<f>","status":"<s>"};
 #                                 calls docstate.set_status() to move the
 #                                 doc to the given status.
+#   /api/*                       REST endpoints for the React SPA (ui/),
+#                                 reading/writing .entropy-machines/
+#                                 entropy-machines.db — see lib/api.py's own
+#                                 docstring for the endpoint table.
 #
 # See docs/SERVE.md for the full contract, the docversion hash's exact
 # semantics, and the dashboard's data sources.
@@ -141,6 +145,15 @@ PROJECT_NAME = os.environ.get("SERVE_PROJECT_NAME", "")
 # a doc missing disk-save, nav-marks, live-reload, collapse, etc.
 sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
 import enhance
+
+# api — /api/* REST endpoints for the React SPA (ui/), reading/writing
+# .entropy-machines/entropy-machines.db. Optional import, same reasoning as
+# docstate below: an older checkout without lib/api.py or without a migrated
+# db just gets a 404/503 on /api/* instead of a crash.
+try:
+    import api as api_module
+except ImportError:
+    api_module = None
 
 # tracker_view — dynamic rendering of the tracker page from live issues.json.
 # Optional: if missing the server falls through to the static TRACKER.html.
@@ -638,9 +651,37 @@ class Handler(BaseHTTPRequestHandler):
     def _send_json(self, code, obj):
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
 
+    # ------------------------------------------------------------------
+    # /api/* — REST endpoints for the React SPA, delegated to lib/api.py.
+    # This method does the HTTP-layer work (query parsing, body reading,
+    # status/JSON writing) common to every verb; lib/api.dispatch() does
+    # not know sockets or headers exist.
+    # ------------------------------------------------------------------
+    def _handle_api(self, method, parsed):
+        if api_module is None:
+            self._send_json(404, {"error": "lib/api.py not available"})
+            return
+        body = None
+        if method in ("POST", "PUT", "PATCH"):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(n) if n else b""
+                body = json.loads(raw) if raw else {}
+            except (ValueError, TypeError) as exc:
+                self._send_json(400, {"error": "invalid JSON body: %s" % exc})
+                return
+        query = parse_qs(parsed.query)
+        status, obj = api_module.dispatch(
+            ENTROPY_MACHINES_ROOT, method, parsed.path, query, body)
+        self._send_json(status, obj)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path.startswith("/api/"):
+            self._handle_api("GET", parsed)
+            return
 
         if path == "/":
             # When the tracker is empty (first contact), go straight to the PRD.
@@ -709,8 +750,25 @@ class Handler(BaseHTTPRequestHandler):
 
         self._send(404, b"not found", "text/plain; charset=utf-8")
 
+    def do_PUT(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self._handle_api("PUT", parsed)
+            return
+        self._send(404, b"not found", "text/plain; charset=utf-8")
+
+    def do_PATCH(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self._handle_api("PATCH", parsed)
+            return
+        self._send(404, b"not found", "text/plain; charset=utf-8")
+
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self._handle_api("POST", parsed)
+            return
         if parsed.path == "/__docstatus":
             self._docstatus_post(parsed)
             return

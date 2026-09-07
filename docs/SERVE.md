@@ -11,8 +11,36 @@ docs with response boxes answered in place, plus a dashboard.
 | `GET /<doc>.html` | A doc from `docs.dir`, save patch and theme injected at serve time. |
 | `GET /__docversion?file=…` | `{"reviews": "<hash>"}`, polled by the live-reload watcher. |
 | `POST /__save?file=…` | Body `{"<data-resp>": "<answer>"}`, merged atomically. |
+| `/api/*` | REST endpoints for the React SPA (`ui/`) — see below. |
 
 Everything else 404s — no listing, nothing outside `docs.dir`.
+
+## /api/*
+
+Reads and writes `.entropy-machines/entropy-machines.db` (schema:
+`lib/schema.sql`; built by `bin/migrate-db`) — the backend half of the React
+migration (`entropy-machines-docs/PRD-006-react-migration.html`, page p4).
+Routing and every handler live in `lib/api.py`; `bin/serve` only does the
+HTTP-layer plumbing (query parsing, JSON body reading, status/JSON writing)
+and hands off to `api.dispatch()`.
+
+| Route | Methods | What |
+|---|---|---|
+| `/api/docs` | GET | List docs with status and answered/total counts. |
+| `/api/docs/:id` | GET | One doc with its pages and responses (replies nested). |
+| `/api/docs/:id/responses` | GET | All responses for a doc, replies nested. |
+| `/api/docs/:id/responses/:key` | GET, PUT | Read or update one response's value (PUT body `{"value": "..."}`). |
+| `/api/docs/:id/responses/:key/reply` | POST | Append a reply (body `{"author": "...", "content": "..."}`). |
+| `/api/issues` | GET, POST | List (optionally `?status=`) or create (body needs `id` + `title`). |
+| `/api/issues/:id` | GET, PATCH | Read, or partially update (`title`, `status`, `source_doc`, `blocked_by`, `claimed_by`, `claimed_at`). |
+| `/api/issues/:id/notes` | GET, POST | Read or append a note (body `{"content": "..."}`, optional `type`/`author`). |
+| `/api/settings/:key` | GET, PUT | Read or upsert a setting (PUT body `{"value": "..."}`). |
+
+No db yet (`bin/migrate-db` not run) is a `503` naming the fix, not a
+traceback. A path that matches a route but the wrong verb is `405`; an
+unmatched path under `/api/` is `404`; a bad or missing JSON body on a
+write is `400`; a duplicate issue `id` on create is `409`. `/api/events`
+(the phase-2 SSE stream on the same PRD page) is not implemented here.
 
 ## The rule
 
