@@ -4,11 +4,43 @@ import { ThemeSelector } from "./ThemeSelector";
 export interface SidebarSectionItem {
   id: string;
   navTitle: string;
+  /** Answered/total question counts for this section, if it carries response
+   * boxes. Omit (or leave total 0) for sections with nothing to answer —
+   * they render with no badge, same as a page with zero .response boxes. */
+  answered?: number;
+  total?: number;
 }
 
 export interface SidebarSectionGroup {
   label?: string;
   items: SidebarSectionItem[];
+}
+
+function navMark(item: SidebarSectionItem) {
+  if (!item.total) return null;
+  const done = item.answered === item.total;
+  return (
+    <span className={`navmark ${done ? "done" : "todo"}`}>{done ? "✓" : `${item.answered ?? 0}/${item.total}`}</span>
+  );
+}
+
+// One line at the foot of the section list: "Answered N/M sections", or a
+// done variant once every scored section has no pending questions left.
+// Sections with no .total (nothing to answer, e.g. a table-of-contents-only
+// entry) don't count toward the denominator.
+function sectionsSummary(sections: SidebarSectionGroup[]) {
+  const scored = sections.flatMap((g) => g.items).filter((it) => (it.total ?? 0) > 0);
+  if (scored.length === 0) return null;
+  const done = scored.filter((it) => it.answered === it.total).length;
+  return (
+    <div className="navsummary">
+      {done === scored.length ? (
+        <span className="all-done">✓ all {scored.length} sections answered</span>
+      ) : (
+        `Answered ${done}/${scored.length} sections`
+      )}
+    </div>
+  );
 }
 
 export interface SidebarProps {
@@ -61,10 +93,13 @@ export function Sidebar({ sections, currentSectionId, onSelectSection }: Sidebar
               }}
             >
               {item.navTitle}
+              {navMark(item)}
             </a>
           ))}
         </div>
       ))}
+
+      {sections && sectionsSummary(sections)}
 
       <div className="foot">
         <ThemeSelector />
