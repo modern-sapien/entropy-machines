@@ -240,7 +240,7 @@ thead th {
  */
 .response {
   margin: 16px 0 6px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--notice);
   border-left: 3px solid var(--notice);
   padding: 9px 13px;
 }
@@ -271,7 +271,7 @@ thead th {
   font-size: 1rem;
   color: var(--fg);
   background: var(--bg);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--notice);
   padding: 7px 10px;
   line-height: 1.5;
   overflow: hidden;
@@ -279,7 +279,7 @@ thead th {
 
 .response textarea:focus {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--notice);
 }
 
 .response textarea[readonly] {
@@ -288,7 +288,8 @@ thead th {
 
 /* Answered state: colour + weight, never a fade or a fill. */
 .response.filled {
-  border-left-color: var(--positive);
+  border-color: var(--positive);
+  border-left: 3px solid var(--positive);
 }
 
 .response.filled label {
@@ -296,7 +297,11 @@ thead th {
 }
 
 .response.filled:not(.mini) textarea {
-  border-left: 3px solid var(--positive);
+  border-color: var(--positive);
+}
+
+.response.filled:not(.mini) textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--positive);
 }
 
 /* ---- response boxes: row-level (compact) ----
