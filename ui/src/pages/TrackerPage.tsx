@@ -797,7 +797,7 @@ function DetailPanel({
         <h4>Origin</h4>
         {issue.source_doc ? (
           <Link
-            to={`/${issue.source_doc_type === "report" ? "reports" : "docs"}/${encodeURIComponent(issue.source_doc)}`}
+            to={`/${issue.source_doc_type === "prd" ? "prds" : issue.source_doc_type === "report" ? "reports" : "docs"}/${encodeURIComponent(issue.source_doc)}`}
             className="tracker-origin-link"
           >
             {issue.source_doc_name || issue.source_doc}
