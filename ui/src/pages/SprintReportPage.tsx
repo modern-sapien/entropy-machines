@@ -12,8 +12,8 @@ import { useParams } from "react-router-dom";
 // landed yet (i-react-doc-renderer is still in progress). Can be deduplicated
 // later once DocPage is parameterisable.
 //
-// Page navigation uses inline tabs (.tracker-filters CSS, already in
-// index.css). Rendered inside Layout which provides the TopNav.
+// Page navigation uses a fixed left sidebar (.doc-sidebar CSS in index.css).
+// Rendered inside Layout which provides the TopNav.
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ export function SprintReportPage() {
     responsesByPage[pid].push(resp);
   }
 
-  // Per-page answered/total counts for the inline nav badges.
+  // Per-page answered/total counts for the sidebar nav badges.
   function pageCounts(pageId: string) {
     const resps = responsesByPage[pageId] ?? [];
     const total = resps.length;
@@ -425,6 +425,31 @@ export function SprintReportPage() {
 
   return (
     <>
+      {/* Left sidebar for within-document page navigation */}
+      {pages.length > 1 && (
+        <nav className="doc-sidebar">
+          {pages.map((page) => {
+            const counts = pageCounts(page.id);
+            const done = counts.total > 0 && counts.answered === counts.total;
+            return (
+              <button
+                key={page.id}
+                type="button"
+                className={`doc-sidebar-item${page.id === currentPageId ? " cur" : ""}`}
+                onClick={() => selectPage(page.id)}
+              >
+                {page.nav_title}
+                {counts.total > 0 && (
+                  <span className={`navmark ${done ? "done" : "todo"}`}>
+                    {done ? "✓" : `${counts.answered}/${counts.total}`}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      )}
+
       <section className="page">
         <h1>{doc.title}</h1>
         <p className="sub">
@@ -432,32 +457,8 @@ export function SprintReportPage() {
           {doc.status && doc.status !== "open" ? ` — ${doc.status}` : ""}
         </p>
 
-        {/* Inline page navigation using existing tracker-filter CSS. Each
-            page tab shows its nav_title and an answered/total count when the
-            page has response boxes. Scrollspy highlights the visible page. */}
-        {pages.length > 1 && (
-          <div className="tracker-filters">
-            {pages.map((page) => {
-              const counts = pageCounts(page.id);
-              const countText =
-                counts.total > 0
-                  ? ` (${counts.answered}/${counts.total})`
-                  : "";
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  className={`tracker-filter${page.id === currentPageId ? " cur" : ""}`}
-                  onClick={() => selectPage(page.id)}
-                >
-                  {page.nav_title}
-                  {countText}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
+        {/* Render all pages sequentially. Each page is a section with its
+            heading, subtitle, content HTML, and response boxes. */}
         {pages.map((page) => {
           const pageResps = responsesByPage[page.id] ?? [];
           return (

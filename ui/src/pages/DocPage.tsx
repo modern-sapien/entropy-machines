@@ -5,8 +5,9 @@ import { useParams } from "react-router-dom";
 // DocPage — full document renderer with multi-page nav, response boxes,
 // reply threads, autosave to API, nav marks, and scrollspy.
 //
-// Route: /docs/:slug (see App.tsx). Rendered inside Layout, which provides
-// a TopNav. Page-level navigation uses inline tabs below the heading.
+// Route: /docs/:slug and /prds/:slug (see App.tsx). Rendered inside Layout,
+// which provides a TopNav. Page-level navigation uses a fixed left sidebar
+// that coexists with the top nav.
 // ============================================================================
 
 // ---- API types -------------------------------------------------------------
@@ -63,18 +64,18 @@ interface DocPayload {
   responses: Response[];
 }
 
-// ---- types for inline page tabs -------------------------------------------
+// ---- types for sidebar page nav -------------------------------------------
 
-interface PageTabItem {
+interface PageNavItem {
   id: string;
   navTitle: string;
   answered?: number;
   total?: number;
 }
 
-interface PageTabGroup {
+interface PageNavGroup {
   label?: string;
-  items: PageTabItem[];
+  items: PageNavItem[];
 }
 
 // ---- autogrow hook (same as KitchenSinkPage) --------------------------------
@@ -91,9 +92,9 @@ function useAutoGrow(value: string, skip: boolean) {
   return ref;
 }
 
-// ---- navmark badge for inline tabs ----------------------------------------
+// ---- navmark badge for sidebar items --------------------------------------
 
-function navMark(item: PageTabItem) {
+function navMark(item: PageNavItem) {
   if (!item.total) return null;
   const done = item.answered === item.total;
   return (
@@ -103,12 +104,12 @@ function navMark(item: PageTabItem) {
 
 // ---- sections summary line ------------------------------------------------
 
-function sectionsSummary(groups: PageTabGroup[]) {
+function sectionsSummary(groups: PageNavGroup[]) {
   const scored = groups.flatMap((g) => g.items).filter((it) => (it.total ?? 0) > 0);
   if (scored.length === 0) return null;
   const done = scored.filter((it) => it.answered === it.total).length;
   return (
-    <div className="doc-tabs-summary">
+    <div className="doc-sidebar-summary">
       {done === scored.length ? (
         <span className="all-done">{"✓"} all {scored.length} sections answered</span>
       ) : (
@@ -368,13 +369,13 @@ export function DocPage() {
     return () => observer.disconnect();
   }, [data]);
 
-  // ---- build inline page tab data ----
+  // ---- build sidebar page nav data ----
   const selectSection = useCallback((id: string) => {
     setCurrentPageId(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const tabGroups = useMemo<PageTabGroup[]>(() => {
+  const navGroups = useMemo<PageNavGroup[]>(() => {
     if (!data) return [];
     // Group pages by nav_group
     const groupMap = new Map<string, Page[]>();
@@ -485,29 +486,27 @@ export function DocPage() {
 
   return (
     <>
-      {/* Inline page tabs — replaces sidebar page navigation */}
+      {/* Left sidebar for within-document page navigation */}
       {data.pages.length > 1 && (
-        <div className="doc-tabs-wrap">
-          {tabGroups.map((group, gi) => (
-            <div key={group.label ?? gi} className="doc-tabs-group">
-              {group.label && <span className="doc-tabs-label">{group.label}</span>}
-              <div className="doc-tabs">
-                {group.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`doc-tab${item.id === currentPageId ? " cur" : ""}`}
-                    onClick={() => selectSection(item.id)}
-                  >
-                    {item.navTitle}
-                    {navMark(item)}
-                  </button>
-                ))}
-              </div>
+        <nav className="doc-sidebar">
+          {navGroups.map((group, gi) => (
+            <div key={group.label ?? gi} className="doc-sidebar-group">
+              {group.label && <span className="doc-sidebar-label">{group.label}</span>}
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`doc-sidebar-item${item.id === currentPageId ? " cur" : ""}`}
+                  onClick={() => selectSection(item.id)}
+                >
+                  {item.navTitle}
+                  {navMark(item)}
+                </button>
+              ))}
             </div>
           ))}
-          {sectionsSummary(tabGroups)}
-        </div>
+          {sectionsSummary(navGroups)}
+        </nav>
       )}
 
       {data.pages.map((page) => (
