@@ -583,3 +583,615 @@ aside.review p {
   color: var(--negative);
   padding: 12px 16px;
 }
+
+/* ---- Tracker v2 — parity with tracker-view.py ----
+ * Bucket grouping, list + board views, slide-out detail panel, search,
+ * faceted sidebar filters, notes audit trail, dependency chips.
+ * The flat-table styles above are retained (dead CSS, append-only). */
+
+/* --- Sticky header bar --- */
+
+.tracker-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  border-bottom: 1px solid var(--accent);
+  margin: -38px -42px 0;
+  padding: 10px 42px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tracker-title {
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tracker-search {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  padding: 7px 10px;
+  font-family: var(--font);
+  font-size: 0.9rem;
+}
+
+.tracker-search:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tracker-search::placeholder {
+  color: var(--fg);
+}
+
+.tracker-seg {
+  display: flex;
+  border: 1px solid var(--accent);
+}
+
+.tracker-seg button {
+  background: var(--bg);
+  border: none;
+  border-right: 1px solid var(--accent);
+  color: var(--fg);
+  padding: 7px 11px;
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tracker-seg button:last-child {
+  border-right: none;
+}
+
+.tracker-seg button:hover {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tracker-seg button.on {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.tracker-clear {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  padding: 7px 11px;
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tracker-clear:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* --- Body: filter sidebar + content --- */
+
+.tracker-body {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+}
+
+.tracker-sidebar {
+  width: 200px;
+  flex: none;
+  padding-right: 16px;
+  border-right: 1px solid var(--accent);
+}
+
+.tracker-sidebar-grp {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  margin: 16px 0 6px;
+}
+
+.tracker-sidebar-grp:first-child {
+  margin-top: 0;
+}
+
+.tracker-f {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid transparent;
+  color: var(--fg);
+  padding: 5px 7px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.tracker-f:hover {
+  border-color: var(--accent);
+}
+
+.tracker-f.on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+
+.tracker-f-n {
+  margin-left: auto;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 2em;
+  text-align: right;
+}
+
+.tracker-f.zero .tracker-f-n {
+  text-decoration: line-through;
+}
+
+.tracker-f-empty {
+  font-size: 0.85rem;
+  padding: 5px 7px;
+}
+
+/* --- Colored status dots --- */
+
+.tracker-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid var(--bg);
+}
+
+.tracker-dot.ready {
+  background: var(--positive);
+  box-shadow: 0 0 0 1px var(--positive);
+}
+
+.tracker-dot.inflight {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tracker-dot.held {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tracker-dot.gated {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tracker-dot.blocked {
+  background: var(--negative);
+  box-shadow: 0 0 0 1px var(--negative);
+}
+
+.tracker-dot.done {
+  background: var(--fg);
+  box-shadow: 0 0 0 1px var(--fg);
+}
+
+/* --- Tags (status flags, effort, claims) --- */
+
+.tracker-tag {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  border: 1px solid var(--accent);
+  flex: none;
+  white-space: nowrap;
+}
+
+.tracker-tag-eff {
+  font-variant-numeric: tabular-nums;
+  min-width: 24px;
+  text-align: center;
+}
+
+.tracker-tag.ready {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+.tracker-tag.inflight {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tracker-tag.held {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tracker-tag.gated {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tracker-tag.blocked {
+  color: var(--negative);
+  border-color: var(--negative);
+}
+
+/* --- Main content area --- */
+
+.tracker-main {
+  flex: 1;
+  min-width: 0;
+  padding-left: 18px;
+}
+
+/* --- Bucket headers (list view) --- */
+
+.tracker-bh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 8px;
+}
+
+.tracker-bh:first-child {
+  margin-top: 0;
+}
+
+.tracker-bh h2 {
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 700;
+}
+
+.tracker-bh-meta {
+  color: var(--fg);
+  font-size: 0.78rem;
+}
+
+/* --- Issue rows (list view) --- */
+
+.tracker-rows {
+  border: 1px solid var(--accent);
+}
+
+.tracker-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  cursor: pointer;
+  border-top: 1px solid var(--accent);
+  flex-wrap: wrap;
+}
+
+.tracker-row:first-child {
+  border-top: none;
+}
+
+.tracker-row:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.tracker-row .tracker-dot {
+  margin-top: 5px;
+}
+
+.tracker-row-title {
+  flex: 1;
+  min-width: 200px;
+  font-weight: 700;
+}
+
+.tracker-row.done .tracker-row-title {
+  font-weight: 400;
+}
+
+.tracker-row-id {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  flex: none;
+}
+
+.tracker-row-why {
+  flex-basis: 100%;
+  padding-left: 20px;
+  font-size: 0.78rem;
+}
+
+.tracker-row-why b {
+  font-weight: 700;
+}
+
+.tracker-row-why.held {
+  color: var(--accent);
+}
+
+.tracker-row-why.gated {
+  color: var(--accent);
+}
+
+.tracker-row-why.blocked {
+  color: var(--negative);
+}
+
+/* --- Board view --- */
+
+.tracker-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.tracker-col {
+  border: 1px solid var(--accent);
+  padding: 8px;
+  min-width: 0;
+}
+
+.tracker-col-head {
+  margin: 2px 4px 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.tracker-col-count {
+  margin-left: auto;
+}
+
+.tracker-card {
+  border: 1px solid var(--accent);
+  padding: 7px 9px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.tracker-card:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.tracker-card-title {
+  font-size: 0.9rem;
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.tracker-card-meta {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  display: flex;
+  gap: 6px;
+}
+
+.tracker-card-eff {
+  margin-left: auto;
+}
+
+/* --- Scrim + slide-out detail panel --- */
+
+.tracker-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.tracker-detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(680px, 94vw);
+  z-index: 31;
+  background: var(--bg);
+  border-left: 2px solid var(--accent);
+  overflow-y: auto;
+  padding: 18px 22px 60px;
+}
+
+.tracker-detail h2 {
+  margin: 6px 40px 4px 0;
+  font-size: 1.3rem;
+  line-height: 1.3;
+}
+
+.tracker-detail-sub {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  margin-bottom: 14px;
+}
+
+.tracker-detail-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  width: 30px;
+  height: 30px;
+  color: var(--fg);
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.tracker-detail-close:hover {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tracker-detail-when {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+}
+
+/* --- Reason blocks (held / gated / blocked in detail panel) --- */
+
+.tracker-reason {
+  margin: 16px 0;
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+  padding: 9px 12px;
+}
+
+.tracker-reason h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.tracker-reason.held {
+  border-color: var(--accent);
+}
+
+.tracker-reason.held h4 {
+  color: var(--accent);
+}
+
+.tracker-reason.gated {
+  border-color: var(--accent);
+}
+
+.tracker-reason.gated h4 {
+  color: var(--accent);
+}
+
+.tracker-reason.blocked {
+  border-color: var(--negative);
+}
+
+.tracker-reason.blocked h4 {
+  color: var(--negative);
+}
+
+/* --- Generic blocks (deps, claimable, notes in detail) --- */
+
+.tracker-blk {
+  margin: 16px 0;
+}
+
+.tracker-blk h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* --- Dependency chips --- */
+
+.tracker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Override the v1 .tracker-chip with display:inline-flex for dot alignment */
+.tracker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  border: 1px solid var(--accent);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.tracker-chip-link {
+  cursor: pointer;
+}
+
+.tracker-chip-link:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.tracker-chip-done {
+  cursor: pointer;
+}
+
+.tracker-chip-dead {
+  cursor: default;
+  border-style: dashed;
+}
+
+/* --- Notes (audit trail in detail panel) --- */
+
+.tracker-note {
+  border-top: 1px solid var(--accent);
+  padding: 8px 0;
+}
+
+.tracker-note:first-of-type {
+  border-top: none;
+}
+
+.tracker-note-hd {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.tracker-note-verb {
+  font-weight: 700;
+  border: 1px solid var(--accent);
+  padding: 0 6px;
+}
+
+.tracker-note-verb.DISPATCH {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tracker-note-verb.HANDOFF {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+.tracker-note-when {
+  margin-left: auto;
+}
+
+.tracker-note-body {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+}
+
+.tracker-note-fields {
+  margin: 6px 0 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+}
+
+.tracker-note-fields dt {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tracker-note-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
