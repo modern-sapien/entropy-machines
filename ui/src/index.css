@@ -715,7 +715,7 @@ aside.review p {
   z-index: 20;
   background: var(--bg);
   border-bottom: 1px solid var(--accent);
-  margin: -38px -42px 0;
+  margin: 0 -42px;
   padding: 10px 42px;
   display: flex;
   gap: 12px;
