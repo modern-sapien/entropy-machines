@@ -305,10 +305,10 @@ export function KitchenSinkPage() {
           <h2 id={SECTION_IDS.theme}>Theme</h2>
           <p>
             Current theme: <code>{theme}</code>. Switch it from the selector at the bottom of the sidebar — every
-            component on this page redraws from the same 5 custom properties, no per-component overrides.
+            component on this page redraws from the same 6 custom properties, no per-component overrides.
           </p>
           <div className="swatches">
-            {(["bg", "fg", "accent", "positive", "negative"] as const).map((name) => (
+            {(["bg", "fg", "accent", "positive", "negative", "notice"] as const).map((name) => (
               <div className="swatch" key={name}>
                 <div className="fill" style={{ background: `var(--${name})` }} />
                 <span className="name">{name}</span>

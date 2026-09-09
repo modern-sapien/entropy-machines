@@ -1,12 +1,13 @@
-/* entropy-machines UI — the 5-color system.
+/* entropy-machines UI — the 6-color system.
  *
- * Exactly five custom properties carry color, always at 100% opacity:
- * --bg, --fg, --accent, --positive, --negative. No rgba(), no opacity-based
- * state, no var(--x, fallback) — every var() reference below has a real
- * value on :root because src/data/themes.ts applies the stored (or
- * default) theme via style.setProperty() before this stylesheet is ever
- * read for paint (see the inline script in index.html). The values here
- * are just the janus-dark defaults so nothing is undefined if JS is off.
+ * Exactly six custom properties carry color, always at 100% opacity:
+ * --bg, --fg, --accent, --positive, --negative, --notice. No rgba(), no
+ * opacity-based state, no var(--x, fallback) — every var() reference below
+ * has a real value on :root because src/data/themes.ts applies the stored
+ * (or default) theme via style.setProperty() before this stylesheet is
+ * ever read for paint (see the inline script in index.html). The values
+ * here are just the janus-dark defaults so nothing is undefined if JS is
+ * off.
  *
  * Visual rule carried over from the doc templates this UI replaces:
  * separate with BORDERS, not background tints; state is weight/case/border,
@@ -18,6 +19,7 @@
   --accent: #a78bfa;
   --positive: #23D18B;
   --negative: #ef4444;
+  --notice: #f59e0b;
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -229,11 +231,17 @@ thead th {
 
 /* ---- response boxes: page-level ----
  * min-height and overflow:hidden are load-bearing for the JS autogrow (it
- * measures scrollHeight) — do not tidy them away. */
+ * measures scrollHeight) — do not tidy them away.
+ *
+ * Three-state colour:
+ *   unanswered  = --notice (amber — "needs your input")
+ *   agent voice = --accent (discuss / review blocks keep accent)
+ *   answered    = --positive (the .filled override below)
+ */
 .response {
   margin: 16px 0 6px;
   border: 1px solid var(--accent);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--notice);
   padding: 9px 13px;
 }
 
@@ -243,7 +251,7 @@ thead th {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--notice);
   margin-bottom: 5px;
 }
 
