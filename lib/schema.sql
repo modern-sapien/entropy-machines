@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS replies (
 CREATE TABLE IF NOT EXISTS issues (
   id          TEXT PRIMARY KEY,   -- "i-react-scaffold"
   title       TEXT NOT NULL,
+  description TEXT,               -- free-text what/why/acceptance-criteria, set at creation
   status      TEXT DEFAULT 'open',-- "open" | "progress" | "review" | "done"
   source_doc  TEXT REFERENCES docs(id),  -- PRD/report/doc that created this issue (optional)
   blocked_by  TEXT,               -- JSON array of issue ids

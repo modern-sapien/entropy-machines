@@ -1110,7 +1110,7 @@ aside.review p {
 
 .tracker-detail {
   position: fixed;
-  top: 0;
+  top: 48px;
   right: 0;
   bottom: 0;
   width: min(680px, 94vw);
@@ -1154,6 +1154,14 @@ aside.review p {
 .tracker-detail-when {
   font-size: 0.78rem;
   font-family: var(--mono);
+}
+
+.tracker-description {
+  margin: 0 0 14px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre-wrap;
 }
 
 /* --- Source / origin indicator in detail panel --- */

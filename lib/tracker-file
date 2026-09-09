@@ -70,7 +70,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import notes as notes_mod  # noqa: E402  (path must be set up first)
 
 ALLOWED_STATUS = {"notstarted", "progress", "done"}
-ALLOWED_KEYS = {"status", "heldWhy", "gate", "blockedBy", "title", "effort"}
+ALLOWED_KEYS = {"status", "heldWhy", "gate", "blockedBy", "title", "effort", "description"}
 
 PATH = None  # resolved in main()
 

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 interface Issue {
   id: string;
   title: string;
+  description: string | null;
   status: string;
   source_doc: string | null;
   source_doc_type: string | null;
@@ -253,6 +254,8 @@ function passes(
 // ---------------------------------------------------------------------------
 
 export function TrackerPage() {
+  const { issueId: urlIssueId } = useParams<{ issueId?: string }>();
+  const navigate = useNavigate();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -262,7 +265,7 @@ export function TrackerPage() {
     efforts: new Set(),
     search: "",
   });
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const detailId = urlIssueId || null;
   const [detailNotes, setDetailNotes] = useState<Note[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
 
@@ -402,8 +405,11 @@ export function TrackerPage() {
     setFilters({ states: new Set(), efforts: new Set(), search: "" });
   }, []);
 
-  const openDetail = useCallback((id: string) => setDetailId(id), []);
-  const closeDetail = useCallback(() => setDetailId(null), []);
+  const openDetail = useCallback(
+    (id: string) => navigate(`/tracker/${encodeURIComponent(id)}`),
+    [navigate],
+  );
+  const closeDetail = useCallback(() => navigate("/tracker"), [navigate]);
 
   // Keyboard: Escape closes detail, / focuses search.
   useEffect(() => {
@@ -791,6 +797,12 @@ function DetailPanel({
           </>
         )}
       </div>
+
+      {issue.description && (
+        <div className="tracker-description">
+          {issue.description}
+        </div>
+      )}
 
       {/* Source document linkage */}
       <div className="tracker-origin">

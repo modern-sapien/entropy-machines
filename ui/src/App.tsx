@@ -40,6 +40,14 @@ export default function App() {
             }
           />
           <Route
+            path="/tracker/:issueId"
+            element={
+              <Layout>
+                <TrackerPage />
+              </Layout>
+            }
+          />
+          <Route
             path="/docs/:slug"
             element={
               <Layout>

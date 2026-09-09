@@ -373,6 +373,16 @@ def build_schema(conn, schema_path):
         conn.executescript(f.read())
 
 
+def upgrade_schema(conn):
+    """Add columns introduced after the initial schema. Each ALTER is
+    guarded — it is a no-op when the column already exists (fresh DB
+    from the current schema.sql) and only takes effect on a DB created
+    before the column was added."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(issues)")}
+    if "description" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN description TEXT")
+
+
 def doc_id_for(manifest_key, entry):
     file_name = entry.get("file", "")
     return os.path.splitext(file_name)[0] if file_name else manifest_key
@@ -412,6 +422,7 @@ def migrate(root, docs_dir, tracker_path, out_path, schema_path, force):
     conn = sqlite3.connect(out_path)
     conn.execute("PRAGMA foreign_keys = ON")
     build_schema(conn, schema_path)
+    upgrade_schema(conn)
 
     report = {
         "docs_migrated": 0,
