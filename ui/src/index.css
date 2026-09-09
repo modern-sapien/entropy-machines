@@ -1317,6 +1317,21 @@ aside.review p {
   border-color: var(--positive);
 }
 
+.tracker-note-verb.VERIFIED {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+.tracker-note-verb.LANDED {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+
+.tracker-note-verb.REVERIFY {
+  color: var(--notice);
+  border-color: var(--notice);
+}
+
 .tracker-note-when {
   margin-left: auto;
 }
@@ -1345,4 +1360,71 @@ aside.review p {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* --- Issue context/goal section in detail panel --- */
+
+.tracker-context {
+  margin: 12px 0 14px;
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+  padding: 9px 12px;
+}
+
+.tracker-context h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.tracker-context-brief {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.tracker-context-desc {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border-top: 1px solid var(--accent);
+  padding-top: 8px;
+}
+
+/* --- Process checkpoint entries in audit log --- */
+
+.tracker-note.checkpoint {
+  padding-left: 10px;
+}
+
+.tracker-note.checkpoint-accent {
+  border-left: 3px solid var(--accent);
+}
+
+.tracker-note.checkpoint-positive {
+  border-left: 3px solid var(--positive);
+}
+
+.tracker-note.checkpoint-notice {
+  border-left: 3px solid var(--notice);
+}
+
+.tracker-checkpoint-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+
+.tracker-checkpoint-label.accent {
+  color: var(--accent);
+}
+
+.tracker-checkpoint-label.positive {
+  color: var(--positive);
+}
+
+.tracker-checkpoint-label.notice {
+  color: var(--notice);
 }

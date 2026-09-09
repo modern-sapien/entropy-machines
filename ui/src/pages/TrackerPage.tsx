@@ -89,6 +89,48 @@ function tryParseJsonObj(s: string): Record<string, unknown> | null {
 }
 
 // ---------------------------------------------------------------------------
+// Process checkpoints — which note types represent process milestones
+// ---------------------------------------------------------------------------
+
+const CHECKPOINT_META: Record<string, { label: string; colorClass: string }> = {
+  DISPATCH: { label: "isolated worker", colorClass: "accent" },
+  HANDOFF: { label: "handed off", colorClass: "positive" },
+  VERIFIED: { label: "verified", colorClass: "positive" },
+  REVERIFY: { label: "re-verified", colorClass: "notice" },
+  LANDED: { label: "landed", colorClass: "positive" },
+};
+
+/** Scan notes for the dispatch brief and earliest description NOTE. */
+function extractContext(notes: Note[]): {
+  brief: string | null;
+  description: string | null;
+} {
+  let brief: string | null = null;
+  let description: string | null = null;
+
+  for (const note of notes) {
+    const upperType = (note.type || "").toUpperCase();
+    const fields = tryParseJsonObj(note.content);
+
+    // Latest DISPATCH brief wins (loop overwrites earlier ones).
+    if (upperType === "DISPATCH" && fields && typeof fields.brief === "string") {
+      brief = fields.brief;
+    }
+
+    // First NOTE with text content becomes the description.
+    if (upperType === "NOTE" && !description) {
+      if (fields && typeof fields.text === "string") {
+        description = fields.text;
+      } else if (!fields && note.content) {
+        description = note.content;
+      }
+    }
+  }
+
+  return { brief, description };
+}
+
+// ---------------------------------------------------------------------------
 // Derivation — bucket grouping and dependency graph
 // ---------------------------------------------------------------------------
 
@@ -765,6 +807,23 @@ function DetailPanel({
         )}
       </div>
 
+      {/* Issue context — dispatch brief and description */}
+      {(() => {
+        const ctx = extractContext(notes);
+        if (!ctx.brief && !ctx.description) return null;
+        return (
+          <div className="tracker-context">
+            <h4>Goal</h4>
+            {ctx.brief && (
+              <div className="tracker-context-brief">{ctx.brief}</div>
+            )}
+            {ctx.description && ctx.description !== ctx.brief && (
+              <div className="tracker-context-desc">{ctx.description}</div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Held reason block */}
       {issue.held_why && (
         <div className="tracker-reason held">
@@ -855,12 +914,12 @@ function DetailPanel({
         </div>
       )}
 
-      {/* Notes — the audit trail */}
+      {/* Audit Log */}
       <div className="tracker-blk">
-        <h4>Notes &mdash; the audit trail</h4>
+        <h4>Audit Log</h4>
         {notesLoading && <div className="sub">Loading notes...</div>}
         {!notesLoading && notes.length === 0 && (
-          <div>No notes on this issue.</div>
+          <div>No entries in the audit log.</div>
         )}
         {notes.map((n) => (
           <NoteEntry key={n.id} note={n} />
@@ -914,11 +973,26 @@ function DepChip({
 function NoteEntry({ note }: { note: Note }) {
   const verb = (note.type || "comment").toUpperCase();
   const fields = tryParseJsonObj(note.content);
+  const checkpoint = CHECKPOINT_META[verb] ?? null;
 
   return (
-    <div className="tracker-note">
+    <div
+      className={
+        "tracker-note" +
+        (checkpoint
+          ? ` checkpoint checkpoint-${checkpoint.colorClass}`
+          : "")
+      }
+    >
       <div className="tracker-note-hd">
         <span className={`tracker-note-verb ${verb}`}>{verb}</span>
+        {checkpoint && (
+          <span
+            className={`tracker-checkpoint-label ${checkpoint.colorClass}`}
+          >
+            {checkpoint.label}
+          </span>
+        )}
         <span>{note.author || "unknown"}</span>
         <span className="tracker-note-when">{note.created_at}</span>
       </div>
