@@ -387,7 +387,7 @@ export function TrackerPage() {
   if (loading) {
     return (
       <section className="page">
-        <h1>Tracker</h1>
+        <h1>Issues</h1>
         <p className="sub">Loading issues...</p>
       </section>
     );
@@ -396,7 +396,7 @@ export function TrackerPage() {
   if (error) {
     return (
       <section className="page">
-        <h1>Tracker</h1>
+        <h1>Issues</h1>
         <p className="tracker-error">{error}</p>
       </section>
     );
@@ -408,7 +408,7 @@ export function TrackerPage() {
     <>
       {/* Sticky header */}
       <div className="tracker-header">
-        <h1 className="tracker-title">Tracker</h1>
+        <h1 className="tracker-title">Issues</h1>
         <input
           id="tracker-search"
           className="tracker-search"

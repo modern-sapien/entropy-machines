@@ -36,7 +36,6 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  display: flex;
   font-family: var(--font);
   font-size: 1rem;
   line-height: 1.6;
@@ -45,7 +44,6 @@ body {
 }
 
 #root {
-  display: flex;
   width: 100%;
   min-height: 100vh;
 }
@@ -66,70 +64,193 @@ code {
   padding: 0 0.25em;
 }
 
-/* Sidebar */
-.sidebar {
-  width: 260px;
-  flex: none;
-  border-right: 1px solid var(--accent);
-  background: var(--bg);
-  padding: 22px 14px;
-  position: sticky;
+/* Top nav bar */
+.topnav {
+  position: fixed;
   top: 0;
-  height: 100vh;
-  overflow-y: auto;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg);
+  border-bottom: 1px solid var(--accent);
+  padding: 0 20px;
+  height: 48px;
 }
 
-.sidebar .brand {
+.topnav-brand {
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  margin-bottom: 16px;
-  padding: 0 6px;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
-.sidebar .brand .logo {
+.topnav-brand:hover {
+  color: var(--accent);
+}
+
+.topnav-brand .logo {
   width: 18px;
   height: 18px;
   border: 1px solid var(--accent);
 }
 
-.sidebar a {
-  display: block;
-  padding: 6px 10px;
+.topnav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.topnav-link {
+  display: inline-block;
+  padding: 6px 12px;
   color: var(--fg);
   text-decoration: none;
   font-size: 0.9rem;
-  margin-bottom: 2px;
+  font-weight: 700;
   border: 1px solid transparent;
 }
 
-.sidebar a:hover {
+.topnav-link:hover {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-.sidebar a.cur {
+.topnav-link.cur {
   border-color: var(--accent);
-  font-weight: 700;
+  color: var(--accent);
 }
 
-.sidebar .grp {
+.topnav-gear {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.topnav-gear:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Settings modal */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-modal {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 20px 24px;
+  min-width: 300px;
+  max-width: 420px;
+  z-index: 201;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.settings-close {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  font-size: 1.3rem;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  line-height: 1;
+}
+
+.settings-close:hover {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Inline doc page tabs — replaces sidebar page navigation */
+.doc-tabs-wrap {
+  margin: 0 0 18px;
+}
+
+.doc-tabs-group {
+  margin-bottom: 8px;
+}
+
+.doc-tabs-label {
+  display: block;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg);
-  margin: 16px 6px 6px;
+  margin-bottom: 4px;
 }
 
-.sidebar .grp:first-of-type {
-  margin-top: 0;
+.doc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--accent);
+}
+
+.doc-tab {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--fg);
+  border: none;
+  border-right: 1px solid var(--accent);
+  padding: 7px 14px;
+}
+
+.doc-tab:last-child {
+  border-right: none;
+}
+
+.doc-tab:hover {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.doc-tab.cur {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 /* Nav marks: a bordered chip, never a filled badge (rule 1 — borders, not
  * tints). "done" is a colour+glyph change, not a fade. */
-.sidebar a .navmark {
-  float: right;
+.doc-tab .navmark {
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.4;
@@ -138,30 +259,26 @@ code {
   border: 1px solid currentColor;
 }
 
-.sidebar a .navmark.done {
+.doc-tab .navmark.done {
   color: var(--positive);
 }
 
-.sidebar a .navmark.todo {
+.doc-tab .navmark.todo {
   color: var(--notice);
 }
 
-.sidebar .navsummary {
+.doc-tabs-summary {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--fg);
   border: 1px solid var(--accent);
-  margin: 12px 6px 4px;
+  margin: 8px 0 4px;
   padding: 5px 9px;
+  display: inline-block;
 }
 
-.sidebar .navsummary .all-done {
+.doc-tabs-summary .all-done {
   color: var(--positive);
-}
-
-.sidebar .foot {
-  margin-top: 20px;
-  padding: 0 6px;
 }
 
 /* Theme selector */
@@ -177,10 +294,11 @@ code {
 
 /* Page content */
 main {
-  flex: 1;
   min-width: 0;
   padding: 38px 42px 80px;
+  padding-top: 62px; /* 48px topnav + 14px gap */
   max-width: 1060px;
+  margin: 0 auto;
 }
 
 h1 {
@@ -593,7 +711,7 @@ aside.review p {
 
 .tracker-header {
   position: sticky;
-  top: 0;
+  top: 48px;
   z-index: 20;
   background: var(--bg);
   border-bottom: 1px solid var(--accent);

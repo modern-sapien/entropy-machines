@@ -221,7 +221,9 @@ export function DashboardPage() {
             ) : (
               claims.map((iss) => (
                 <tr key={iss.id}>
-                  <td className="mono">{iss.id}</td>
+                  <td className="mono">
+                    <Link to="/tracker">{iss.id}</Link>
+                  </td>
                   <td className="mono">{iss.claimed_by ?? ""}</td>
                 </tr>
               ))

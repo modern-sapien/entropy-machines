@@ -12,10 +12,8 @@ import { useParams } from "react-router-dom";
 // landed yet (i-react-doc-renderer is still in progress). Can be deduplicated
 // later once DocPage is parameterisable.
 //
-// Page navigation uses .tracker-filters CSS (already in index.css) for inline
-// tabs since the component is rendered inside Layout and cannot pass sections
-// to the Sidebar. Sidebar nav marks require changes to App.tsx routing or
-// Sidebar.tsx context, both outside this issue's scope.
+// Page navigation uses inline tabs (.tracker-filters CSS, already in
+// index.css). Rendered inside Layout which provides the TopNav.
 // ============================================================================
 
 // ---------------------------------------------------------------------------

@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import type { SidebarSectionGroup } from "../components/Sidebar";
-import { setSidebarSections, clearSidebarSections } from "../hooks/useSidebarSections";
 
 // ============================================================================
 // DocPage — full document renderer with multi-page nav, response boxes,
 // reply threads, autosave to API, nav marks, and scrollspy.
 //
 // Route: /docs/:slug (see App.tsx). Rendered inside Layout, which provides
-// a bare <Sidebar />. We push doc-specific nav into that Sidebar via the
-// useSidebarSections module-level store, so App.tsx stays untouched.
+// a TopNav. Page-level navigation uses inline tabs below the heading.
 // ============================================================================
 
 // ---- API types -------------------------------------------------------------
@@ -66,6 +63,20 @@ interface DocPayload {
   responses: Response[];
 }
 
+// ---- types for inline page tabs -------------------------------------------
+
+interface PageTabItem {
+  id: string;
+  navTitle: string;
+  answered?: number;
+  total?: number;
+}
+
+interface PageTabGroup {
+  label?: string;
+  items: PageTabItem[];
+}
+
 // ---- autogrow hook (same as KitchenSinkPage) --------------------------------
 
 function useAutoGrow(value: string, skip: boolean) {
@@ -78,6 +89,33 @@ function useAutoGrow(value: string, skip: boolean) {
     el.style.height = `${el.scrollHeight}px`;
   }, [value, skip]);
   return ref;
+}
+
+// ---- navmark badge for inline tabs ----------------------------------------
+
+function navMark(item: PageTabItem) {
+  if (!item.total) return null;
+  const done = item.answered === item.total;
+  return (
+    <span className={`navmark ${done ? "done" : "todo"}`}>{done ? "✓" : `${item.answered ?? 0}/${item.total}`}</span>
+  );
+}
+
+// ---- sections summary line ------------------------------------------------
+
+function sectionsSummary(groups: PageTabGroup[]) {
+  const scored = groups.flatMap((g) => g.items).filter((it) => (it.total ?? 0) > 0);
+  if (scored.length === 0) return null;
+  const done = scored.filter((it) => it.answered === it.total).length;
+  return (
+    <div className="doc-tabs-summary">
+      {done === scored.length ? (
+        <span className="all-done">{"✓"} all {scored.length} sections answered</span>
+      ) : (
+        `Answered ${done}/${scored.length} sections`
+      )}
+    </div>
+  );
 }
 
 // ---- ResponseBox ------------------------------------------------------------
@@ -212,17 +250,10 @@ function PageSection({
   onChange: (key: string, value: string) => void;
 }) {
   // Group responses that share the same base key prefix into threads.
-  // A response with replies or that shares a key-prefix with others is
-  // part of a thread; standalone responses render as individual boxes.
-  //
-  // Strategy: group by everything before the last "-qN" or "-rN" suffix,
-  // or treat each as its own group if no such pattern.
   const groups = useMemo(() => {
     if (responses.length <= 1) {
       return responses.map((r) => [r]);
     }
-    // Check if any response has replies -- if so, or if there are multiple
-    // responses for this page, treat them as a thread.
     const hasThread = responses.some((r) => r.replies.length > 0) || responses.length > 1;
     if (hasThread) {
       return [responses];
@@ -336,13 +367,13 @@ export function DocPage() {
     return () => observer.disconnect();
   }, [data]);
 
-  // ---- build sidebar sections ----
+  // ---- build inline page tab data ----
   const selectSection = useCallback((id: string) => {
     setCurrentPageId(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const sections = useMemo<SidebarSectionGroup[]>(() => {
+  const tabGroups = useMemo<PageTabGroup[]>(() => {
     if (!data) return [];
     // Group pages by nav_group
     const groupMap = new Map<string, Page[]>();
@@ -385,20 +416,6 @@ export function DocPage() {
       };
     });
   }, [data, values]);
-
-  // Push sections into the shared sidebar store
-  useEffect(() => {
-    if (sections.length === 0) {
-      clearSidebarSections();
-      return;
-    }
-    setSidebarSections({
-      sections,
-      currentSectionId: currentPageId,
-      onSelectSection: selectSection,
-    });
-    return () => clearSidebarSections();
-  }, [sections, currentPageId, selectSection]);
 
   // ---- response editing ----
   function handleChange(key: string, value: string) {
@@ -467,6 +484,31 @@ export function DocPage() {
 
   return (
     <>
+      {/* Inline page tabs — replaces sidebar page navigation */}
+      {data.pages.length > 1 && (
+        <div className="doc-tabs-wrap">
+          {tabGroups.map((group, gi) => (
+            <div key={group.label ?? gi} className="doc-tabs-group">
+              {group.label && <span className="doc-tabs-label">{group.label}</span>}
+              <div className="doc-tabs">
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`doc-tab${item.id === currentPageId ? " cur" : ""}`}
+                    onClick={() => selectSection(item.id)}
+                  >
+                    {item.navTitle}
+                    {navMark(item)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {sectionsSummary(tabGroups)}
+        </div>
+      )}
+
       {data.pages.map((page) => (
         <PageSection
           key={page.id}

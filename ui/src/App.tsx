@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Sidebar } from "./components/Sidebar";
+import { TopNav } from "./components/TopNav";
 import { ThemeProvider } from "./context/ThemeProvider";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DocPage } from "./pages/DocPage";
@@ -12,7 +12,7 @@ import { TrackerPage } from "./pages/TrackerPage";
 function Layout({ children }: { children: ReactNode }) {
   return (
     <>
-      <Sidebar />
+      <TopNav />
       <main>{children}</main>
     </>
   );
@@ -79,10 +79,14 @@ export default function App() {
               </Layout>
             }
           />
-          {/* Owner's QA gate for UX components — renders its own Sidebar (with
-              page-section nav marks) instead of Layout's default one, so it
-              is not wrapped a second time. */}
-          <Route path="/kitchen-sink" element={<KitchenSinkPage />} />
+          <Route
+            path="/kitchen-sink"
+            element={
+              <Layout>
+                <KitchenSinkPage />
+              </Layout>
+            }
+          />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
