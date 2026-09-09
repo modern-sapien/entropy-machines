@@ -1156,6 +1156,39 @@ aside.review p {
   font-family: var(--mono);
 }
 
+/* --- Source / origin indicator in detail panel --- */
+
+.tracker-origin {
+  margin: 12px 0 14px;
+}
+
+.tracker-origin h4 {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.tracker-origin-link {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent);
+}
+
+.tracker-origin-link:hover {
+  border-bottom-width: 2px;
+}
+
+.tracker-origin-adhoc {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--fg);
+}
+
 /* --- Reason blocks (held / gated / blocked in detail panel) --- */
 
 .tracker-reason {

@@ -197,18 +197,24 @@ def _issue_out(row):
     return d
 
 
+_ISSUES_SELECT = (
+    "SELECT issues.*, docs.type AS source_doc_type, docs.short_name AS source_doc_name "
+    "FROM issues LEFT JOIN docs ON issues.source_doc = docs.id"
+)
+
+
 def list_issues(conn, args, query, body):
     status = (query.get("status") or [None])[0]
     if status:
-        rows = conn.execute("SELECT * FROM issues WHERE status = ? ORDER BY id", (status,))
+        rows = conn.execute(_ISSUES_SELECT + " WHERE issues.status = ? ORDER BY issues.id", (status,))
     else:
-        rows = conn.execute("SELECT * FROM issues ORDER BY id")
+        rows = conn.execute(_ISSUES_SELECT + " ORDER BY issues.id")
     return [_issue_out(r) for r in rows]
 
 
 def get_issue(conn, args, query, body):
     (issue_id,) = args
-    row = conn.execute("SELECT * FROM issues WHERE id = ?", (issue_id,)).fetchone()
+    row = conn.execute(_ISSUES_SELECT + " WHERE issues.id = ?", (issue_id,)).fetchone()
     if row is None:
         raise ApiError(404, "no such issue: %r" % issue_id)
     return _issue_out(row)

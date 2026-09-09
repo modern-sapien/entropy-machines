@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -9,6 +10,8 @@ interface Issue {
   title: string;
   status: string;
   source_doc: string | null;
+  source_doc_type: string | null;
+  source_doc_name: string | null;
   blocked_by: string[];
   claimed_by: string | null;
   claimed_at: string | null;
@@ -744,6 +747,21 @@ function DetailPanel({
             &middot; claimed by {issue.claimed_by}
             {issue.claimed_at && ` ${day(issue.claimed_at)}`}
           </>
+        )}
+      </div>
+
+      {/* Source document linkage */}
+      <div className="tracker-origin">
+        <h4>Origin</h4>
+        {issue.source_doc ? (
+          <Link
+            to={`/${issue.source_doc_type === "report" ? "reports" : "docs"}/${encodeURIComponent(issue.source_doc)}`}
+            className="tracker-origin-link"
+          >
+            {issue.source_doc_name || issue.source_doc}
+          </Link>
+        ) : (
+          <span className="tracker-origin-adhoc">ad-hoc</span>
         )}
       </div>
 
