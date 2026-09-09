@@ -261,10 +261,11 @@ function PageSection({
     return responses.map((r) => [r]);
   }, [responses]);
 
+  // page.content already contains the <h1> and subtitle — rendering them
+  // again from the page fields produced duplicate headers (visible on every
+  // PRD where page.heading === doc.title, but present on all pages).
   return (
     <section className="page" id={page.id}>
-      <h1>{page.heading}</h1>
-      {page.subtitle && <p className="sub">{page.subtitle}</p>}
       <div dangerouslySetInnerHTML={{ __html: page.content }} />
       {groups.map((group) =>
         group.length === 1 ? (
