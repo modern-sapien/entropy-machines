@@ -56,6 +56,14 @@ export default function App() {
             }
           />
           <Route
+            path="/prds/:slug"
+            element={
+              <Layout>
+                <DocPage />
+              </Layout>
+            }
+          />
+          <Route
             path="/prds"
             element={
               <Layout>

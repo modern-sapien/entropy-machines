@@ -145,7 +145,7 @@ export function LandingPage({ kind }: { kind: LandingKind }) {
                 const linkPath =
                   kind === "reports"
                     ? `/reports/${encodeURIComponent(entry.id)}`
-                    : `/docs/${encodeURIComponent(entry.id)}`;
+                    : `/${kind}/${encodeURIComponent(entry.id)}`;
 
                 return (
                   <tr key={entry.id}>
