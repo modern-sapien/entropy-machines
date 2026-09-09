@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useSidebarSections } from "../hooks/useSidebarSections";
 import { ThemeSelector } from "./ThemeSelector";
 
 export interface SidebarSectionItem {
@@ -64,6 +65,11 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
 }
 
 export function Sidebar({ sections, currentSectionId, onSelectSection }: SidebarProps) {
+  const store = useSidebarSections();
+  const effectiveSections = sections ?? (store.sections.length > 0 ? store.sections : undefined);
+  const effectiveCurrentId = currentSectionId ?? store.currentSectionId;
+  const effectiveOnSelect = onSelectSection ?? store.onSelectSection;
+
   return (
     <nav className="sidebar">
       <div className="brand">
@@ -78,18 +84,18 @@ export function Sidebar({ sections, currentSectionId, onSelectSection }: Sidebar
         </NavLink>
       ))}
 
-      {sections?.map((group, i) => (
+      {effectiveSections?.map((group, i) => (
         <div key={group.label ?? i}>
           {group.label && <div className="grp">{group.label}</div>}
           {group.items.map((item) => (
             <a
               key={item.id}
               href={`#${item.id}`}
-              className={item.id === currentSectionId ? "cur" : ""}
+              className={item.id === effectiveCurrentId ? "cur" : ""}
               onClick={(ev) => {
-                if (!onSelectSection) return;
+                if (!effectiveOnSelect) return;
                 ev.preventDefault();
-                onSelectSection(item.id);
+                effectiveOnSelect(item.id);
               }}
             >
               {item.navTitle}
@@ -99,7 +105,7 @@ export function Sidebar({ sections, currentSectionId, onSelectSection }: Sidebar
         </div>
       ))}
 
-      {sections && sectionsSummary(sections)}
+      {effectiveSections && sectionsSummary(effectiveSections)}
 
       <div className="foot">
         <ThemeSelector />
