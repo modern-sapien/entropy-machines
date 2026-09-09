@@ -458,14 +458,10 @@ export function SprintReportPage() {
           </div>
         )}
 
-        {/* Render all pages sequentially. Each page is a section with its
-            heading, subtitle, content HTML, and response boxes. */}
         {pages.map((page) => {
           const pageResps = responsesByPage[page.id] ?? [];
           return (
             <section key={page.id} id={page.id}>
-              <h2>{page.heading}</h2>
-              {page.subtitle && <p className="sub">{page.subtitle}</p>}
               {page.content && (
                 <div
                   dangerouslySetInnerHTML={{ __html: page.content }}
