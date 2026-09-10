@@ -11,7 +11,7 @@ fixture_init
 fixture_hooks
 
 # File the issue so the claim step can proceed.
-run "$HARNESS/bin/tracker" set i-hot title="hot file issue"
+run "$HARNESS/bin/tracker" set i-hot title="hot file issue" description="hot file issue"
 assert_rc 0 "file the issue"
 
 # --- a file touched in a recent commit: refused without --force -----------
@@ -33,7 +33,7 @@ assert_rc 0 "--force overrides the recently-touched refusal"
 assert_out "declared files were touched" "the commits are still printed even with --force"
 
 # --- a file NOT in recent history: allowed --------------------------------
-run "$HARNESS/bin/tracker" set i-cold title="cold file issue"
+run "$HARNESS/bin/tracker" set i-cold title="cold file issue" description="cold file issue"
 assert_rc 0 "file the cold issue"
 
 run "$HARNESS/bin/dispatch" i-cold --files "src/never-existed.c" --brief "work on a new file"
@@ -48,7 +48,7 @@ git -C "$REPO" add lib/side.c
 git -C "$REPO" commit -qm "add side.c on a side branch"
 git -C "$REPO" checkout -q main
 
-run "$HARNESS/bin/tracker" set i-side title="side branch issue"
+run "$HARNESS/bin/tracker" set i-side title="side branch issue" description="side branch issue"
 assert_rc 0 "file the side issue"
 
 run "$HARNESS/bin/dispatch" i-side --files "lib/side.c" --brief "work on side.c"

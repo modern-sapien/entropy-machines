@@ -120,16 +120,20 @@ run http_get "$BASE/api/issues"
 assert_rc 0 "GET /api/issues (empty) completes"
 case "$OUT" in 200*) ;; *) _fail "GET /api/issues must 200" "$(printf '%s' "$OUT" | head -1)" ;; esac
 
-run http_json POST "$BASE/api/issues" '{"id":"i-test-thing","title":"a test issue"}'
+run http_json POST "$BASE/api/issues" '{"id":"i-test-thing","title":"a test issue","description":"what this issue is about"}'
 assert_rc 0 "POST /api/issues completes"
 case "$OUT" in 201*) ;; *) _fail "creating an issue must 201" "$(printf '%s' "$OUT" | head -1)" ;; esac
 assert_out "i-test-thing" "the created issue comes back"
 
-run http_json POST "$BASE/api/issues" '{"id":"i-test-thing","title":"dup"}'
+run http_json POST "$BASE/api/issues" '{"id":"i-test-thing","title":"dup","description":"dup desc"}'
 case "$OUT" in 409*) ;; *) _fail "creating a duplicate issue id must 409" "$(printf '%s' "$OUT" | head -1)" ;; esac
 
 run http_json POST "$BASE/api/issues" '{"id":"i-bad"}'
 case "$OUT" in 400*) ;; *) _fail "creating an issue with no title must 400" "$(printf '%s' "$OUT" | head -1)" ;; esac
+
+run http_json POST "$BASE/api/issues" '{"id":"i-no-desc","title":"has a title but no description"}'
+case "$OUT" in 400*) ;; *) _fail "creating an issue with no description must 400" "$(printf '%s' "$OUT" | head -1)" ;; esac
+assert_out "description" "the 400 names the missing field"
 
 run http_get "$BASE/api/issues/i-test-thing"
 assert_rc 0 "GET a single issue completes"

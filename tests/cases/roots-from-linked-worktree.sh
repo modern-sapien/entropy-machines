@@ -14,7 +14,7 @@ fixture_new
 fixture_init
 fixture_hooks
 
-run "$HARNESS/bin/tracker" set i-mainline title="filed in the main checkout"
+run "$HARNESS/bin/tracker" set i-mainline title="filed in the main checkout" description="mainline test issue"
 assert_rc 0 "file an issue in the main checkout"
 run "$HARNESS/bin/tracker" remember --issue i-mainline "a note only the main checkout has"
 assert_rc 0 "record a note in the main checkout"

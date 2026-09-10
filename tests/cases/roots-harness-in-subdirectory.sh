@@ -22,7 +22,7 @@ assert_no_file "$REPO/config.json"                "and NOT to the repo root"
 assert_file    "$REPO/entropy-machines-docs/PRD-001-orientation.html" "the PRD lands in the root's docs dir"
 assert_no_file "$HARNESS/entropy-machines-docs"             "and not inside the harness directory"
 
-run_in "$REPO" "$HARNESS/bin/tracker" set i-sub title="subdir layout"
+run_in "$REPO" "$HARNESS/bin/tracker" set i-sub title="subdir layout" description="subdir test issue"
 assert_rc 0 "tracker set with a subdirectory harness"
 assert_file    "$REPO/.entropy-machines/issues.json" "tracker state belongs to the ROOT"
 assert_no_file "$HARNESS/.entropy-machines"          "and NOT to the harness directory"

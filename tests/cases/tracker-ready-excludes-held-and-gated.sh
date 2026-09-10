@@ -11,15 +11,15 @@ fixture_init
 
 T="$HARNESS/bin/tracker"
 
-run "$T" set i-control title="plain, nothing wrong with it"
+run "$T" set i-control title="plain, nothing wrong with it" description="control issue"
 assert_rc 0 "file the control issue"
-run "$T" set i-held title="held" heldWhy="the owner has not ruled on the shape yet"
+run "$T" set i-held title="held" description="held issue" heldWhy="the owner has not ruled on the shape yet"
 assert_rc 0 "file a held issue"
-run "$T" set i-gated title="gated" gate="q-4"
+run "$T" set i-gated title="gated" description="gated issue" gate="q-4"
 assert_rc 0 "file a gated issue"
-run "$T" set i-dep title="the dependency"
+run "$T" set i-dep title="the dependency" description="dependency issue"
 assert_rc 0 "file a dependency"
-run "$T" set i-blocked title="blocked" blockedBy="i-dep"
+run "$T" set i-blocked title="blocked" description="blocked issue" blockedBy="i-dep"
 assert_rc 0 "file a blocked issue"
 
 run "$T" ready

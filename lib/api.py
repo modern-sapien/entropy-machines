@@ -222,7 +222,10 @@ def get_issue(conn, args, query, body):
 
 def create_issue(conn, args, query, body):
     if not isinstance(body, dict) or not body.get("id") or not body.get("title"):
-        raise ApiError(400, 'expected a JSON body: {"id": "...", "title": "..."}')
+        raise ApiError(400, 'expected a JSON body: {"id": "...", "title": "...", "description": "..."}')
+    description = body.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ApiError(400, '"description" is required when creating an issue and must be a non-empty string')
     issue_id = body["id"]
     if conn.execute("SELECT 1 FROM issues WHERE id = ?", (issue_id,)).fetchone():
         raise ApiError(409, "issue already exists: %r" % issue_id)

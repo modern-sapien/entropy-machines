@@ -26,7 +26,7 @@ assert_rc 0 "baseline commit"
 # makes bin/dispatch print a WARNING of its own, which would muddy the
 # assertions below about the live-claim warning.
 for i in i-holder i-collider i-elsewhere i-after; do
-  run "$HARNESS/bin/tracker" set "$i" title="$i"
+  run "$HARNESS/bin/tracker" set "$i" title="$i" description="$i description"
   assert_rc 0 "file $i"
 done
 

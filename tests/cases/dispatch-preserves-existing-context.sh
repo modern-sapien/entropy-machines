@@ -9,7 +9,7 @@ fixture_new
 fixture_init
 fixture_hooks
 
-run "$HARNESS/bin/tracker" set i-spec title="issue with a pre-written spec"
+run "$HARNESS/bin/tracker" set i-spec title="issue with a pre-written spec" description="spec issue description"
 assert_rc 0 "file the issue"
 
 # --- pre-populate the context file with a spec ----------------------------
@@ -72,7 +72,7 @@ run grep -qF -- "---" "$CTX"
 assert_rc 0 "a separator divides the spec from the dispatch metadata"
 
 # --- a dispatch with NO pre-existing file works as before -----------------
-run "$HARNESS/bin/tracker" set i-fresh title="fresh issue"
+run "$HARNESS/bin/tracker" set i-fresh title="fresh issue" description="fresh issue description"
 assert_rc 0 "file a fresh issue"
 
 CTX_FRESH="$REPO/.dispatch-context/i-fresh.md"

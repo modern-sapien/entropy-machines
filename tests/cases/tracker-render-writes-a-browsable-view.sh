@@ -80,22 +80,22 @@ assert_file "$PAGE" "render writes TRACKER.html into the docs directory"
 assert_out "TRACKER.html" "and says where it wrote it"
 
 # --- one issue in every state ----------------------------------------------
-run "$HARNESS/bin/tracker" set i-ready title="Claimable right now" effort=S
+run "$HARNESS/bin/tracker" set i-ready title="Claimable right now" effort=S description="ready issue"
 assert_rc 0 "file a ready issue"
-run "$HARNESS/bin/tracker" set i-live title="Being worked" effort=M status=progress
+run "$HARNESS/bin/tracker" set i-live title="Being worked" effort=M status=progress description="live issue"
 assert_rc 0 "file an in-progress issue"
-run "$HARNESS/bin/tracker" set i-done title="Finished" effort=S status=done
+run "$HARNESS/bin/tracker" set i-done title="Finished" effort=S status=done description="done issue"
 assert_rc 0 "file a done issue"
 run "$HARNESS/bin/tracker" set i-held title="Not now" effort=L \
-    heldWhy="owner wants the CLI shipped first"
+    heldWhy="owner wants the CLI shipped first" description="held issue"
 assert_rc 0 "file a held issue"
 run "$HARNESS/bin/tracker" set i-gated title="Waiting on a ruling" \
-    gate="prd-001-q3-tracker-backend"
+    gate="prd-001-q3-tracker-backend" description="gated issue"
 assert_rc 0 "file a gated issue"
-run "$HARNESS/bin/tracker" set i-blocked title="Waits on i-ready" blockedBy="i-ready"
+run "$HARNESS/bin/tracker" set i-blocked title="Waits on i-ready" blockedBy="i-ready" description="blocked issue"
 assert_rc 0 "file a blocked issue"
 run "$HARNESS/bin/tracker" set i-both title="Half done, then held" status=progress \
-    heldWhy="paused after the API changed"
+    heldWhy="paused after the API changed" description="both issue"
 assert_rc 0 "file an issue that is in progress AND held"
 
 run "$HARNESS/bin/tracker" render

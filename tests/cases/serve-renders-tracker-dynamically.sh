@@ -24,7 +24,7 @@ stop_server() {
 trap 'stop_server' EXIT INT TERM
 
 # File an issue BEFORE starting the server, without rendering.
-run "$HARNESS/bin/tracker" set i-alpha title="Alpha issue" effort=S
+run "$HARNESS/bin/tracker" set i-alpha title="Alpha issue" effort=S description="alpha issue"
 assert_rc 0 "file the first issue"
 
 ( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT" ) >"$LOG" 2>&1 &
@@ -52,7 +52,7 @@ assert_out "i-alpha" "the live-rendered page contains the issue filed before ser
 assert_out "Alpha issue" "with its title"
 
 # --- file a SECOND issue while the server is running — no render step --------
-run "$HARNESS/bin/tracker" set i-beta title="Beta issue" effort=M
+run "$HARNESS/bin/tracker" set i-beta title="Beta issue" effort=M description="beta issue"
 assert_rc 0 "file a second issue while the server is running"
 
 # Request again — the new issue must appear WITHOUT running bin/tracker render.

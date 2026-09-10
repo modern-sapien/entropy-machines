@@ -12,9 +12,9 @@ fixture_hooks
 # File the issue first. dispatch claims through the adapter's `claim`, and
 # `claim` — unlike `set` — does not auto-vivify, so an id that was never filed
 # cannot be claimed. See the last block of this case.
-run "$HARNESS/bin/tracker" set i-worker title="the worker's issue"
+run "$HARNESS/bin/tracker" set i-worker title="the worker's issue" description="worker issue description"
 assert_rc 0 "file the issue"
-run "$HARNESS/bin/tracker" set i-second title="the second issue"
+run "$HARNESS/bin/tracker" set i-second title="the second issue" description="second issue description"
 assert_rc 0 "file a second issue"
 
 run "$HARNESS/bin/dispatch" i-worker --files "src/main.c" --brief "make main.c return 1" --force

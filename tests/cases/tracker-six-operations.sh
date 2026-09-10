@@ -14,7 +14,7 @@ run "$HARNESS/bin/tracker" show i-ghost
 assert_rc_nonzero "show on an unknown id must fail, not print an empty issue"
 assert_out "no such issue" "and say which id"
 
-run "$HARNESS/bin/tracker" set i-ghost title="materialised by set"
+run "$HARNESS/bin/tracker" set i-ghost title="materialised by set" description="a test issue"
 assert_rc 0 "set auto-vivifies an unknown issue"
 assert_out "i-ghost" "and echoes the issue back"
 
@@ -36,7 +36,7 @@ run "$HARNESS/bin/tracker" notes --issue i-ghost
 assert_rc 0 "notes --issue"
 assert_out "the thing worth remembering" "the note reads back"
 
-run "$HARNESS/bin/tracker" set i-other title="unrelated"
+run "$HARNESS/bin/tracker" set i-other title="unrelated" description="another test issue"
 assert_rc 0 "file a second issue"
 run "$HARNESS/bin/tracker" notes --issue i-other
 assert_rc 0 "notes --issue on an issue with no notes"

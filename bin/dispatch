@@ -438,6 +438,20 @@ Whether the tracker is reachable from inside your worktree depends on this
 project's config.json worktree.linkPaths and on whether this clone's hooks
 are installed. Ask the dispatching session for the issue text if you need it."
 
+  # Extract the issue description from the tracker JSON for context-file
+  # inclusion. Falls back to empty if unavailable or the JSON has no
+  # description field — the section is omitted rather than printing a
+  # confusing "(none)".
+  issue_description=$(printf '%s\n' "$issue_json" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    desc = data.get("description") or ""
+    print(desc)
+except Exception:
+    pass
+' 2>/dev/null || true)
+
   notes_rendered=$(printf '%s\n' "$notes_raw" | render_notes)
 
   # Not capped: an id with a long history is exactly the case the audit is
@@ -551,6 +565,12 @@ for s in suites:
     echo "has not read it. It is recorded for the audit trail and it is NOT the"
     echo "limit of what you may write. The enforced limit is the claimed list above."
     echo
+    if [ -n "$issue_description" ]; then
+      echo "## Issue description"
+      echo
+      echo "$issue_description"
+      echo
+    fi
     echo "## Your brief"
     echo
     echo "    $brief"

@@ -13,7 +13,7 @@ fixture_init
 
 assert_same "$REPO" "$HARNESS" "this case is the root layout"
 
-run_in "$REPO" "$HARNESS/bin/tracker" set i-root title="filed from the root"
+run_in "$REPO" "$HARNESS/bin/tracker" set i-root title="filed from the root" description="root test issue"
 assert_rc 0 "tracker set from the repo root"
 
 # .entropy-machines/ lands at the root, not next to whatever directory we happened to

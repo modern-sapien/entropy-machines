@@ -9,9 +9,9 @@ fixture_init
 fixture_hooks
 
 T="$HARNESS/bin/tracker"
-run "$T" set i-ready title="ready to work on"
+run "$T" set i-ready title="ready to work on" description="ready to work on"
 assert_rc 0 "file a ready issue"
-run "$T" set i-held title="held" heldWhy="owner has not ruled"
+run "$T" set i-held title="held" description="held" heldWhy="owner has not ruled"
 assert_rc 0 "file a held issue"
 run "$HARNESS/bin/dispatch" i-flying --files "src/main.c" --brief "in flight" --force
 assert_rc 0 "dispatch an issue so there is something in flight"

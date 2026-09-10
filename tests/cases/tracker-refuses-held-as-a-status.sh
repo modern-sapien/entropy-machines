@@ -12,7 +12,7 @@ fixture_new
 fixture_init
 
 T="$HARNESS/bin/tracker"
-run "$T" set i-thing title="a thing"
+run "$T" set i-thing title="a thing" description="a thing"
 assert_rc 0 "file an issue"
 
 run "$T" set i-thing status=held

@@ -280,6 +280,16 @@ def cmd_set(args):
 
     with locked(PATH):
         data = _load(PATH)
+        is_new = iid not in data["issues"]
+        if is_new:
+            provided_keys = {k for k, _ in pairs}
+            if "description" not in provided_keys:
+                print(
+                    f"tracker-file: REFUSED — creating a new issue requires a "
+                    f"description. Add description=<text> to your set command.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
         issue = data["issues"].setdefault(iid, _new_issue())
         for k, v in pairs:
             if k == "status":
