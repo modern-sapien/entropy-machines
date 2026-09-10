@@ -77,6 +77,18 @@ mkdir -p "$docs_path"
 # embedded directly in templates and applied via style.setProperty. No theme
 # CSS files, no docs.theme config key needed for basic serving.
 
+# SPA — the React frontend's production build. When ui/dist/ exists, serve its
+# static files and use index.html as the SPA fallback for client-side routes.
+# Check two locations: sibling to bin/ ($ENTROPY_MACHINES_HOME/ui/dist/) and
+# at the project root ($ENTROPY_MACHINES_ROOT/ui/dist/). If neither exists,
+# SERVE_SPA_ROOT stays empty and the server falls through to legacy behavior.
+SERVE_SPA_ROOT=""
+if [ -f "$ENTROPY_MACHINES_HOME/ui/dist/index.html" ]; then
+  SERVE_SPA_ROOT="$ENTROPY_MACHINES_HOME/ui/dist"
+elif [ -f "$ENTROPY_MACHINES_ROOT/ui/dist/index.html" ]; then
+  SERVE_SPA_ROOT="$ENTROPY_MACHINES_ROOT/ui/dist"
+fi
+
 SERVE_NO_OPEN=""
 port=""
 for _arg in "$@"; do
@@ -103,6 +115,7 @@ export SERVE_NOTES_PY="$NOTES_PY"
 export SERVE_TRACKER_BACKEND="$tracker_backend"
 export SERVE_TRACKER_FILE_PATH="$tracker_file_path"
 export SERVE_PROJECT_NAME="$project_name"
+export SERVE_SPA_ROOT="$SERVE_SPA_ROOT"
 
 exec python3 - <<'PY'
 """bin/serve's HTTP server, run via `python3 -` from the shell shim above.
@@ -140,6 +153,36 @@ TRACKER_BACKEND = os.environ.get("SERVE_TRACKER_BACKEND", "file")
 TRACKER_FILE_PATH = os.environ.get("SERVE_TRACKER_FILE_PATH",
                                     ".entropy-machines/issues.json")
 PROJECT_NAME = os.environ.get("SERVE_PROJECT_NAME", "")
+
+# SPA — the React frontend's production build. When SPA_ROOT is set and the
+# directory contains index.html, the server serves its static files at
+# /assets/* and uses index.html as the SPA fallback for any route not
+# matched by /api/*, /__doc*, /__save, TRACKER.html, legacy doc files, or
+# /assets/*. When SPA_ROOT is empty, legacy behavior is unchanged.
+SPA_ROOT = os.environ.get("SERVE_SPA_ROOT", "")
+SPA_INDEX = os.path.join(SPA_ROOT, "index.html") if SPA_ROOT else ""
+SPA_AVAILABLE = bool(SPA_ROOT and os.path.isfile(SPA_INDEX))
+
+# MIME types for static assets served from ui/dist/assets/.
+_MIME_TYPES = {
+    ".js":    "application/javascript",
+    ".mjs":   "application/javascript",
+    ".css":   "text/css",
+    ".html":  "text/html; charset=utf-8",
+    ".json":  "application/json",
+    ".svg":   "image/svg+xml",
+    ".png":   "image/png",
+    ".jpg":   "image/jpeg",
+    ".jpeg":  "image/jpeg",
+    ".gif":   "image/gif",
+    ".ico":   "image/x-icon",
+    ".woff":  "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf":   "font/ttf",
+    ".eot":   "application/vnd.ms-fontobject",
+    ".map":   "application/json",
+    ".txt":   "text/plain; charset=utf-8",
+}
 
 # enhance.py — auto-patch stale docs at serve time so the reader never sees
 # a doc missing disk-save, nav-marks, live-reload, collapse, etc.
@@ -675,6 +718,56 @@ class Handler(BaseHTTPRequestHandler):
             ENTROPY_MACHINES_ROOT, method, parsed.path, query, body)
         self._send_json(status, obj)
 
+    # ------------------------------------------------------------------
+    # SPA static asset serving — /assets/* from ui/dist/assets/.
+    # ------------------------------------------------------------------
+    def _serve_spa_asset(self, path):
+        """Serve a static file from ui/dist/. Returns True if handled."""
+        if not SPA_AVAILABLE:
+            return False
+        # Only /assets/* — never walk outside that subtree.
+        if not path.startswith("/assets/"):
+            return False
+        # Reject path traversal.
+        rel = path[1:]  # strip leading /
+        if ".." in rel or "\0" in rel:
+            self._send(400, b"bad request", "text/plain; charset=utf-8")
+            return True
+        target = os.path.join(SPA_ROOT, rel)
+        # Resolve symlinks and verify the file is still under SPA_ROOT.
+        try:
+            real = os.path.realpath(target)
+        except (OSError, ValueError):
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return True
+        if not real.startswith(os.path.realpath(SPA_ROOT) + os.sep):
+            self._send(403, b"forbidden", "text/plain; charset=utf-8")
+            return True
+        if not os.path.isfile(real):
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return True
+        ext = os.path.splitext(real)[1].lower()
+        content_type = _MIME_TYPES.get(ext, "application/octet-stream")
+        with open(real, "rb") as f:
+            data = f.read()
+        # Vite hashes asset filenames, so they are safe to cache.
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        if "/assets/" in path:
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+        return True
+
+    def _serve_spa_index(self):
+        """Serve ui/dist/index.html as the SPA entry point."""
+        with open(SPA_INDEX, "rb") as f:
+            data = f.read()
+        self._send(200, data, "text/html; charset=utf-8")
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -683,8 +776,21 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_api("GET", parsed)
             return
 
+        # SPA static assets — /assets/* from ui/dist/assets/.
+        if path.startswith("/assets/"):
+            if self._serve_spa_asset(path):
+                return
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+            return
+
         if path == "/":
-            # When the tracker is empty (first contact), go straight to the PRD.
+            # When ui/dist/ exists, serve the SPA entry point — React Router
+            # handles client-side routing from here.
+            if SPA_AVAILABLE:
+                self._serve_spa_index()
+                return
+            # Legacy dashboard: when the tracker is empty (first contact), go
+            # straight to the PRD.
             ready = ready_issues()
             if not ready:
                 import glob
@@ -726,7 +832,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             # Fall through: serve the static file if it exists in the docs dir.
 
-        # a bare filename request — the only other shape this server serves.
+        # a bare filename request — serve .html docs from the docs directory.
         name = path.lstrip("/")
         target = doc_path(name)
         if target is not None and os.path.isfile(target):
@@ -746,6 +852,13 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 body += SAVE_PATCH
             self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        # SPA fallback — any route not matched above serves index.html so
+        # React Router can handle client-side routing (/tracker, /prds/*,
+        # /reports/*, /docs/*, etc.).
+        if SPA_AVAILABLE:
+            self._serve_spa_index()
             return
 
         self._send(404, b"not found", "text/plain; charset=utf-8")
@@ -909,6 +1022,10 @@ def main(no_open=False):
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: config-driven (5-color, embedded in templates)", flush=True)
     print("  auto-enhance: active (stale docs patched on first GET)", flush=True)
+    if SPA_AVAILABLE:
+        print("  spa: %s" % SPA_ROOT, flush=True)
+    else:
+        print("  spa: not found (legacy doc serving only)", flush=True)
     if not no_open:
         def _open_browser():
             import glob
