@@ -38,7 +38,7 @@ git -C "$REPO" add src/main.c
 git -C "$REPO" commit -q --no-verify -m "chore: slipped past the hook"
 bad=$(git -C "$REPO" rev-parse HEAD)
 
-run_in "$REPO" sh "$HARNESS/lib/handoff-guard.sh" --commit "$bad"
+run_in "$REPO" bash "$HARNESS/lib/handoff-guard.sh" --commit "$bad"
 assert_rc_nonzero "--commit must refuse an id-less commit into a held scope"
 assert_no_traceback "the audit must judge, not crash"
 assert_not_out "fatal:" "and must not hand git a format git rejects"
@@ -53,14 +53,14 @@ git -C "$REPO" add unrelated/notes.md
 git -C "$REPO" commit -q --no-verify -m "chore: my own notes"
 good=$(git -C "$REPO" rev-parse HEAD)
 
-run_in "$REPO" sh "$HARNESS/lib/handoff-guard.sh" --commit "$good"
+run_in "$REPO" bash "$HARNESS/lib/handoff-guard.sh" --commit "$good"
 assert_rc 0 "--commit must pass a commit outside every open scope"
 assert_no_traceback "cleanly"
 assert_not_out "fatal:" "with no git error"
 assert_not_out "REFUSED" "and no refusal"
 
 # --- 3. --range sees the bad commit in a span ------------------------------
-run_in "$REPO" sh "$HARNESS/lib/handoff-guard.sh" --range "$bad~1..$good"
+run_in "$REPO" bash "$HARNESS/lib/handoff-guard.sh" --range "$bad~1..$good"
 assert_rc_nonzero "--range must refuse a span containing the bad commit"
 assert_no_traceback "without crashing"
 assert_not_out "fatal:" "and without a git error"
