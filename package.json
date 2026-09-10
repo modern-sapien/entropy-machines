@@ -14,6 +14,9 @@
   "bin": {
     "entropy-machines": "bin/entropy-machines-init"
   },
+  "scripts": {
+    "prepublish": "cd ui && npm install && npm run build"
+  },
   "files": [
     "bin/",
     "lib/",
@@ -21,6 +24,7 @@
     "doctrine/",
     "hooks/",
     "agents/",
+    "ui/dist/",
     "!**/__pycache__",
     "!**/*.pyc"
   ],
