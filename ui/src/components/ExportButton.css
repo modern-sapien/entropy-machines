@@ -1,0 +1,5 @@
+/* ExportButton — hover accent colour.
+ * Base styling inherited from .savebar button in index.css. */
+button.export-btn:hover {
+  color: var(--accent);
+}

@@ -49,6 +49,9 @@ interface ResponseBoxProps {
   onChange: (value: string) => void;
   mini?: boolean;
   locked?: boolean;
+  onReply?: () => void;
+  onEdit?: () => void;
+  onClear?: () => void;
 }
 
 // Autogrow: the textarea's height tracks its content, same trick the old HTML
@@ -66,13 +69,21 @@ function useAutoGrow(value: string, skip: boolean) {
   return ref;
 }
 
-function ResponseBox({ id, label, discuss, value, onChange, mini, locked }: ResponseBoxProps) {
+function ResponseBox({ id, label, discuss, value, onChange, mini, locked, onReply, onEdit, onClear }: ResponseBoxProps) {
   const ref = useAutoGrow(value, !!mini);
   const filled = value.trim().length > 0;
   const className = ["response", filled && "filled", mini && "mini"].filter(Boolean).join(" ");
+  const showActions = !mini && (onReply || (locked && onEdit) || (filled && onClear));
 
   return (
     <div className={className} data-resp={id}>
+      {showActions && (
+        <div className="response-actions">
+          {onReply && <button type="button" title="Reply" onClick={onReply}>↩</button>}
+          {locked && onEdit && <button type="button" title="Edit" onClick={onEdit}>✏</button>}
+          {filled && onClear && <button type="button" title="Clear" onClick={onClear}>✕</button>}
+        </div>
+      )}
       {label && <label>{label}</label>}
       {discuss && <div className="discuss">{discuss}</div>}
       <textarea
@@ -119,10 +130,16 @@ function ReplyThread({
   rounds,
   responses,
   onChange,
+  unlocked,
+  onEdit,
+  onClear,
 }: {
   rounds: ThreadRound[];
   responses: Record<string, string>;
   onChange: (id: string, value: string) => void;
+  unlocked: Set<string>;
+  onEdit: (id: string) => void;
+  onClear: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Same rule as the old templates: a chain of 3+ rounds folds everything but
@@ -134,6 +151,8 @@ function ReplyThread({
 
   function renderRound(round: ThreadRound) {
     const value = responses[round.id] ?? "";
+    const hasReply = !!round.reply;
+    const effectiveLocked = hasReply && !unlocked.has(round.id);
     return (
       <div key={round.id}>
         <ResponseBox
@@ -142,7 +161,9 @@ function ReplyThread({
           discuss={round.discuss}
           value={value}
           onChange={(v) => onChange(round.id, v)}
-          locked={!!round.reply}
+          locked={effectiveLocked}
+          onEdit={hasReply ? () => onEdit(round.id) : undefined}
+          onClear={() => onClear(round.id)}
         />
         {round.reply && <Review id={round.id} reply={round.reply} />}
       </div>
@@ -254,9 +275,19 @@ export function KitchenSinkPage() {
   const [responses, setResponses] = useState<Record<string, string>>(INITIAL_RESPONSES);
   const [dirty, setDirty] = useState(true);
   const [currentSectionId, setCurrentSectionId] = useState<string>(SECTION_IDS.theme);
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
 
   function updateResponse(id: string, value: string) {
     setResponses((prev) => ({ ...prev, [id]: value }));
+    setDirty(true);
+  }
+
+  function handleUnlock(id: string) {
+    setUnlocked((prev) => new Set(prev).add(id));
+  }
+
+  function handleClearResponse(id: string) {
+    setResponses((prev) => ({ ...prev, [id]: "" }));
     setDirty(true);
   }
 
@@ -357,6 +388,7 @@ export function KitchenSinkPage() {
           discuss="A short question with an answer already in it, to show the filled/autogrow state."
           value={responses["ks-basic-filled"]}
           onChange={(v) => updateResponse("ks-basic-filled", v)}
+          onClear={() => handleClearResponse("ks-basic-filled")}
         />
         <ResponseBox
           id="ks-basic-empty"
@@ -364,6 +396,7 @@ export function KitchenSinkPage() {
           discuss="Same box, nothing typed yet — accent border only, no positive left edge."
           value={responses["ks-basic-empty"]}
           onChange={(v) => updateResponse("ks-basic-empty", v)}
+          onClear={() => handleClearResponse("ks-basic-empty")}
         />
 
         <h2 id={SECTION_IDS.rowNotes}>Row Notes</h2>
@@ -423,7 +456,7 @@ export function KitchenSinkPage() {
           positive-coloured. Once a round has a reply its box locks read-only. This thread has 5 rounds, so the
           oldest 3 fold behind "Show 3 earlier."
         </p>
-        <ReplyThread rounds={THREAD_ROUNDS} responses={responses} onChange={updateResponse} />
+        <ReplyThread rounds={THREAD_ROUNDS} responses={responses} onChange={updateResponse} unlocked={unlocked} onEdit={handleUnlock} onClear={handleClearResponse} />
 
         <h2 id={SECTION_IDS.saveBar}>Save Bar</h2>
         <p className="sub">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { ExportButton } from "../components/ExportButton";
 
 // ============================================================================
 // SprintReportPage — standalone report renderer at /reports/:slug.
@@ -101,6 +102,9 @@ function ResponseBox({
   onChange,
   mini,
   locked,
+  onReply,
+  onEdit,
+  onClear,
 }: {
   respKey: string;
   label?: string;
@@ -109,15 +113,26 @@ function ResponseBox({
   onChange: (value: string) => void;
   mini?: boolean;
   locked?: boolean;
+  onReply?: () => void;
+  onEdit?: () => void;
+  onClear?: () => void;
 }) {
   const ref = useAutoGrow(value, !!mini);
   const filled = value.trim().length > 0;
   const cls = ["response", filled && "filled", mini && "mini"]
     .filter(Boolean)
     .join(" ");
+  const showActions = !mini && (onReply || (locked && onEdit) || (filled && onClear));
 
   return (
     <div className={cls} data-resp={respKey}>
+      {showActions && (
+        <div className="response-actions">
+          {onReply && <button type="button" title="Reply" onClick={onReply}>↩</button>}
+          {locked && onEdit && <button type="button" title="Edit" onClick={onEdit}>✏</button>}
+          {filled && onClear && <button type="button" title="Clear" onClick={onClear}>✕</button>}
+        </div>
+      )}
       {label && <label>{label}</label>}
       {discuss && (
         <div
@@ -147,10 +162,18 @@ function ResponseThread({
   response,
   value,
   onChange,
+  isUnlocked,
+  onReply,
+  onEdit,
+  onClear,
 }: {
   response: ResponseData;
   value: string;
   onChange: (value: string) => void;
+  isUnlocked?: boolean;
+  onReply?: () => void;
+  onEdit?: () => void;
+  onClear?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const replies = response.replies;
@@ -164,14 +187,16 @@ function ResponseThread({
         discuss={response.discuss ?? undefined}
         value={value}
         onChange={onChange}
+        onReply={onReply}
+        onClear={onClear}
       />
     );
   }
 
   // Lock the answer box once the agent has replied (the answer is settled
-  // for this round).
+  // for this round), unless manually unlocked via the edit button.
   const locked =
-    replies.length > 0 && replies[replies.length - 1].author === "agent";
+    replies.length > 0 && replies[replies.length - 1].author === "agent" && !isUnlocked;
 
   // Collapse: 3+ replies folds everything but the newest 2 behind a toggle.
   const cut = replies.length >= 3 ? replies.length - 2 : 0;
@@ -191,6 +216,8 @@ function ResponseThread({
     );
   }
 
+  const hasAgentReply = replies.length > 0 && replies[replies.length - 1].author === "agent";
+
   return (
     <div className="thread">
       <ResponseBox
@@ -200,6 +227,9 @@ function ResponseThread({
         value={value}
         onChange={onChange}
         locked={locked}
+        onReply={onReply}
+        onEdit={hasAgentReply ? onEdit : undefined}
+        onClear={onClear}
       />
       {older.length > 0 && (
         <>
@@ -242,6 +272,8 @@ export function SprintReportPage() {
   const [savedValues, setSavedValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [currentPageId, setCurrentPageId] = useState<string>("");
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // -- data fetch -----------------------------------------------------------
 
@@ -272,6 +304,7 @@ export function SprintReportPage() {
         if (result.pages.length > 0) {
           setCurrentPageId(result.pages[0].id);
         }
+        setUnlocked(new Set());
         setError(null);
       } catch (err) {
         if (cancelled) return;
@@ -285,7 +318,7 @@ export function SprintReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, refreshKey]);
 
   // -- dirty tracking -------------------------------------------------------
 
@@ -297,6 +330,50 @@ export function SprintReportPage() {
 
   function updateResponse(key: string, value: string) {
     setResponses((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // -- action buttons -------------------------------------------------------
+
+  async function handleReply(key: string) {
+    if (!slug) return;
+    const content = responses[key] ?? "";
+    if (!content.trim()) return;
+    try {
+      const res = await fetch(
+        `/api/docs/${encodeURIComponent(slug)}/responses/${encodeURIComponent(key)}/reply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ author: "owner", content }),
+        }
+      );
+      if (!res.ok) throw new Error(`Reply failed: ${res.status}`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error("Reply error:", err);
+    }
+  }
+
+  function handleUnlock(key: string) {
+    setUnlocked((prev) => new Set(prev).add(key));
+  }
+
+  async function handleClear(key: string) {
+    if (!slug) return;
+    setResponses((prev) => ({ ...prev, [key]: "" }));
+    setSavedValues((prev) => ({ ...prev, [key]: "" }));
+    try {
+      await fetch(
+        `/api/docs/${encodeURIComponent(slug)}/responses/${encodeURIComponent(key)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: "" }),
+        }
+      );
+    } catch (err) {
+      console.error("Clear error:", err);
+    }
   }
 
   // -- save -----------------------------------------------------------------
@@ -474,6 +551,10 @@ export function SprintReportPage() {
                   response={resp}
                   value={responses[resp.resp_key] ?? ""}
                   onChange={(v) => updateResponse(resp.resp_key, v)}
+                  isUnlocked={unlocked.has(resp.resp_key)}
+                  onReply={() => handleReply(resp.resp_key)}
+                  onEdit={() => handleUnlock(resp.resp_key)}
+                  onClear={() => handleClear(resp.resp_key)}
                 />
               ))}
             </section>
@@ -494,6 +575,7 @@ export function SprintReportPage() {
                 ? "Unsaved changes..."
                 : "Saved"}
           </span>
+          <ExportButton title={doc.title} />
           <button
             type="button"
             onClick={handleSave}

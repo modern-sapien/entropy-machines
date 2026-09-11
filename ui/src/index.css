@@ -448,6 +448,7 @@ thead th {
  *   answered    = --positive (the .filled override below)
  */
 .response {
+  position: relative;
   margin: 16px 0 6px;
   border: 1px solid var(--notice);
   border-left: 3px solid var(--notice);
@@ -493,6 +494,46 @@ thead th {
 
 .response textarea[readonly] {
   cursor: default;
+}
+
+/* ---- response action buttons ----
+ * Positioned top-right of the .response container. Visible on hover or
+ * focus-within; hidden by default. Not shown on .mini row-notes. */
+.response-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.response:hover > .response-actions,
+.response:focus-within > .response-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.response.mini .response-actions {
+  display: none;
+}
+
+.response-actions button {
+  background: var(--bg);
+  border: 1px solid transparent;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 7px;
+  line-height: 1.4;
+}
+
+.response-actions button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Answered state: colour + weight, never a fade or a fill. */

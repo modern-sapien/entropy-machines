@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { ExportButton } from "../components/ExportButton";
 
 // ============================================================================
 // DocPage — full document renderer with multi-page nav, response boxes,
@@ -128,15 +129,26 @@ interface ResponseBoxProps {
   value: string;
   onChange: (value: string) => void;
   locked?: boolean;
+  onReply?: () => void;
+  onEdit?: () => void;
+  onClear?: () => void;
 }
 
-function ResponseBox({ respKey, label, discuss, value, onChange, locked }: ResponseBoxProps) {
+function ResponseBox({ respKey, label, discuss, value, onChange, locked, onReply, onEdit, onClear }: ResponseBoxProps) {
   const ref = useAutoGrow(value, false);
   const filled = value.trim().length > 0;
   const className = ["response", filled && "filled"].filter(Boolean).join(" ");
+  const showActions = onReply || (locked && onEdit) || (filled && onClear);
 
   return (
     <div className={className} data-resp={respKey}>
+      {showActions && (
+        <div className="response-actions">
+          {onReply && <button type="button" title="Reply" onClick={onReply}>↩</button>}
+          {locked && onEdit && <button type="button" title="Edit" onClick={onEdit}>✏</button>}
+          {filled && onClear && <button type="button" title="Clear" onClick={onClear}>✕</button>}
+        </div>
+      )}
       {label && <label>{label}</label>}
       {discuss && (
         <div className="discuss" dangerouslySetInnerHTML={{ __html: discuss }} />
@@ -178,10 +190,18 @@ function ReplyThread({
   responses,
   values,
   onChange,
+  unlocked,
+  onReply,
+  onEdit,
+  onClear,
 }: {
   responses: Response[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  unlocked: Set<string>;
+  onReply: (key: string) => void;
+  onEdit: (key: string) => void;
+  onClear: (key: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   // Same rule as KitchenSinkPage: 3+ rounds folds everything but newest 2.
@@ -192,6 +212,7 @@ function ReplyThread({
   function renderRound(resp: Response) {
     const val = values[resp.resp_key] ?? resp.value;
     const hasReply = resp.replies.length > 0;
+    const effectiveLocked = hasReply && !unlocked.has(resp.resp_key);
     return (
       <div key={resp.resp_key}>
         <ResponseBox
@@ -200,7 +221,10 @@ function ReplyThread({
           discuss={resp.discuss}
           value={val}
           onChange={(v) => onChange(resp.resp_key, v)}
-          locked={hasReply}
+          locked={effectiveLocked}
+          onReply={() => onReply(resp.resp_key)}
+          onEdit={hasReply ? () => onEdit(resp.resp_key) : undefined}
+          onClear={() => onClear(resp.resp_key)}
         />
         {resp.replies.map((reply) => (
           <Review key={reply.id} reply={reply} />
@@ -244,11 +268,19 @@ function PageSection({
   responses,
   values,
   onChange,
+  unlocked,
+  onReply,
+  onEdit,
+  onClear,
 }: {
   page: Page;
   responses: Response[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  unlocked: Set<string>;
+  onReply: (key: string) => void;
+  onEdit: (key: string) => void;
+  onClear: (key: string) => void;
 }) {
   // Group responses that share the same base key prefix into threads.
   const groups = useMemo(() => {
@@ -277,7 +309,10 @@ function PageSection({
               discuss={group[0].discuss}
               value={values[group[0].resp_key] ?? group[0].value}
               onChange={(v) => onChange(group[0].resp_key, v)}
-              locked={group[0].replies.length > 0}
+              locked={group[0].replies.length > 0 && !unlocked.has(group[0].resp_key)}
+              onReply={() => onReply(group[0].resp_key)}
+              onEdit={group[0].replies.length > 0 ? () => onEdit(group[0].resp_key) : undefined}
+              onClear={() => onClear(group[0].resp_key)}
             />
             {group[0].replies.map((reply) => (
               <Review key={reply.id} reply={reply} />
@@ -289,6 +324,10 @@ function PageSection({
             responses={group}
             values={values}
             onChange={onChange}
+            unlocked={unlocked}
+            onReply={onReply}
+            onEdit={onEdit}
+            onClear={onClear}
           />
         ),
       )}
@@ -314,6 +353,10 @@ export function DocPage() {
   // Current page for scrollspy
   const [currentPageId, setCurrentPageId] = useState<string>("");
 
+  // Action-button state: manually unlocked response keys and refetch trigger
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [refreshKey, setRefreshKey] = useState(0);
+
   // ---- fetch doc data ----
   useEffect(() => {
     if (!slug) return;
@@ -334,6 +377,7 @@ export function DocPage() {
         setValues(init);
         setDirty(new Set());
         setSaveStatus("idle");
+        setUnlocked(new Set());
         setLoading(false);
         // Set initial page
         if (payload.pages.length > 0) {
@@ -344,7 +388,7 @@ export function DocPage() {
         setError(err.message);
         setLoading(false);
       });
-  }, [slug]);
+  }, [slug, refreshKey]);
 
   // ---- scrollspy ----
   useEffect(() => {
@@ -424,6 +468,54 @@ export function DocPage() {
     setValues((prev) => ({ ...prev, [key]: value }));
     setDirty((prev) => new Set(prev).add(key));
     setSaveStatus("idle");
+  }
+
+  // ---- action buttons ----
+
+  async function handleReply(key: string) {
+    if (!slug) return;
+    const content = values[key] ?? "";
+    if (!content.trim()) return;
+    try {
+      const res = await fetch(
+        `/api/docs/${encodeURIComponent(slug)}/responses/${encodeURIComponent(key)}/reply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ author: "owner", content }),
+        },
+      );
+      if (!res.ok) throw new Error(`Reply failed: ${res.status}`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error("Reply error:", err);
+    }
+  }
+
+  function handleUnlock(key: string) {
+    setUnlocked((prev) => new Set(prev).add(key));
+  }
+
+  async function handleClear(key: string) {
+    if (!slug) return;
+    setValues((prev) => ({ ...prev, [key]: "" }));
+    setDirty((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    try {
+      await fetch(
+        `/api/docs/${encodeURIComponent(slug)}/responses/${encodeURIComponent(key)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: "" }),
+        },
+      );
+    } catch (err) {
+      console.error("Clear error:", err);
+    }
   }
 
   // ---- save to API ----
@@ -516,6 +608,10 @@ export function DocPage() {
           responses={respByPage.get(page.id) ?? []}
           values={values}
           onChange={handleChange}
+          unlocked={unlocked}
+          onReply={handleReply}
+          onEdit={handleUnlock}
+          onClear={handleClear}
         />
       ))}
       <div className="savebar">
@@ -531,6 +627,7 @@ export function DocPage() {
                 ? "Saved"
                 : `${data.doc.counts.answered}/${data.doc.counts.total} answered`}
         </span>
+        <ExportButton title={data.doc.title} />
         <button type="button" onClick={handleSave} disabled={!hasDirty && !saving}>
           Save
         </button>
