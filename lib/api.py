@@ -14,8 +14,8 @@ API") for the endpoint table this implements:
     POST /api/issues
     GET  /api/issues/:id
     PATCH /api/issues/:id
-    GET  /api/issues/:id/notes
-    POST /api/issues/:id/notes
+    GET  /api/issues/:id/events
+    POST /api/issues/:id/events
     GET  /api/settings/:key
     PUT  /api/settings/:key
 
@@ -283,24 +283,24 @@ def update_issue(conn, args, query, body):
     return get_issue(conn, (issue_id,), query, body)
 
 
-def list_issue_notes(conn, args, query, body):
+def list_issue_events(conn, args, query, body):
     (issue_id,) = args
     get_issue(conn, (issue_id,), query, body)
-    rows = conn.execute("SELECT * FROM issue_notes WHERE issue_id = ? ORDER BY id", (issue_id,))
+    rows = conn.execute("SELECT * FROM issue_events WHERE issue_id = ? ORDER BY id", (issue_id,))
     return [row_to_dict(r) for r in rows]
 
 
-def add_issue_note(conn, args, query, body):
+def add_issue_event(conn, args, query, body):
     (issue_id,) = args
     get_issue(conn, (issue_id,), query, body)
     if not isinstance(body, dict) or not isinstance(body.get("content"), str) or not body["content"].strip():
         raise ApiError(400, 'expected a JSON body: {"content": "..."}')
     cur = conn.execute(
-        "INSERT INTO issue_notes (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO issue_events (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
         (issue_id, body.get("type", "comment"), body.get("author"), body["content"], now()),
     )
     conn.commit()
-    return row_to_dict(conn.execute("SELECT * FROM issue_notes WHERE id = ?", (cur.lastrowid,)).fetchone())
+    return row_to_dict(conn.execute("SELECT * FROM issue_events WHERE id = ?", (cur.lastrowid,)).fetchone())
 
 
 # ---------------------------------------------------------------------------
@@ -344,8 +344,8 @@ ROUTES = [
     ("POST", re.compile(r"^/api/issues$"), create_issue),
     ("GET", re.compile(r"^/api/issues/([^/]+)$"), get_issue),
     ("PATCH", re.compile(r"^/api/issues/([^/]+)$"), update_issue),
-    ("GET", re.compile(r"^/api/issues/([^/]+)/notes$"), list_issue_notes),
-    ("POST", re.compile(r"^/api/issues/([^/]+)/notes$"), add_issue_note),
+    ("GET", re.compile(r"^/api/issues/([^/]+)/events$"), list_issue_events),
+    ("POST", re.compile(r"^/api/issues/([^/]+)/events$"), add_issue_event),
     ("GET", re.compile(r"^/api/settings/([^/]+)$"), get_setting),
     ("PUT", re.compile(r"^/api/settings/([^/]+)$"), put_setting),
 ]

@@ -42,7 +42,7 @@ never neither.
 VERIFICATION. --verify (default on) re-reads the three source files AGAIN,
 independently of the counters the insert loop kept, and compares row counts:
   issues            len(issues.json["issues"])
-  issue_notes       len(issues.json["notes"])   (migration-extra rows, for
+  issue_events      len(issues.json["notes"])   (migration-extra rows, for
                                                   issue fields the p3 schema
                                                   has no column for, are
                                                   reported separately)
@@ -355,7 +355,7 @@ DOC_ID_TYPE_RX = re.compile(r"^(PRD-\d+)")
 
 # issue fields lib/tracker-file recognizes (docs/TRACKER-ADAPTER.md's file
 # backend) that the p3 issues table has no column for. Nothing here is
-# dropped — each issue carrying any of them gets one `issue_notes` row typed
+# dropped — each issue carrying any of them gets one `issue_events` row typed
 # "migration-extra" holding the leftover fields as JSON, so the migration
 # never silently loses data the schema simply wasn't shaped to carry.
 ISSUE_EXTRA_FIELDS = ("effort", "gate", "gatedAt", "heldWhy", "heldAt")
@@ -433,8 +433,8 @@ def migrate(root, docs_dir, tracker_path, out_path, schema_path, force):
         "responses_value_from_textarea": 0,
         "replies_inserted": 0,
         "issues_inserted": 0,
-        "issue_notes_from_log": 0,
-        "issue_notes_extra": 0,
+        "issue_events_from_log": 0,
+        "issue_events_extra": 0,
         "settings_inserted": 0,
         "warnings": [],
     }
@@ -562,10 +562,10 @@ def migrate(root, docs_dir, tracker_path, out_path, schema_path, force):
         extras = {k: issue[k] for k in ISSUE_EXTRA_FIELDS if k in issue}
         if extras:
             conn.execute(
-                "INSERT INTO issue_notes (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO issue_events (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
                 (iid, "migration-extra", "migrate_db", json.dumps(extras, ensure_ascii=False, sort_keys=True), None),
             )
-            report["issue_notes_extra"] += 1
+            report["issue_events_extra"] += 1
 
     for rec in notes_src:
         iid = rec.get("issue")
@@ -574,17 +574,17 @@ def migrate(root, docs_dir, tracker_path, out_path, schema_path, force):
             continue
         if iid not in issues_src:
             report["warnings"].append(
-                f"note for {iid!r}: no matching issue in issues.json — would dangle issue_notes.issue_id, skipped"
+                f"note for {iid!r}: no matching issue in issues.json — would dangle issue_events.issue_id, skipped"
             )
             continue
         verb = rec.get("verb") or "NOTE"
         note_type = NOTE_TYPE_MAP.get(verb, verb.lower())
         fields = rec.get("fields") if isinstance(rec.get("fields"), dict) else {}
         conn.execute(
-            "INSERT INTO issue_notes (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO issue_events (issue_id, type, author, content, created_at) VALUES (?, ?, ?, ?, ?)",
             (iid, note_type, rec.get("actor"), json.dumps(fields, ensure_ascii=False, sort_keys=True), rec.get("ts")),
         )
-        report["issue_notes_from_log"] += 1
+        report["issue_events_from_log"] += 1
 
     conn.commit()
     return conn, report, manifest_docs, issues_src, notes_src
@@ -607,9 +607,9 @@ def independent_verify(conn, docs_dir, manifest_docs, tracker_raw):
 
     expected_notes = len(src_doc.get("notes", []))
     actual_notes = cur.execute(
-        "SELECT COUNT(*) FROM issue_notes WHERE type != 'migration-extra'"
+        "SELECT COUNT(*) FROM issue_events WHERE type != 'migration-extra'"
     ).fetchone()[0]
-    checks.append(("issue_notes (from tracker log)", expected_notes, actual_notes))
+    checks.append(("issue_events (from tracker log)", expected_notes, actual_notes))
 
     expected_docs = expected_pages = expected_responses = 0
     for entry in manifest_docs.values():
@@ -692,9 +692,9 @@ def main(argv=None):
     print(f"  replies: {report['replies_inserted']}")
     print(f"  issues: {report['issues_inserted']}")
     print(
-        f"  issue_notes: {report['issue_notes_from_log']} from the tracker log"
-        + (f" + {report['issue_notes_extra']} migration-extra (issue fields the p3 schema has no column for)"
-           if report["issue_notes_extra"] else "")
+        f"  issue_events: {report['issue_events_from_log']} from the tracker log"
+        + (f" + {report['issue_events_extra']} migration-extra (issue fields the p3 schema has no column for)"
+           if report["issue_events_extra"] else "")
     )
     print(f"  settings: {report['settings_inserted']}")
     if report["warnings"]:

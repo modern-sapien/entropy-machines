@@ -147,12 +147,12 @@ assert_out "agent-x" "and the patched claim"
 run http_get "$BASE/api/issues/no-such-issue"
 case "$OUT" in 404*) ;; *) _fail "an unknown issue must 404" "$(printf '%s' "$OUT" | head -1)" ;; esac
 
-run http_json POST "$BASE/api/issues/i-test-thing/notes" '{"content":"a note","author":"tester"}'
-case "$OUT" in 201*) ;; *) _fail "adding a note must 201" "$(printf '%s' "$OUT" | head -1)" ;; esac
+run http_json POST "$BASE/api/issues/i-test-thing/events" '{"content":"a note","author":"tester"}'
+case "$OUT" in 201*) ;; *) _fail "adding an event must 201" "$(printf '%s' "$OUT" | head -1)" ;; esac
 
-run http_get "$BASE/api/issues/i-test-thing/notes"
-assert_rc 0 "GET issue notes completes"
-assert_out "a note" "the note is in the list"
+run http_get "$BASE/api/issues/i-test-thing/events"
+assert_rc 0 "GET issue events completes"
+assert_out "a note" "the event is in the list"
 
 # --- settings ---------------------------------------------------------------------
 run http_get "$BASE/api/settings/theme"

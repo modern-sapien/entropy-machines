@@ -366,7 +366,7 @@ export function TrackerPage() {
     let cancelled = false;
     setNotesLoading(true);
     setDetailNotes([]);
-    fetch(`/api/issues/${encodeURIComponent(detailId)}/notes`)
+    fetch(`/api/issues/${encodeURIComponent(detailId)}/events`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: Note[]) => {
         if (!cancelled) {

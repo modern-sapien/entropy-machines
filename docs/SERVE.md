@@ -33,7 +33,7 @@ and hands off to `api.dispatch()`.
 | `/api/docs/:id/responses/:key/reply` | POST | Append a reply (body `{"author": "...", "content": "..."}`). |
 | `/api/issues` | GET, POST | List (optionally `?status=`) or create (body needs `id` + `title`). |
 | `/api/issues/:id` | GET, PATCH | Read, or partially update (`title`, `status`, `source_doc`, `blocked_by`, `claimed_by`, `claimed_at`). |
-| `/api/issues/:id/notes` | GET, POST | Read or append a note (body `{"content": "..."}`, optional `type`/`author`). |
+| `/api/issues/:id/events` | GET, POST | Read or append an event (body `{"content": "..."}`, optional `type`/`author`). |
 | `/api/settings/:key` | GET, PUT | Read or upsert a setting (PUT body `{"value": "..."}`). |
 
 No db yet (`bin/migrate-db` not run) is a `503` naming the fix, not a

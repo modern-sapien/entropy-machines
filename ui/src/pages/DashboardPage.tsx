@@ -48,7 +48,7 @@ async function fetchRecentEvents(issues: Issue[]): Promise<IssueNote[]> {
   if (issues.length === 0) return [];
   const batches = await Promise.all(
     issues.map((iss) =>
-      fetchJson<IssueNote[]>(`/api/issues/${encodeURIComponent(iss.id)}/notes`)
+      fetchJson<IssueNote[]>(`/api/issues/${encodeURIComponent(iss.id)}/events`)
     )
   );
   const all = batches.flat();

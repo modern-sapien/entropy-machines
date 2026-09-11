@@ -75,8 +75,8 @@ CREATE TABLE IF NOT EXISTS issues (
   updated_at  TEXT
 );
 
--- Issue notes (replaces the notes log)
-CREATE TABLE IF NOT EXISTS issue_notes (
+-- Issue events (replaces the notes log)
+CREATE TABLE IF NOT EXISTS issue_events (
   id          INTEGER PRIMARY KEY,
   issue_id    TEXT REFERENCES issues(id),
   type        TEXT NOT NULL,      -- "dispatch" | "handoff" | "comment"
@@ -96,4 +96,4 @@ CREATE INDEX IF NOT EXISTS idx_pages_doc_id       ON pages(doc_id);
 CREATE INDEX IF NOT EXISTS idx_responses_doc_id   ON responses(doc_id);
 CREATE INDEX IF NOT EXISTS idx_replies_response   ON replies(response_id);
 CREATE INDEX IF NOT EXISTS idx_issues_source_doc  ON issues(source_doc);
-CREATE INDEX IF NOT EXISTS idx_issue_notes_issue  ON issue_notes(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_events_issue ON issue_events(issue_id);
