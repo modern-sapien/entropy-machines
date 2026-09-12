@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Repo post-commit hook — VERSION-CONTROLLED, like its pre-commit and
+# commit-msg siblings, and installed by the same lib/install-hooks.sh.
+# install-hooks.sh iterates every file in hooks/, so this one is picked up
+# the moment it lands; the installer needs no change to find it.
+#
+# After every commit, rebuild generated pages whose tracked source files
+# changed. Currently rebuilds TRACKER.html via bin/tracker render.
+#
+# FAIL-OPEN. The commit is already recorded; a rendering failure must not
+# look like a commit failure. Deliberately no `set -e`.
+
+set -u
+
+trap 'exit 0' EXIT
+
+# The test harness (tests/run) exports ENTROPY_SRC. Skip the rebuild in
+# test sandboxes — the render is irrelevant there and hangs under parallel
+# execution.
+[ -z "${ENTROPY_SRC:-}" ] || exit 0
+
+. "$(dirname "$0")/../lib/roots.sh"
+
+: "${ENTROPY_MACHINES_HOME:=$(entropy_machines_home "$0")}"
+export ENTROPY_MACHINES_HOME
+
+ENTROPY_MACHINES_ROOT=$(entropy_machines_root 2>/dev/null) || exit 0
+export ENTROPY_MACHINES_ROOT
+
+TRACKER_SOURCES="lib/tracker-view.py lib/doc-template.html lib/tracker-file bin/tracker config.json"
+
+changed=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null) || exit 0
+[ -n "$changed" ] || exit 0
+
+rebuild_tracker=false
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  for src in $TRACKER_SOURCES; do
+    if [ "$f" = "$src" ]; then
+      rebuild_tracker=true
+      break 2
+    fi
+  done
+done <<< "$changed"
+
+if $rebuild_tracker && [ -x "$ENTROPY_MACHINES_HOME/bin/tracker" ]; then
+  ( cd "$ENTROPY_MACHINES_ROOT" && "$ENTROPY_MACHINES_HOME/bin/tracker" render ) 2>/dev/null || true
+  echo "post-commit: rebuilt TRACKER.html" >&2
+fi
+
+exit 0

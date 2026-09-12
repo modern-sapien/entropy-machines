@@ -26,7 +26,7 @@ run "$HARNESS/lib/install-hooks.sh"
 assert_rc 0 "install-hooks succeeds"
 assert_out "verified" "and says it verified its own install"
 
-for h in commit-msg pre-commit post-checkout; do
+for h in commit-msg pre-commit post-checkout post-commit; do
   [ -f "$HARNESS/hooks/$h" ] || continue
   assert_file "$REPO/.git/hooks/$h" "the $h shim is installed"
   [ -x "$REPO/.git/hooks/$h" ] || _fail "the $h shim must be executable" "not executable: $REPO/.git/hooks/$h"
