@@ -16,7 +16,7 @@
     "entropy-machines": "bin/entropy-machines-init"
   },
   "scripts": {
-    "prepublish": "cd ui && npm install && npm run build"
+    "prepack": "cd ui && npm install && npm run build"
   },
   "files": [
     "bin/",
