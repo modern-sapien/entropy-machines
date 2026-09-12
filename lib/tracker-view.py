@@ -482,12 +482,12 @@ footer{border-top:1px solid var(--accent);margin:0 18px;padding:12px 0 40px;
 
 #scrim{position:fixed;inset:0;background:#000c;z-index:30;display:none}
 #scrim.on{display:block}
-#det{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);z-index:31;
+#detail{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);z-index:31;
   background:var(--bg);border-left:2px solid var(--accent);overflow:auto;
   transform:translateX(100%);transition:transform .16s ease;padding:18px 22px 60px}
-#det.on{transform:none}
-#det h2{margin:6px 40px 4px 0;font-size:var(--fs-title);line-height:1.3}
-#det .sub{font-family:var(--mono);font-size:var(--fs-sm);margin-bottom:14px}
+#detail.on{transform:none}
+#detail h2{margin:6px 40px 4px 0;font-size:var(--fs-title);line-height:1.3}
+#detail .sub{font-family:var(--mono);font-size:var(--fs-sm);margin-bottom:14px}
 #close{position:absolute;top:12px;right:16px;background:var(--bg);
   border:1px solid var(--accent);width:30px;height:30px;color:var(--fg);
   font-size:var(--fs-title);cursor:pointer;line-height:1}
@@ -520,9 +520,17 @@ footer{border-top:1px solid var(--accent);margin:0 18px;padding:12px 0 40px;
   gap:2px 10px}
 .note dt{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700}
 .note dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.resize-handle{position:absolute;top:0;width:5px;height:100%;cursor:col-resize;z-index:10;
+  background:transparent;touch-action:none}
+.resize-handle:hover,.resize-handle.dragging{background:var(--accent)}
+.sidebar{position:relative}
+.sidebar .resize-handle{right:0}
+#detail .resize-handle{left:0}
 </style></head>
 <body>
 <div class="sidebar">
+<div class="resize-handle" data-resize="sidebar"></div>
 __NAV__
 <div class="filters">
   <div class="grp">State<span class="hint">held, gated and blocked are
@@ -550,7 +558,7 @@ __NAV__
 <footer id="foot"></footer>
 </div>
 <div id="scrim"></div>
-<div id="det"><button id="close" title="close">&#215;</button><div id="detBody"></div></div>
+<div id="detail"><div class="resize-handle" data-resize="detail"></div><button id="close" title="close">&#215;</button><div id="detailBody"></div></div>
 
 <script id="tracker-data" type="application/json">__DATA__</script>
 <script>
@@ -725,7 +733,7 @@ function noteHtml(n){
     (rows ? '<dl>' + rows + '</dl>' : '') + '</div>';
 }
 
-function openDet(id){
+function openDetail(id){
   const it = IS[id];
   let h = '<h2>' + (esc(it.title) || '(no title)') + '</h2><div class="sub">' +
     esc(id) + ' · status ' + esc(it.status) + ' · effort ' + (esc(it.effort) || '—') +
@@ -760,13 +768,13 @@ function openDet(id){
     : '<div>No notes on this issue. A dispatch writes one, and so does a handoff.' +
       '</div>') + '</div>';
 
-  document.getElementById('detBody').innerHTML = h;
-  document.getElementById('det').classList.add('on');
+  document.getElementById('detailBody').innerHTML = h;
+  document.getElementById('detail').classList.add('on');
   document.getElementById('scrim').classList.add('on');
   location.hash = id;
 }
-function closeDet(){
-  document.getElementById('det').classList.remove('on');
+function closeDetail(){
+  document.getElementById('detail').classList.remove('on');
   document.getElementById('scrim').classList.remove('on');
   if (location.hash) history.replaceState(null, '', location.pathname);
 }
@@ -797,14 +805,14 @@ document.addEventListener('click', e => {
     return render();
   }
   const node = e.target.closest('[data-id]');
-  if (node) return openDet(node.dataset.id);
-  if (e.target.id === 'close' || e.target.id === 'scrim') closeDet();
+  if (node) return openDetail(node.dataset.id);
+  if (e.target.id === 'close' || e.target.id === 'scrim') closeDetail();
 });
 document.getElementById('q').addEventListener('input', e => {
   q = e.target.value.trim().toLowerCase(); render();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDet();
+  if (e.key === 'Escape') closeDetail();
   if (e.key === '/' && e.target.id !== 'q'){
     e.preventDefault(); document.getElementById('q').focus();
   }
@@ -834,11 +842,11 @@ function applyTheme(name){
   sel.addEventListener('change',function(){applyTheme(sel.value);});
 })();
 render();
-if (location.hash && IS[location.hash.slice(1)]) openDet(location.hash.slice(1));
+if (location.hash && IS[location.hash.slice(1)]) openDetail(location.hash.slice(1));
 // A deep link changed while the page is open must switch the panel.
 window.addEventListener('hashchange', () => {
   const id = location.hash.slice(1);
-  if (IS[id]) openDet(id);
+  if (IS[id]) openDetail(id);
 });
 // Highlight current page in sidebar
 (function(){
@@ -846,6 +854,63 @@ window.addEventListener('hashchange', () => {
   document.querySelectorAll('.sidebar nav a[href]').forEach(function(a){
     if(a.getAttribute('href')===file) a.classList.add('cur');
   });
+})();
+// Drag-to-resize panels — pointer events, persisted to localStorage
+(function(){
+  var sidebar=document.querySelector('.sidebar');
+  var detail=document.getElementById('detail');
+  var LS_SIDEBAR='entropy-machines-sidebar-width';
+  var LS_DETAIL='entropy-machines-detail-width';
+  // Restore saved widths
+  try{
+    var sw=localStorage.getItem(LS_SIDEBAR);
+    if(sw){sidebar.style.width=sw+'px';}
+    var dw=localStorage.getItem(LS_DETAIL);
+    if(dw){detail.style.width=dw+'px';}
+  }catch(e){}
+  // Generic drag handler
+  function initDrag(handle,getWidth,setWidth,saveKey){
+    handle.addEventListener('pointerdown',function(e){
+      e.preventDefault();
+      handle.classList.add('dragging');
+      handle.setPointerCapture(e.pointerId);
+      var startX=e.clientX;
+      var startW=getWidth();
+      function onMove(ev){
+        var delta=ev.clientX-startX;
+        var nw=setWidth(startW,delta);
+        try{localStorage.setItem(saveKey,Math.round(nw));}catch(ex){}
+      }
+      function onUp(ev){
+        handle.classList.remove('dragging');
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove',onMove);
+        handle.removeEventListener('pointerup',onUp);
+      }
+      handle.addEventListener('pointermove',onMove);
+      handle.addEventListener('pointerup',onUp);
+    });
+  }
+  // Sidebar: drag right edge to resize
+  var sidebarHandle=sidebar.querySelector('.resize-handle');
+  if(sidebarHandle){
+    initDrag(sidebarHandle,
+      function(){return sidebar.getBoundingClientRect().width;},
+      function(startW,delta){
+        var nw=Math.max(180,Math.min(startW+delta,600));
+        sidebar.style.width=nw+'px'; return nw;
+      },LS_SIDEBAR);
+  }
+  // Detail panel: drag left edge to resize
+  var detailHandle=detail.querySelector('.resize-handle');
+  if(detailHandle){
+    initDrag(detailHandle,
+      function(){return detail.getBoundingClientRect().width;},
+      function(startW,delta){
+        var nw=Math.max(300,Math.min(startW-delta,window.innerWidth*0.94));
+        detail.style.width=nw+'px'; return nw;
+      },LS_DETAIL);
+  }
 })();
 </script>
 </body></html>
