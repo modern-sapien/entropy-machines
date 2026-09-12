@@ -43,6 +43,17 @@ while IFS= read -r f; do
   done
 done <<< "$changed"
 
+# --- auto-close issues from commit message ------------------------------------
+# A commit message like "feat(i-resizable-panels): ..." means that issue landed.
+msg=$(git log -1 --format=%s HEAD 2>/dev/null) || true
+issue_id=$(printf '%s' "$msg" | sed -n 's/^[a-z]*(\(i-[^)]*\)).*/\1/p')
+if [ -n "$issue_id" ] && [ -x "$ENTROPY_MACHINES_HOME/bin/tracker" ]; then
+  ( cd "$ENTROPY_MACHINES_ROOT" && "$ENTROPY_MACHINES_HOME/bin/tracker" set "$issue_id" status=done ) 2>/dev/null || true
+  echo "post-commit: marked $issue_id done" >&2
+  rebuild_tracker=true
+fi
+
+# --- rebuild TRACKER.html -----------------------------------------------------
 if $rebuild_tracker && [ -x "$ENTROPY_MACHINES_HOME/bin/tracker" ]; then
   ( cd "$ENTROPY_MACHINES_ROOT" && "$ENTROPY_MACHINES_HOME/bin/tracker" render ) 2>/dev/null || true
   echo "post-commit: rebuilt TRACKER.html" >&2
