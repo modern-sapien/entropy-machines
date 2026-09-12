@@ -521,16 +521,16 @@ footer{border-top:1px solid var(--accent);margin:0 18px;padding:12px 0 40px;
 .note dt{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700}
 .note dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 
-.resize-handle{position:absolute;top:0;width:5px;height:100%;cursor:col-resize;z-index:10;
+.resize-handle{position:fixed;top:0;width:12px;height:100vh;cursor:col-resize;z-index:40;
   background:transparent;touch-action:none}
-.resize-handle:hover,.resize-handle.dragging{background:var(--accent)}
-.sidebar{position:relative}
-.sidebar .resize-handle{right:0}
-#detail .resize-handle{left:0}
+.resize-handle:hover,.resize-handle.dragging{background:#f59e0b;opacity:0.3}
+.resize-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:2px;height:32px;border-radius:1px;background:var(--fg);opacity:0.2}
+.resize-handle:hover::after,.resize-handle.dragging::after{background:#f59e0b;opacity:0.8}
+#detail .resize-handle{position:absolute;top:0;height:100%;left:0}
 </style></head>
 <body>
 <div class="sidebar">
-<div class="resize-handle" data-resize="sidebar"></div>
 __NAV__
 <div class="filters">
   <div class="grp">State<span class="hint">held, gated and blocked are
@@ -539,6 +539,7 @@ __NAV__
   <div class="grp">Effort</div><div id="feff"></div>
 </div>
 </div>
+<div class="resize-handle" id="sidebar-resize" data-resize="sidebar"></div>
 <div class="content">
 <header>
   <h1>__PROJECT__ <span>· issue tracker</span></h1>
@@ -892,13 +893,18 @@ window.addEventListener('hashchange', () => {
     });
   }
   // Sidebar: drag right edge to resize
-  var sidebarHandle=sidebar.querySelector('.resize-handle');
+  var sidebarHandle=document.getElementById('sidebar-resize');
+  function positionSidebarHandle(){
+    if(sidebarHandle) sidebarHandle.style.left=(sidebar.getBoundingClientRect().right-6)+'px';
+  }
+  positionSidebarHandle();
+  window.addEventListener('resize',positionSidebarHandle);
   if(sidebarHandle){
     initDrag(sidebarHandle,
       function(){return sidebar.getBoundingClientRect().width;},
       function(startW,delta){
         var nw=Math.max(180,Math.min(startW+delta,600));
-        sidebar.style.width=nw+'px'; return nw;
+        sidebar.style.width=nw+'px'; positionSidebarHandle(); return nw;
       },LS_SIDEBAR);
   }
   // Detail panel: drag left edge to resize
