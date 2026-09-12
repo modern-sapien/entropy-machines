@@ -5,8 +5,8 @@
 #   bin/sprint-report <sprint-name> --since <commit>   # issues since that commit
 #
 # Reads .entropy-machines/issues.json for issue states, git log for changes,
-# fills lib/sprint-report-template.html with real data, writes to the
-# configured docs directory, and runs enhance.py on the result.
+# fills lib/sprint-report-template.html with real data, and writes to the
+# configured docs directory.
 #
 # The output is a dialogue doc the owner can answer via bin/serve.
 set -e
@@ -18,8 +18,7 @@ usage: bin/sprint-report <sprint-name> [--since <commit>]
   sprint-name    Identifier for the sprint (e.g. "sprint-2", "sprint-3")
   --since        Git commit to measure changes from (default: 10 commits back)
 
-Writes SPRINT-REPORT-<sprint-name>.html to the docs directory and runs
-enhance.py on it.
+Writes SPRINT-REPORT-<sprint-name>.html to the docs directory.
 EOF
   exit 2
 }
@@ -56,8 +55,7 @@ export PYTHONPATH="$ENTROPY_MACHINES_HOME/lib${PYTHONPATH:+:$PYTHONPATH}"
 
 exec python3 - <<'PY'
 """Sprint report generator — fills lib/sprint-report-template.html with data
-from the tracker and git history, writes the result to the docs directory,
-and runs enhance.py on it.
+from the tracker and git history, and writes the result to the docs directory.
 
 Everything it needs arrives as environment from the shell shim above.
 """
@@ -394,19 +392,6 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(report)
     print("sprint-report: wrote %s" % out_path, flush=True)
-
-    # Run enhance.py on the output
-    sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
-    try:
-        import enhance
-        enhance.init(DOCS_PATH)
-        changed = enhance.patch(out_path)
-        if changed:
-            print("sprint-report: enhanced %s: %s" % (out_name, ", ".join(changed)), flush=True)
-        else:
-            print("sprint-report: %s already up to date" % out_name, flush=True)
-    except Exception as exc:
-        print("sprint-report: enhance.py failed: %s" % exc, file=sys.stderr)
 
     # Register in manifest.json (+ backfill any existing sprint reports)
     try:

@@ -40,11 +40,9 @@ WHAT IT ENFORCES, AND WHY THOSE TWO THINGS
    this rule exists to catch is a doc that LOOKS answerable and is not.
 
 WHAT IT DELIBERATELY DOES NOT ENFORCE: the look. Colours, fonts, type scale,
-layout, whether there is a theme toggle — all of it is the author's. The house
-style in lib/REPORT-TEMPLATE.html is a good default and a starting point, not
-a conformance target. Somebody using this harness may want a report that looks
-nothing like ours, and that is fine; a report that fetches from the internet is
-not.
+layout, whether there is a theme toggle — all of it is the author's. Somebody
+using this harness may want a report that looks nothing like ours, and that is
+fine; a report that fetches from the internet is not.
 
 TARGETED REGEX, NOT AN HTML PARSER. Deliberate, and the same thing the rest of
 this harness does (bin/serve's save merge and answer counts, bin/status's
@@ -57,7 +55,7 @@ slip past. A doc built by hand or from the template does not do those things.
 
 HTML COMMENTS ARE MASKED BEFORE ANYTHING IS COUNTED. A commented-out remote
 link loads nothing, and — the expensive half — a comment that DOCUMENTS the
-answer-box markup is not a question. lib/doc-template.html once carried a
+answer-box markup is not a question. The old doc template once carried a
 literal example in its header comment; every regex reader of these docs counted
 it, so each doc reported one phantom unanswered question nobody could answer
 and "fully answered" was unreachable. Masking keeps line numbers intact.
@@ -438,8 +436,7 @@ def main(argv):
               "answer in place.")
         print("  It never fetches from an external site, and every section "
               "has a box to")
-        print("  answer in. Start from lib/REPORT-TEMPLATE.html. The look is "
-              "yours; these")
+        print("  answer in. The look is yours; these")
         print("  two rules are not.")
         return 1
 

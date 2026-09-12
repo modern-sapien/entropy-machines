@@ -1162,7 +1162,7 @@ echo "  The commit-msg guard for $id is now satisfied."
 #
 # ONLY DOCS THAT APPEAR IN THE CHANGED-FILES LIST ($tmp/changes) ARE OPENED.
 # No fallback to dispatch scope or dispatch context — those opened every doc
-# merely REFERENCED by a file like enhance.py, not docs that actually changed.
+# merely REFERENCED by an infrastructure file, not docs that actually changed.
 #
 # BEST-EFFORT: wrapped in a subshell whose failure is caught and discarded. A
 # doc that cannot be opened, a serve that cannot start, a port that cannot be

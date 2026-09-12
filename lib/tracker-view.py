@@ -63,13 +63,8 @@ import sys
 
 BUCKET_ORDER = ["ready", "inflight", "held", "gated", "blocked", "done"]
 
-# Path to the unified base template — ONE source of truth for the sidebar nav.
-_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              'doc-template.html')
-
-_NAV_CATEGORIES_CACHE = None
-
-_DEFAULT_NAV_CATEGORIES = (
+# Sidebar nav category links — the canonical set for all generated pages.
+_NAV_CATEGORIES = (
     '  <div class="grp">Categories</div>\n'
     '  <a href="TRACKER.html">issues</a>\n'
     '  <a href="PRDS.html">PRDs</a>\n'
@@ -78,25 +73,8 @@ _DEFAULT_NAV_CATEGORIES = (
 
 
 def _read_nav_categories():
-    """Read the category links from doc-template.html — the ONE base template.
-
-    The sidebar nav's category links are defined in doc-template.html and
-    extracted here so tracker-view.py does not duplicate them.  Falls back to
-    a built-in constant if the template file is missing or unparseable.
-    """
-    global _NAV_CATEGORIES_CACHE
-    if _NAV_CATEGORIES_CACHE is not None:
-        return _NAV_CATEGORIES_CACHE
-    try:
-        with open(_TEMPLATE_PATH, encoding='utf-8') as f:
-            src = f.read()
-        m = re.search(
-            r'(<div class="grp">Categories</div>'
-            r'(?:\s*<a href="[^"]*">[^<]*</a>)+)',
-            src)
-        _NAV_CATEGORIES_CACHE = m.group(1).strip() if m else _DEFAULT_NAV_CATEGORIES
-    except OSError:
-        _NAV_CATEGORIES_CACHE = _DEFAULT_NAV_CATEGORIES
+    """Return the sidebar nav category links."""
+    return _NAV_CATEGORIES
     return _NAV_CATEGORIES_CACHE
 
 

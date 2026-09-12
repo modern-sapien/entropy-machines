@@ -9,14 +9,12 @@
 # passes everything look identical against one assertion, and this project has
 # already shipped three gates that silently passed everything — one of them
 # created by the fix for a crash. So every refusal here is paired with a
-# document that must PASS: the shipped template, a restyled doc, and a doc
+# document that must PASS: a well-formed fixture, a restyled doc, and a doc
 # using data:/relative/#anchor URIs.
 #
-# STYLE IS NOT POLICY. The palette, fonts and type scale in
-# lib/REPORT-TEMPLATE.html are this project's default, not a conformance
-# target — somebody vendoring this harness may want a report that looks
-# nothing like ours. The `restyled` case below pins that: a serif font, a
-# cream background and a 10px step must PASS.
+# STYLE IS NOT POLICY. Colours, fonts, type scale, layout — all of it is the
+# author's, not a conformance target. The `restyled` case below pins that: a
+# serif font, a cream background and a 10px step must PASS.
 . "$TEST_LIB/harness.sh"
 
 fixture_new
@@ -24,11 +22,46 @@ fixture_init
 
 DOCS="$REPO/entropy-machines-docs"
 LINT="$HARNESS/bin/doclint"
-TPL="$HARNESS/lib/REPORT-TEMPLATE.html"
 
-assert_file "$TPL" "the harness ships a report template to copy"
+# ---------------------------------------------------------------------------
+# Build a minimal valid fixture inline — a doc with two h2 sections, each
+# with a response box, a save button, and the responses-data JSON block.
+# This replaces the old REPORT-TEMPLATE.html that was deleted as part of the
+# React migration cleanup.
+# ---------------------------------------------------------------------------
+TPL="$TEST_TMP/fixture-template.html"
+cat > "$TPL" <<'FIXTURE'
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Test Report</title>
+<style>
+:root{--bg:#0a0a0d;--fg:#fafafa;--accent:#a78bfa;--positive:#23D18B;--negative:#ef4444;--fs-sm:12px;--fs-base:14px;--fs-head:16px;--fs-title:20px;--mono:monospace;--font:sans-serif;}
+</style>
+</head><body>
+<h1>Test Report</h1>
+<p class="sub">A minimal fixture for doclint testing</p>
+<h2 id="landed">Landed</h2>
+<p>What shipped this sprint.</p>
+<div class="response" data-resp="s-landed">
+<textarea placeholder="your answer"></textarea>
+</div>
+<h2 id="still-open">Still open</h2>
+<p>What remains.</p>
+<div class="response" data-resp="s-still-open">
+<textarea placeholder="your answer"></textarea>
+</div>
+<h2 id="verified" data-informational>Verified</h2>
+<p>Things that were verified.</p>
+<div class="response" data-resp="s-verified">
+<textarea placeholder="your answer"></textarea>
+</div>
+<button id="saveBtn">Save</button>
+<script type="application/json" id="responses-data">{}</script>
+</body></html>
+FIXTURE
 
-# make_doc <name> <sed-ish python> — a doc derived from the template.
+# make_doc <name> <sed-ish python> — a doc derived from the fixture template.
 # Python, not sed: the edits below span lines and sed's in-place flag differs
 # between GNU and BSD, which is exactly the portability trap this suite avoids.
 make_doc() {
@@ -37,12 +70,12 @@ make_doc() {
 }
 
 # ---------------------------------------------------------------------------
-# PASS: a doc built from the shipped template
+# PASS: a well-formed doc passes
 # ---------------------------------------------------------------------------
 cp "$TPL" "$DOCS/SPRINT-REPORT-FROM-TEMPLATE.html"
 
 run "$LINT" "$DOCS/SPRINT-REPORT-FROM-TEMPLATE.html"
-assert_rc 0 "a doc built from lib/REPORT-TEMPLATE.html passes"
+assert_rc 0 "a well-formed doc passes"
 assert_out "all local and answerable" "and says so"
 assert_no_traceback
 
@@ -134,9 +167,8 @@ make_doc restyled.html '
 import os
 s = open(os.environ["DOC_SRC"], encoding="utf-8").read()
 s = s.replace("--fs-sm:12px;", "--fs-sm:10px;")
-s = s.replace("--bg:#000;", "--bg:#f6f1e7;").replace("--ink:#fff;", "--ink:#3b2f2f;")
-s = s.replace("ui-sans-serif,-apple-system,\"Segoe UI\",Roboto,sans-serif",
-              "Georgia,\"Times New Roman\",serif")
+s = s.replace("--bg:#0a0a0d;", "--bg:#f6f1e7;").replace("--fg:#fafafa;", "--fg:#3b2f2f;")
+s = s.replace("sans-serif", "Georgia,\"Times New Roman\",serif")
 open(os.environ["DOC_OUT"], "w", encoding="utf-8").write(s)
 '
 

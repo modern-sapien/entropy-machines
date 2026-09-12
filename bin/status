@@ -50,8 +50,8 @@ def docs_dir_for(root):
 def scan_unanswered_docs(root):
     """Best-effort: dialogue docs in this harness's convention mark each
     question with <div class="response" data-resp="KEY"> and record answers in
-    a <script id="responses-data"> JSON blob (see bin/serve,
-    lib/doc-template.html). Returns [(path, unanswered_count), ...] for docs
+    a <script id="responses-data"> JSON blob (see bin/serve). Returns
+    [(path, unanswered_count), ...] for docs
     with at least one unanswered question. Never raises -- a doc this cannot
     parse is skipped."""
     # THE CONFIGURED DOCS DIRECTORY. bin/init installs the orientation PRD into
@@ -69,10 +69,9 @@ def scan_unanswered_docs(root):
         try:
             with open(path, encoding="utf-8") as f:
                 content = f.read()
-            # Strip HTML comments first. lib/doc-template.html's own header
-            # comment contains a literal data-resp example -- counting it made
-            # every doc built from the template report one phantom question
-            # nobody could ever answer, so a fully-answered doc kept nagging.
+            # Strip HTML comments first. A template's header comment may
+            # contain a literal data-resp example -- counting it made every
+            # doc report one phantom question nobody could ever answer.
             content = re.sub(r"<!--[\s\S]*?-->", "", content)
             keys = set(resp_re.findall(content))
             if not keys:

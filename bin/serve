@@ -9,15 +9,12 @@
 #                                 already know; no new state.
 #   GET  /<doc>.html             a doc from the configured docs directory,
 #                                 with the Downloads-folder save always
-#                                 defeated (see SAVE_PATCH below), and the
-#                                 theme named by docs.theme INLINED into it
-#                                 (see THEME below).
+#                                 defeated (see SAVE_PATCH below).
 #   GET  /__docversion?file=<f>  {"reviews": "<hash>"} — polled by the doc's
-#                                 own baked-in reload watcher (see
-#                                 lib/doc-template.html's __docversion
-#                                 script). Changes when the doc changes for a
-#                                 reason OTHER than the reader's own answer
-#                                 being written back — see docs/SERVE.md.
+#                                 own baked-in reload watcher. Changes when
+#                                 the doc changes for a reason OTHER than the
+#                                 reader's own answer being written back — see
+#                                 docs/SERVE.md.
 #   POST /__save?file=<f>        body is {data-resp: answer}; merged back
 #                                 into <f> ON DISK, atomically. On success,
 #                                 docstate.on_save() snapshots the version
@@ -184,10 +181,7 @@ _MIME_TYPES = {
     ".txt":   "text/plain; charset=utf-8",
 }
 
-# enhance.py — auto-patch stale docs at serve time so the reader never sees
-# a doc missing disk-save, nav-marks, live-reload, collapse, etc.
 sys.path.insert(0, os.path.join(ENTROPY_MACHINES_HOME, "lib"))
-import enhance
 
 # api — /api/* REST endpoints for the React SPA (ui/), reading/writing
 # .entropy-machines/entropy-machines.db. Optional import, same reasoning as
@@ -295,8 +289,8 @@ def render_tracker_live():
 # the browser's Downloads-folder save (showSaveFilePicker / <a download>)
 # still wired up as the only way to save, because this always runs first,
 # in the capture phase, and stopImmediatePropagation kills every listener
-# behind it on the same click — including lib/doc-template.html's own baked
-# -in __disk-save-patch, which already does the right thing but is not
+# behind it on the same click — including any doc's own baked-in
+# __disk-save-patch, which already does the right thing but is not
 # guaranteed to be present on every doc this ever serves.
 # ---------------------------------------------------------------------------
 SAVE_PATCH = """
@@ -348,9 +342,8 @@ def doc_path(name: str):
 
 # ---------------------------------------------------------------------------
 # /__docversion — a content hash the doc's own baked-in reload watcher polls
-# (lib/doc-template.html's __docversion script, present on any doc built
-# from that template — see docs/SERVE.md for what happens on an older doc
-# that lacks it: nothing breaks, it just never reloads on its own).
+# (see docs/SERVE.md for what happens on an older doc that lacks it:
+# nothing breaks, it just never reloads on its own).
 #
 # WHY NOT A HASH OF THE WHOLE FILE. The reader's own 💾 rewrites the
 # #responses-data block and every answered <textarea> — hash the whole file
@@ -423,12 +416,10 @@ def doc_counts(path: str):
             text = f.read()
     except OSError:
         return None
-    # STRIP COMMENTS BEFORE COUNTING. lib/doc-template.html documents the
-    # contract in its own header comment, and that documentation contains a
-    # literal data-resp="UNIQUE-KEY" example. Counting it made every doc built
-    # from the template report one phantom unanswered question that no reader
-    # could ever answer -- so "fully answered" was an unreachable state and the
-    # dashboard could never go green.
+    # STRIP COMMENTS BEFORE COUNTING. A template's header comment may contain
+    # a literal data-resp="UNIQUE-KEY" example. Counting it would make every
+    # doc report one phantom unanswered question -- so "fully answered" would
+    # be unreachable and the dashboard could never go green.
     keys = _DATA_RESP_RE.findall(_COMMENT_RE.sub("", text))
     total = len(keys)
     m = _RESPONSES_DATA_RE.search(text)
@@ -836,15 +827,6 @@ class Handler(BaseHTTPRequestHandler):
         name = path.lstrip("/")
         target = doc_path(name)
         if target is not None and os.path.isfile(target):
-            # Auto-patch stale docs before serving. Generated pages (DOCS.html,
-            # INDEX.html) are rebuilt by other tools and must not be patched.
-            if name not in enhance.GENERATED:
-                try:
-                    changed = enhance.patch(target)
-                    if changed:
-                        sys.stderr.write("  auto-patched %s: %s\n" % (name, ", ".join(changed)))
-                except Exception as exc:
-                    sys.stderr.write("  enhance.patch failed for %s: %s\n" % (name, exc))
             with open(target, encoding="utf-8") as f:
                 body = f.read()
             if "</body>" in body:
@@ -1016,12 +998,9 @@ def main(no_open=False):
     # never drained, because the very next statement blocks in serve_forever()
     # forever; the log stays 0 bytes while the server runs and 0 bytes after
     # it is killed. The URL is the one thing this command exists to produce.
-    # Initialize enhance once at startup — not per-request.
-    enhance.init(DOCS_PATH)
     print("serving %s on http://localhost:%d" % (ENTROPY_MACHINES_ROOT, port), flush=True)
     print("  docs: %s (%s)" % (DOCS_PATH, DOCS_DIR), flush=True)
     print("  theme: config-driven (5-color, embedded in templates)", flush=True)
-    print("  auto-enhance: active (stale docs patched on first GET)", flush=True)
     if SPA_AVAILABLE:
         print("  spa: %s" % SPA_ROOT, flush=True)
     else:
