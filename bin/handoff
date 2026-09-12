@@ -165,7 +165,7 @@ set -e
 usage() {
   echo "usage: bin/handoff <issue-id> --changed \"...\" --verified \"...\"" >&2
   echo "         [--found \"...\"]... [--assumed \"...\"]... [--next \"...\"] [--clean]" >&2
-  echo "         [--drift-reviewed \"why the worker's version is right\"]" >&2
+  echo "         [--drift-reviewed \"why the worker's version is right\"] [--no-cleanup]" >&2
   echo "   or: bin/handoff <issue-id> --from <agent-worktree> --verified \"...\"" >&2
   echo "   or: bin/handoff <issue-id> --from <agent-worktree> --lift  (copy, record nothing)" >&2
   echo "   or: bin/handoff <issue-id> --interrogate [--ask \"...\"]  (print the questions)" >&2
@@ -176,7 +176,7 @@ usage() {
 id=""; changed=""; verified=""; next_note=""; clean=0; dry=0
 found=""; assumed=""; from=""; lift=0; drift_reviewed=""
 interrogate=0; record_interrogation=0; ask=""; answers=""; n_answers=0; blank_answer=0
-no_interrogation=""
+no_interrogation=""; no_cleanup=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --changed)  changed="$2"; shift 2 ;;
@@ -216,6 +216,10 @@ while [ $# -gt 0 ]; do
     # The escape hatch, and it lands on the record as a positive claim rather
     # than an absence — the same shape as --clean and --drift-reviewed.
     --no-interrogation) no_interrogation="$2"; shift 2 ;;
+    # Suppress the automatic cleanup of the source worktree after a successful
+    # record. The rare case where the lander wants to keep the worktree around
+    # (e.g. to re-read the worker's full tree during a subsequent review pass).
+    --no-cleanup) no_cleanup=1; shift ;;
     # Print the note and write nothing. The log is shared and append-only with
     # no delete, so "let me see what this records" needs an answer that is not
     # "record it and find out".
@@ -1228,3 +1232,61 @@ _open_changed_docs() {
   done
 }
 _open_changed_docs 2>/dev/null || true
+
+# --- auto-clean the source worktree (best-effort) ----------------------------
+#
+# After a successful record, the source worktree's work has been lifted into
+# this checkout and the handoff note is written — the worktree has no further
+# use. Leaving it around wastes disk and accumulates stale branches; over 70
+# agent-* worktrees were found in a single checkout during a sprint.
+#
+# ONLY AGENT WORKTREES ARE CLEANED. The pattern `.claude/worktrees/agent-*` is
+# what bin/dispatch creates and what bin/auto-verify polls for. A --from that
+# points at any other directory is left alone — it may be a human's worktree
+# or a worktree managed by another tool.
+#
+# BEST-EFFORT: the record already succeeded, so a cleanup failure must not
+# turn a green landing red. The git branch is also deleted — `git worktree
+# add` creates a `worktree-agent-*` branch that serves no purpose after the
+# worktree is gone.
+#
+# --no-cleanup suppresses this, for the rare case where the lander wants to
+# keep the worktree around (e.g. to re-read the worker's tree during review).
+# It is parsed at the top alongside the other flags.
+_cleanup_source_worktree() {
+  [ -n "$from" ] || return 0
+  [ "$no_cleanup" -eq 0 ] || return 0
+  [ "$dry" -eq 0 ] || return 0
+
+  # Resolve the absolute path, same as scan_worktree does.
+  _cwt=$(cd "$from" 2>/dev/null && pwd -P) || return 0
+
+  # Only agent worktrees — never a human's worktree or anything else.
+  case "$_cwt" in */.claude/worktrees/agent-*) ;; *) return 0 ;; esac
+
+  # The worktree directory must still exist.
+  [ -d "$_cwt" ] || return 0
+
+  # Derive the branch name git worktree add would have created.
+  _wt_basename=$(basename "$_cwt")
+  _wt_branch="worktree-$_wt_basename"
+
+  # `git worktree remove` is the proper cleanup — it removes the directory AND
+  # the worktree bookkeeping under .git/worktrees/. --force is needed because
+  # the worktree has uncommitted changes (the agent's edits, which have already
+  # been lifted).
+  if git -C "$ENTROPY_MACHINES_ROOT" worktree remove --force "$_cwt" 2>/dev/null; then
+    echo "  cleaned up worktree: $_cwt"
+  else
+    # Fall back to manual removal if `git worktree remove` fails (e.g. old git).
+    rm -rf "$_cwt" 2>/dev/null
+    git -C "$ENTROPY_MACHINES_ROOT" worktree prune 2>/dev/null
+    echo "  cleaned up worktree (manual): $_cwt"
+  fi
+
+  # Delete the per-worktree branch — it was created solely for the worktree and
+  # carries no commits the agent should not have made.
+  git -C "$ENTROPY_MACHINES_ROOT" branch -D "$_wt_branch" 2>/dev/null && \
+    echo "  deleted branch: $_wt_branch" || true
+}
+_cleanup_source_worktree 2>/dev/null || true
