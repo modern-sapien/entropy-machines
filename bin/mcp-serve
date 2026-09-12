@@ -1,0 +1,25 @@
+#!/bin/sh
+# MCP server entry point — JSON-RPC over stdio.
+#
+#   bin/mcp-serve
+#
+# Exposes the issue tracker and doc operations from lib/api.py as MCP
+# tools that agents can call natively.  Reads JSON-RPC 2.0 messages from
+# stdin, writes responses to stdout.  No HTTP, no port — stdio only.
+#
+# Requires the SQLite database to exist (run bin/migrate-db first).
+set -e
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root mcp-serve
+
+PYTHONPATH="$ENTROPY_MACHINES_HOME/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+
+exec python3 -c "
+import sys, os
+sys.path.insert(0, os.environ.get('PYTHONPATH', '').split(':')[0])
+from mcp_server import run
+run('$ENTROPY_MACHINES_ROOT')
+"
