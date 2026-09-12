@@ -291,6 +291,7 @@ TEMPLATE = r"""<!doctype html>
    border hue; no fading to convey state. Same sheet as TRACKER.html. */
 :root{
   --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+  --notice:#f59e0b;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
@@ -530,18 +531,18 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && e.target.id !== 'q'){ e.preventDefault(); document.getElementById('q').focus(); }
 });
 const THEMES = {
-  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},
-  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},
-  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},
-  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},
-  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}
+  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c",notice:"#b45309"},
+  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444",notice:"#f59e0b"},
+  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771",notice:"#FFD700"},
+  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18",notice:"#9A6700"},
+  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82",notice:"#FBBF24"}
 };
 function applyTheme(name){
   var t=THEMES[name]; if(!t) return;
   var s=document.documentElement.style;
   s.setProperty('--bg',t.bg); s.setProperty('--fg',t.fg);
   s.setProperty('--accent',t.accent); s.setProperty('--positive',t.positive);
-  s.setProperty('--negative',t.negative);
+  s.setProperty('--negative',t.negative); s.setProperty('--notice',t.notice);
   try{localStorage.setItem('entropy-machines-theme',name);}catch(e){}
 }
 (function(){
@@ -575,6 +576,7 @@ CATEGORY_TEMPLATE = r"""<!doctype html>
 <style>
 :root{
   --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+  --notice:#f59e0b;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
@@ -670,18 +672,18 @@ function render(){
 }
 
 const THEMES = {
-  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},
-  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},
-  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},
-  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},
-  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}
+  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c",notice:"#b45309"},
+  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444",notice:"#f59e0b"},
+  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771",notice:"#FFD700"},
+  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18",notice:"#9A6700"},
+  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82",notice:"#FBBF24"}
 };
 function applyTheme(name){
   var t=THEMES[name]; if(!t) return;
   var s=document.documentElement.style;
   s.setProperty('--bg',t.bg); s.setProperty('--fg',t.fg);
   s.setProperty('--accent',t.accent); s.setProperty('--positive',t.positive);
-  s.setProperty('--negative',t.negative);
+  s.setProperty('--negative',t.negative); s.setProperty('--notice',t.notice);
   try{localStorage.setItem('entropy-machines-theme',name);}catch(e){}
 }
 (function(){

@@ -17,6 +17,7 @@
 <style>
   :root{
     --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+    --notice:#f59e0b;
     --fs-sm:14px; --fs-base:17px; --fs-head:21px; --fs-title:30px;
     --measure:70ch;
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -141,11 +142,11 @@
 </head><body>
 <script id="__theme-flash-patch">(function(){
   const THEMES = {
-  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
-  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
-  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
-  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
-  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c", notice: "#b45309" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444", notice: "#f59e0b" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771", notice: "#FFD700" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18", notice: "#9A6700" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82", notice: "#FBBF24" }
 };
   function applyTheme(name) {
   var t = THEMES[name];
@@ -156,6 +157,7 @@
   s.setProperty('--accent', t.accent);
   s.setProperty('--positive', t.positive);
   s.setProperty('--negative', t.negative);
+  s.setProperty('--notice', t.notice);
   try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
 }
   try {
@@ -324,11 +326,11 @@
 <script id="__theme-selector-patch">
 (function(){
   const THEMES = {
-  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c" },
-  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444" },
-  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771" },
-  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18" },
-  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82" }
+  "janus-light":    { bg: "#faf9fc", fg: "#18181b", accent: "#7c3aed", positive: "#0A5C21", negative: "#b91c1c", notice: "#b45309" },
+  "janus-dark":     { bg: "#0a0a0d", fg: "#fafafa", accent: "#a78bfa", positive: "#23D18B", negative: "#ef4444", notice: "#f59e0b" },
+  "hc-dark":        { bg: "#000000", fg: "#ffffff", accent: "#21A6FF", positive: "#23D18B", negative: "#F48771", notice: "#FFD700" },
+  "daylight":       { bg: "#FAF8F4", fg: "#23262E", accent: "#2A5DB0", positive: "#0B6E5A", negative: "#8C1D18", notice: "#9A6700" },
+  "daylight-dark":  { bg: "#14161A", fg: "#E6E3DC", accent: "#7FB2F0", positive: "#34A98D", negative: "#FF8C82", notice: "#FBBF24" }
 };
   function applyTheme(name) {
   var t = THEMES[name];
@@ -339,17 +341,21 @@
   s.setProperty('--accent', t.accent);
   s.setProperty('--positive', t.positive);
   s.setProperty('--negative', t.negative);
+  s.setProperty('--notice', t.notice);
   try { localStorage.setItem('entropy-machines-theme', name); } catch(e) {}
 }
   var bar = document.querySelector('.savebar');
   if (!bar) return;
-  var sel = document.createElement('select');
-  sel.id = 'themeBtn'; sel.title = 'Theme';
+  var sel = document.getElementById('theme-sel');
+  if (!sel) {
+    sel = document.createElement('select');
+    sel.id = 'theme-sel'; sel.title = 'Theme';
+    var save = document.getElementById('saveBtn');
+    if (save) bar.insertBefore(sel, save);
+    else bar.appendChild(sel);
+  }
   var old = document.getElementById('themeBtn');
   if (old) old.parentNode.removeChild(old);
-  var save = document.getElementById('saveBtn');
-  if (save) bar.insertBefore(sel, save);
-  else bar.appendChild(sel);
   var names = Object.keys(THEMES);
   names.forEach(function(name) {
     var o = document.createElement('option');

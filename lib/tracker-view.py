@@ -366,6 +366,7 @@ TEMPLATE = r"""<!doctype html>
 <style>
 :root{
   --bg:#0a0a0d; --fg:#fafafa; --accent:#a78bfa; --positive:#23D18B; --negative:#ef4444;
+  --notice:#f59e0b;
   --fs-sm:12px; --fs-base:14px; --fs-head:16px; --fs-title:20px;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
@@ -523,10 +524,10 @@ footer{border-top:1px solid var(--accent);margin:0 18px;padding:12px 0 40px;
 
 .resize-handle{position:fixed;top:0;width:12px;height:100vh;cursor:col-resize;z-index:40;
   background:transparent;touch-action:none}
-.resize-handle:hover,.resize-handle.dragging{background:#f59e0b;opacity:0.3}
+.resize-handle:hover,.resize-handle.dragging{background:var(--notice);opacity:0.3}
 .resize-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   width:2px;height:32px;border-radius:1px;background:var(--fg);opacity:0.2}
-.resize-handle:hover::after,.resize-handle.dragging::after{background:#f59e0b;opacity:0.8}
+.resize-handle:hover::after,.resize-handle.dragging::after{background:var(--notice);opacity:0.8}
 #detail .resize-handle{position:absolute;top:0;height:100%;left:0}
 </style></head>
 <body>
@@ -819,18 +820,18 @@ document.addEventListener('keydown', e => {
   }
 });
 const THEMES = {
-  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c"},
-  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444"},
-  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771"},
-  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18"},
-  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82"}
+  "janus-light":   {bg:"#faf9fc",fg:"#18181b",accent:"#7c3aed",positive:"#0A5C21",negative:"#b91c1c",notice:"#b45309"},
+  "janus-dark":    {bg:"#0a0a0d",fg:"#fafafa",accent:"#a78bfa",positive:"#23D18B",negative:"#ef4444",notice:"#f59e0b"},
+  "hc-dark":       {bg:"#000000",fg:"#ffffff",accent:"#21A6FF",positive:"#23D18B",negative:"#F48771",notice:"#FFD700"},
+  "daylight":      {bg:"#FAF8F4",fg:"#23262E",accent:"#2A5DB0",positive:"#0B6E5A",negative:"#8C1D18",notice:"#9A6700"},
+  "daylight-dark": {bg:"#14161A",fg:"#E6E3DC",accent:"#7FB2F0",positive:"#34A98D",negative:"#FF8C82",notice:"#FBBF24"}
 };
 function applyTheme(name){
   var t=THEMES[name]; if(!t) return;
   var s=document.documentElement.style;
   s.setProperty('--bg',t.bg); s.setProperty('--fg',t.fg);
   s.setProperty('--accent',t.accent); s.setProperty('--positive',t.positive);
-  s.setProperty('--negative',t.negative);
+  s.setProperty('--negative',t.negative); s.setProperty('--notice',t.notice);
   try{localStorage.setItem('entropy-machines-theme',name);}catch(e){}
 }
 (function(){
