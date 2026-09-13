@@ -301,6 +301,28 @@ main:has(.doc-sidebar) {
   margin-left: 240px;
 }
 
+.doc-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--accent);
+}
+
+.doc-header h1 {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.doc-sidebar-brand {
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0 14px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--accent);
+}
+
 .doc-sidebar-group {
   margin-bottom: 12px;
 }
@@ -436,6 +458,30 @@ thead th {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* ---- issue-agree checkboxes ---- */
+
+.issue-agree-th {
+  width: 3.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg);
+}
+
+.issue-agree-td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.issue-agree-td input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+  accent-color: var(--positive);
 }
 
 /* ---- response boxes: page-level ----

@@ -79,6 +79,90 @@ interface PageNavGroup {
   items: PageNavItem[];
 }
 
+// ---- issue-agree checkboxes on issue pages ----------------------------------
+
+function useIssueAgree(
+  sectionRef: React.RefObject<HTMLElement | null>,
+  docId: string,
+  heading: string,
+  contentHtml: string,
+) {
+  const isIssuePage =
+    /issues/i.test(heading) ||
+    /<h1[^>]*>[^<]*issues/i.test(contentHtml.slice(0, 500));
+
+  useEffect(() => {
+    if (!isIssuePage || !sectionRef.current) return;
+    const section = sectionRef.current;
+    const tables = section.querySelectorAll("table");
+    if (!tables.length) return;
+
+    const KEY = `issue-agree-${docId}`;
+    function loadState(): Record<string, boolean> {
+      try {
+        return JSON.parse(localStorage.getItem(KEY) || "{}") || {};
+      } catch {
+        return {};
+      }
+    }
+    function saveState(s: Record<string, boolean>) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(s));
+      } catch {}
+    }
+    function issueId(tr: Element): string | null {
+      const td = tr.querySelector("td");
+      if (!td) return null;
+      const s = td.querySelector("strong");
+      return s?.textContent?.trim() || null;
+    }
+
+    const state = loadState();
+
+    tables.forEach((table) => {
+      if (table.querySelector(".issue-agree-th")) return;
+      const thead = table.querySelector("thead");
+      if (thead) {
+        const headerRow = thead.querySelector("tr");
+        if (headerRow) {
+          const th = document.createElement("th");
+          th.className = "issue-agree-th";
+          th.textContent = "OK";
+          headerRow.insertBefore(th, headerRow.firstChild);
+        }
+      }
+      const tbody = table.querySelector("tbody");
+      if (!tbody) return;
+      const rows = tbody.querySelectorAll("tr:not(.row-note)");
+      rows.forEach((tr) => {
+        const id = issueId(tr);
+        if (!id) return;
+        const td = document.createElement("td");
+        td.className = "issue-agree-td";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.title = `Accept ${id}`;
+        if (state[id]) cb.checked = true;
+        cb.addEventListener("change", () => {
+          const s = loadState();
+          if (cb.checked) s[id] = true;
+          else delete s[id];
+          saveState(s);
+        });
+        td.appendChild(cb);
+        tr.insertBefore(td, tr.firstChild);
+      });
+    });
+
+    return () => {
+      tables.forEach((table) => {
+        table.querySelectorAll(".issue-agree-th").forEach((el) => el.remove());
+        table.querySelectorAll(".issue-agree-td").forEach((el) => el.remove());
+      });
+    };
+  }, [sectionRef, docId, isIssuePage, heading, contentHtml]);
+}
+
 // ---- autogrow hook (same as KitchenSinkPage) --------------------------------
 
 function useAutoGrow(value: string, skip: boolean) {
@@ -282,6 +366,9 @@ function PageSection({
   onEdit: (key: string) => void;
   onClear: (key: string) => void;
 }) {
+  const sectionRef = useRef<HTMLElement>(null);
+  useIssueAgree(sectionRef, page.doc_id, page.heading, page.content);
+
   // Group responses that share the same base key prefix into threads.
   const groups = useMemo(() => {
     if (responses.length <= 1) {
@@ -294,11 +381,11 @@ function PageSection({
     return responses.map((r) => [r]);
   }, [responses]);
 
-  // page.content already contains the <h1> and subtitle — rendering them
-  // again from the page fields produced duplicate headers (visible on every
-  // PRD where page.heading === doc.title, but present on all pages).
+  const contentHasH1 = /<h1[\s>]/i.test(page.content);
   return (
-    <section className="page" id={page.id}>
+    <section className="page" id={page.id} ref={sectionRef}>
+      {!contentHasH1 && page.heading && <h1>{page.heading}</h1>}
+      {!contentHasH1 && page.subtitle && <p className="sub">{page.subtitle}</p>}
       <div dangerouslySetInnerHTML={{ __html: page.content }} />
       {groups.map((group) =>
         group.length === 1 ? (
@@ -581,6 +668,9 @@ export function DocPage() {
       {/* Left sidebar for within-document page navigation */}
       {data.pages.length > 1 && (
         <nav className="doc-sidebar">
+          <div className="doc-sidebar-brand">
+            {data.doc.short_name || data.doc.title}
+          </div>
           {navGroups.map((group, gi) => (
             <div key={group.label ?? gi} className="doc-sidebar-group">
               {group.label && <span className="doc-sidebar-label">{group.label}</span>}
@@ -600,6 +690,10 @@ export function DocPage() {
           {sectionsSummary(navGroups)}
         </nav>
       )}
+
+      <header className="doc-header">
+        <h1>{data.doc.short_name} — {data.doc.title}</h1>
+      </header>
 
       {data.pages.map((page) => (
         <PageSection
