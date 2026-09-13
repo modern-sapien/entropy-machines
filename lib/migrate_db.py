@@ -383,6 +383,16 @@ def upgrade_schema(conn):
     existing = {row[1] for row in conn.execute("PRAGMA table_info(issues)")}
     if "description" not in existing:
         conn.execute("ALTER TABLE issues ADD COLUMN description TEXT")
+    if "effort" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN effort TEXT NOT NULL DEFAULT 'S'")
+    if "held_why" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN held_why TEXT")
+    if "held_at" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN held_at TEXT")
+    if "gate" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN gate TEXT")
+    if "gated_at" not in existing:
+        conn.execute("ALTER TABLE issues ADD COLUMN gated_at TEXT")
 
 
 def doc_id_for(manifest_key, entry):

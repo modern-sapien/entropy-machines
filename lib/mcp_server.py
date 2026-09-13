@@ -28,6 +28,7 @@ from api import (
     list_docs,
     list_issue_events,
     list_issues,
+    now,
     update_doc,
     update_issue,
 )
@@ -73,13 +74,18 @@ TOOLS = [
                 "id": {"type": "string", "description": "Unique issue id."},
                 "title": {"type": "string", "description": "Issue title."},
                 "description": {"type": "string", "description": "Issue description."},
-                "status": {"type": "string", "description": "Initial status (default: open)."},
+                "status": {"type": "string", "description": "Initial status (default: notstarted)."},
+                "effort": {"type": "string", "description": "T-shirt size: S, M, L (default: S)."},
                 "source_doc": {"type": "string", "description": "Source document id."},
                 "blocked_by": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Issue ids this issue is blocked by.",
                 },
+                "held_why": {"type": "string", "description": "Free-text reason the issue is held."},
+                "held_at": {"type": "string", "description": "ISO timestamp when held."},
+                "gate": {"type": "string", "description": "What this issue is gating on."},
+                "gated_at": {"type": "string", "description": "ISO timestamp when gated."},
                 "claimed_by": {"type": "string", "description": "Who claimed this issue."},
                 "claimed_at": {"type": "string", "description": "When the issue was claimed (ISO timestamp)."},
             },
@@ -96,12 +102,17 @@ TOOLS = [
                 "title": {"type": "string", "description": "New title."},
                 "description": {"type": "string", "description": "New description."},
                 "status": {"type": "string", "description": "New status."},
+                "effort": {"type": "string", "description": "T-shirt size: S, M, L."},
                 "source_doc": {"type": "string", "description": "New source document id."},
                 "blocked_by": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "New blocked-by list.",
                 },
+                "held_why": {"type": "string", "description": "Free-text reason the issue is held."},
+                "held_at": {"type": "string", "description": "ISO timestamp when held."},
+                "gate": {"type": "string", "description": "What this issue is gating on."},
+                "gated_at": {"type": "string", "description": "ISO timestamp when gated."},
                 "claimed_by": {"type": "string", "description": "New claimant."},
                 "claimed_at": {"type": "string", "description": "New claim timestamp."},
             },
@@ -220,6 +231,80 @@ TOOLS = [
             "required": ["doc_id"],
         },
     },
+    # --- dispatch / handoff tools ---
+    {
+        "name": "dispatch_issue",
+        "description": (
+            "Record that an issue is being dispatched to an agent. "
+            "Sets claimed_by/claimed_at and adds a 'dispatch' event with the brief and file scope."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "The issue id to dispatch."},
+                "brief": {"type": "string", "description": "One-line task description for the agent."},
+                "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "File paths the agent expects to touch (advisory).",
+                },
+                "agent_id": {"type": "string", "description": "Identifier for the dispatched agent."},
+            },
+            "required": ["issue_id", "brief"],
+        },
+    },
+    {
+        "name": "handoff_issue",
+        "description": (
+            "Record that dispatched work on an issue is complete. "
+            "Adds a 'handoff' event with structured data, updates status, and clears the claim."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "The issue id to hand off."},
+                "changed": {"type": "string", "description": "What actually landed."},
+                "verified": {"type": "string", "description": "How the work was re-checked."},
+                "found": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Things seen but not fixed.",
+                },
+                "assumed": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Assumptions the work rests on.",
+                },
+                "next": {"type": "string", "description": "What the next agent needs to know."},
+                "status": {"type": "string", "description": "New issue status (default: done)."},
+            },
+            "required": ["issue_id", "changed", "verified"],
+        },
+    },
+    {
+        "name": "get_ready_issues",
+        "description": (
+            "List issues ready for dispatch: status is 'notstarted', not held, "
+            "and not blocked by any undone issue."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of issues to return.",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_active_claims",
+        "description": "List issues currently claimed by an agent (claimed_by is not null).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
@@ -285,6 +370,79 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             doc_id = arguments["doc_id"]
             body = {k: v for k, v in arguments.items() if k != "doc_id"}
             return update_doc(conn, (doc_id,), {}, body)
+
+        if name == "dispatch_issue":
+            issue_id = arguments["issue_id"]
+            brief = arguments["brief"]
+            files = arguments.get("files", [])
+            agent_id = arguments.get("agent_id")
+            # Claim the issue
+            ts = now()
+            claim_body = {"claimed_by": agent_id or "agent", "claimed_at": ts}
+            update_issue(conn, (issue_id,), {}, claim_body)
+            # Record the dispatch event
+            event_content = json.dumps({
+                "brief": brief,
+                "files": files,
+                "agent_id": agent_id,
+            })
+            add_issue_event(conn, (issue_id,), {}, {
+                "content": event_content,
+                "type": "dispatch",
+                "author": agent_id or "agent",
+            })
+            return get_issue(conn, (issue_id,), {}, None)
+
+        if name == "handoff_issue":
+            issue_id = arguments["issue_id"]
+            new_status = arguments.get("status", "done")
+            # Build the handoff event content
+            handoff_data = {
+                "changed": arguments["changed"],
+                "verified": arguments["verified"],
+            }
+            if "found" in arguments:
+                handoff_data["found"] = arguments["found"]
+            if "assumed" in arguments:
+                handoff_data["assumed"] = arguments["assumed"]
+            if "next" in arguments:
+                handoff_data["next"] = arguments["next"]
+            event_content = json.dumps(handoff_data)
+            add_issue_event(conn, (issue_id,), {}, {
+                "content": event_content,
+                "type": "handoff",
+            })
+            # Update status and clear the claim
+            update_issue(conn, (issue_id,), {}, {
+                "status": new_status,
+                "claimed_by": None,
+                "claimed_at": None,
+            })
+            return get_issue(conn, (issue_id,), {}, None)
+
+        if name == "get_ready_issues":
+            limit = arguments.get("limit")
+            # Get all issues via the api.py handler, then filter
+            all_issues = list_issues(conn, (), {}, None)
+            # Collect done ids for blocked_by filtering
+            done_ids = {i["id"] for i in all_issues if i.get("status") == "done"}
+            ready = []
+            for issue in all_issues:
+                if issue.get("status") != "notstarted":
+                    continue
+                if issue.get("held_why"):
+                    continue
+                blocked_by = issue.get("blocked_by", [])
+                if not all(bid in done_ids for bid in blocked_by):
+                    continue
+                ready.append(issue)
+                if limit and len(ready) >= limit:
+                    break
+            return ready
+
+        if name == "get_active_claims":
+            all_issues = list_issues(conn, (), {}, None)
+            return [i for i in all_issues if i.get("claimed_by")]
 
         raise ApiError(404, "unknown tool: %s" % name)
     finally:
