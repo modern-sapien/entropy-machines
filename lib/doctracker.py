@@ -312,11 +312,11 @@ section.grp:last-of-type{padding-bottom:80px}
 .dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block;
   border:1px solid var(--bg);box-shadow:0 0 0 1px currentColor}
 .dot.open{background:var(--accent);color:var(--accent)}
-.dot.in-review{background:var(--accent);color:var(--accent)}
+.dot.in-review{background:var(--notice);color:var(--notice)}
 .dot.resolved{background:var(--positive);color:var(--positive)}
 .dot.held{background:var(--accent);color:var(--accent)}
 .dot.unanswered{background:var(--accent);color:var(--accent)}
-.dot.awaiting-reply{background:var(--accent);color:var(--accent)}
+.dot.awaiting-reply{background:var(--notice);color:var(--notice)}
 .dot.replied{background:var(--positive);color:var(--positive)}
 .dot.superseded{background:var(--positive);color:var(--positive)}
 
@@ -333,7 +333,7 @@ section.grp:last-of-type{padding-bottom:80px}
   border:1px solid var(--accent);color:var(--fg);flex:none;white-space:nowrap;
   background:transparent}
 .tag.you{color:var(--accent);border-color:var(--accent)}
-.tag.me{color:var(--accent);border-color:var(--accent)}
+.tag.me{color:var(--notice);border-color:var(--notice)}
 .tag.gate{color:var(--negative);border-color:var(--negative)}
 .tag.v{font-variant-numeric:tabular-nums}
 #empty{color:var(--fg);padding:40px 18px}
@@ -585,7 +585,7 @@ section{padding:0 18px 80px}
 .dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block;
   border:1px solid var(--bg);box-shadow:0 0 0 1px currentColor}
 .dot.open{background:var(--accent);color:var(--accent)}
-.dot.in-review{background:var(--accent);color:var(--accent)}
+.dot.in-review{background:var(--notice);color:var(--notice)}
 .dot.resolved{background:var(--positive);color:var(--positive)}
 .dot.held{background:var(--accent);color:var(--accent)}
 .rows{border:1px solid var(--accent);border-radius:4px;overflow:hidden;background:var(--bg)}
@@ -601,7 +601,7 @@ section{padding:0 18px 80px}
   border:1px solid var(--accent);color:var(--fg);flex:none;white-space:nowrap;
   background:transparent}
 .tag.you{color:var(--accent);border-color:var(--accent)}
-.tag.me{color:var(--accent);border-color:var(--accent)}
+.tag.me{color:var(--notice);border-color:var(--notice)}
 .tag.gate{color:var(--negative);border-color:var(--negative)}
 .tag.v{font-variant-numeric:tabular-nums}
 #empty{color:var(--fg);padding:40px 18px}
