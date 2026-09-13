@@ -316,7 +316,7 @@ section.grp:last-of-type{padding-bottom:80px}
 .dot.resolved{background:var(--positive);color:var(--positive)}
 .dot.held{background:var(--accent);color:var(--accent)}
 .dot.unanswered{background:var(--accent);color:var(--accent)}
-.dot.awaiting-reply{background:var(--notice);color:var(--notice)}
+.dot.awaiting-reply{background:var(--accent);color:var(--accent)}
 .dot.replied{background:var(--positive);color:var(--positive)}
 .dot.superseded{background:var(--positive);color:var(--positive)}
 
@@ -332,8 +332,8 @@ section.grp:last-of-type{padding-bottom:80px}
 .tag{font-size:var(--fs-sm);font-weight:700;padding:1px 8px;border-radius:10px;
   border:1px solid var(--accent);color:var(--fg);flex:none;white-space:nowrap;
   background:transparent}
-.tag.you{color:var(--accent);border-color:var(--accent)}
-.tag.me{color:var(--notice);border-color:var(--notice)}
+.tag.you{color:var(--notice);border-color:var(--notice)}
+.tag.me{color:var(--accent);border-color:var(--accent)}
 .tag.gate{color:var(--negative);border-color:var(--negative)}
 .tag.v{font-variant-numeric:tabular-nums}
 #empty{color:var(--fg);padding:40px 18px}
@@ -392,12 +392,12 @@ const byHandle = Object.fromEntries(DOCS.map(d => [d.handle, d]));
 // Groups are the ball, in the order the owner triages: their turn first.
 const GROUPS = [
   ['open',      'Your turn',   'answers or a read needed from you'],
-  ['in-review', 'My turn',     'you answered — a reply is owed'],
+  ['in-review', 'Agent\'s turn', 'you answered — agent owes a reply'],
   ['held',      'Held',        'paused on purpose; nobody’s turn'],
   ['resolved',  'Resolved',    'settled — reopen from the detail panel'],
 ];
 const QSTATE = { unanswered: 'needs your answer',
-                 'awaiting-reply': 'awaiting my reply', replied: 'replied',
+                 'awaiting-reply': 'awaiting agent', replied: 'replied',
                  superseded: 'moved past' };
 let q = '';
 
@@ -413,7 +413,7 @@ function hits(d){
 function tags(d){
   let t = '';
   if (d.counts.unanswered) t += `<span class="tag you">${d.counts.unanswered} to answer</span>`;
-  if (d.counts['awaiting-reply']) t += `<span class="tag me">${d.counts['awaiting-reply']} awaiting reply</span>`;
+  if (d.counts['awaiting-reply']) t += `<span class="tag me">${d.counts['awaiting-reply']} awaiting agent</span>`;
   const g = d.issues.filter(i => i.gated).length;
   if (g) t += `<span class="tag gate">gates ${g} issue${g>1?'s':''}</span>`;
   return t;
@@ -449,7 +449,7 @@ function openDet(handle){
       <span class="dot ${d.status}" style="vertical-align:middle"></span>
       ${esc((D.statuses[d.status]||d.status).replace(/^[^ ]+ /,''))} · v${d.version}${d.updatedAt ? ' · updated '+esc(d.updatedAt) : ''}</div>`;
   if (d.questions.length){
-    h += `<div class="blk"><h4>Questions — ${d.counts.unanswered} unanswered · ${d.counts['awaiting-reply']} awaiting my reply · ${d.counts.replied} replied${d.counts.superseded ? ` · ${d.counts.superseded} moved past` : ''}</h4>`
+    h += `<div class="blk"><h4>Questions — ${d.counts.unanswered} unanswered · ${d.counts['awaiting-reply']} awaiting agent · ${d.counts.replied} replied${d.counts.superseded ? ` · ${d.counts.superseded} moved past` : ''}</h4>`
       + d.questions.map(x => `<div class="qrow"><span class="dot ${x.state}"></span>
         <a href="${esc(d.file)}${x.section ? '#'+esc(x.section) : ''}">${esc(x.label||x.key)}</a>
         <span class="st">${QSTATE[x.state]}</span></div>`).join('') + '</div>';
@@ -600,8 +600,8 @@ section{padding:0 18px 80px}
 .tag{font-size:var(--fs-sm);font-weight:700;padding:1px 8px;border-radius:10px;
   border:1px solid var(--accent);color:var(--fg);flex:none;white-space:nowrap;
   background:transparent}
-.tag.you{color:var(--accent);border-color:var(--accent)}
-.tag.me{color:var(--notice);border-color:var(--notice)}
+.tag.you{color:var(--notice);border-color:var(--notice)}
+.tag.me{color:var(--accent);border-color:var(--accent)}
 .tag.gate{color:var(--negative);border-color:var(--negative)}
 .tag.v{font-variant-numeric:tabular-nums}
 #empty{color:var(--fg);padding:40px 18px}
@@ -625,7 +625,7 @@ const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&
 function tags(d){
   let t = '';
   if (d.counts.unanswered) t += '<span class="tag you">' + d.counts.unanswered + ' to answer</span>';
-  if (d.counts['awaiting-reply']) t += '<span class="tag me">' + d.counts['awaiting-reply'] + ' awaiting reply</span>';
+  if (d.counts['awaiting-reply']) t += '<span class="tag me">' + d.counts['awaiting-reply'] + ' awaiting agent</span>';
   const g = d.issues.filter(i => i.gated).length;
   if (g) t += '<span class="tag gate">gates ' + g + ' issue' + (g>1?'s':'') + '</span>';
   return t;

@@ -276,7 +276,7 @@
 
 <section class="page cur" id="p0">
   <h1>PRD-001 — Orient the factory to this repo</h1>
-  <p class="sub">A short conversation to get your project's first issues filed.</p>
+  <p class="sub">Answering these pages files your project's first tracker issues.</p>
 
   <h2 data-informational>Before we start</h2>
   <p><strong>Point your coding agent at
@@ -285,60 +285,54 @@
   PRD creates.</p>
   <p>You answer this doc; the agent works from what you decide.</p>
 
-  <p><code>entropy-machines</code> is a workflow for running coding agents on
-  a real codebase. It keeps agents from stepping on each other's work and
-  makes sure nothing lands without proof.</p>
+  <p><code>entropy-machines</code> is a workflow for running coding agents
+  on a real codebase. Agents stay out of each other's way, and nothing
+  lands without proof.</p>
 
   <div class="callout key"><span class="tag">upstream, not downstream</span>
-    A PRD <strong>creates</strong> work here — work does not create a PRD.
-    The pages ahead file your first tracker issues.
+    A PRD <strong>creates</strong> work — work does not create a PRD.
   </div>
 
   <h2 data-informational>The cycle</h2>
   <pre><code>ISSUES ──▶ WORKED ──▶ VERIFIED ──▶ FOLDED ──▶ SPRINT REPORT ──▶ ISSUES</code></pre>
-  <p>Full stage-by-stage version: <code>doctrine/WORKFLOW.md</code>. You
-  don't need it to follow this page.</p>
+  <p>Full version: <code>doctrine/WORKFLOW.md</code>. Not needed for this page.</p>
 
-  <h2 data-informational>Who does what</h2>
+  <h2 data-informational>Four roles</h2>
   <div class="tbl-wrap">
   <table>
     <thead><tr><th>Role</th><th>Does</th></tr></thead>
     <tbody>
       <tr><td><strong>You</strong> (owner)</td>
-        <td>Answer the open questions ahead, say when work can merge,
-          close the sprint when you're satisfied.</td></tr>
+        <td>Answer questions, approve merges, close sprints.</td></tr>
       <tr><td>Worker</td>
-        <td>Takes one scoped issue, works in its own git worktree,
-          leaves a <code>HANDOFF.md</code> when done.</td></tr>
+        <td>Takes one issue, works in its own worktree,
+          leaves a <code>HANDOFF.md</code>.</td></tr>
       <tr><td>Verifier</td>
-        <td>Sweeps all finished work for the sprint on a clean tree
-          and reports a verdict.</td></tr>
+        <td>Sweeps finished work on a clean tree, reports a verdict.</td></tr>
       <tr><td>Orchestrator</td>
         <td>Dispatches work, folds verified changes into
-          <code>main</code>, turns your rulings into issues.</td></tr>
+          <code>main</code>, files issues from your decisions.</td></tr>
     </tbody>
   </table>
   </div>
-  <p>Full role definitions: <code>doctrine/ROLES.md</code>.</p>
+  <p>Full definitions: <code>doctrine/ROLES.md</code>.</p>
 
-  <p>The harness has guardrails throughout — dispatch refuses dirty bases,
-  commits are refused without handoff records, nothing lands without
-  verification. Details in <code>doctrine/WORKFLOW.md</code>.</p>
+  <p>Guardrails enforce this at every step: dispatch refuses dirty bases,
+  commits require handoff records, nothing lands without verification.</p>
 
-  <p>That's enough context. The next page is what an agent found looking at
-  your repo; the pages after that are ours to work through together.</p>
+  <p>That covers the basics. Next: what an agent found in your repo, then
+  the questions that file your first issues.</p>
 </section>
 
 <section class="page" id="p1">
   <h1>What we found in your repo</h1>
-  <p class="sub">Observations from our first look. If something's off,
-    let us know — the pages ahead build on this.</p>
+  <p class="sub">Observations from a first look. Correct anything wrong
+    before moving on.</p>
 
   <div class="callout warn"><span class="tag">not yet filled in</span>
-    This page ships empty. It gets filled in by an agent as part of bringing
-    this factory into your project — if you are reading this straight out of
-    the harness repo, everything below the line is a placeholder waiting for
-    that pass.
+    This page ships empty. An agent fills it when the factory is brought
+    into your project. If you are reading this from the harness repo,
+    everything below is a placeholder.
   </div>
 
   <!-- AGENT FILLING THIS IN: run the commands below, do not read them off a
@@ -397,25 +391,17 @@
 
 <section class="page" id="p2">
   <h1>Test suites</h1>
-  <p class="sub">Which tests run and when — something we'll work out together.</p>
+  <p class="sub">Which suites gate a landing, and which are advisory?</p>
 
-  <p>The harness can run your test suites at two points: on every fold
-  (gating), or once per sprint via the verifier (advisory). Fast tests
-  usually gate; slow or flaky ones run advisory. This ends up in
-  <code>config.json</code>'s <code>suites</code> array.</p>
-
-  <p>If you already know what suites you have and how you'd like them
-  treated, write that below. If not, that's fine — most people getting
-  started here don't have this nailed down yet, and that's exactly what
-  the first few sprints help sort out.</p>
+  <p>Each entry in <code>config.json</code>'s <code>suites</code> array
+  runs on every fold (gating) or once per sprint via the verifier
+  (advisory). Fast tests usually gate; slow or flaky ones run advisory.</p>
 
   <div class="response" data-resp="prd001-q1-suites">
     <label>Suites</label>
     <div class="discuss">
-      If you know your test commands and which should block a landing,
-      list them here. Otherwise leave this open — we'll figure it out
-      together as we explore the project. The agent that fills in the
-      "What we found" page will have a head start on this.
+      List test commands and whether each should gate or advise.
+      If unsure, leave this open — the first sprints will sort it out.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
@@ -426,19 +412,14 @@
   <p class="sub">Files no agent should edit without your say-so.</p>
 
   <p>Paths in <code>project.protectedPaths</code> are off-limits to
-  dispatched workers. Think generated bundles, public API surfaces, or
-  schema migrations — anything where an unsupervised edit could hurt.</p>
-
-  <p>If something comes to mind, list it below. If nothing does, that's
-  normal for a project just getting started. You can add paths later the
-  first time an agent touches something you wish it hadn't.</p>
+  dispatched workers — generated bundles, public API surfaces, schema
+  migrations, anything where an unsupervised edit could hurt.</p>
 
   <div class="response" data-resp="prd001-q2-protected-paths">
     <label>Protected paths</label>
     <div class="discuss">
-      List any files or directories you'd rather agents not touch on their
-      own. If you're not sure yet, leave this open — it's easy to add to
-      later, and the first sprint or two will make the right list obvious.
+      List files or directories agents should not touch unsupervised.
+      Easy to add later once you see what they reach for.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
@@ -446,26 +427,18 @@
 
 <section class="page" id="p4">
   <h1>How work gets folded in</h1>
-  <p class="sub">Not a policy to declare up front — a conversation you
-    have with the orchestrator as you go.</p>
+  <p class="sub">How much oversight you want on each fold into <code>main</code>.</p>
 
-  <p>When a worker finishes and the verifier confirms it, the orchestrator
-  folds the change into <code>main</code>. How much of that process you
-  want to see is something you work out together.</p>
-
-  <p>Early on, you'll probably want to check in on every fold. As you
-  build trust in the loop, you might let the orchestrator fold verified
-  work on its own and only pull you in when something is held or uncertain.
-  Either way, you steer this by giving feedback in the moment — not by
-  setting a standing policy.</p>
+  <p>After a worker finishes and the verifier confirms, the orchestrator
+  folds the change. You decide how hands-on to be — check every fold early
+  on, or let verified work land automatically and only get pulled in when
+  something is uncertain. Adjust as trust builds.</p>
 
   <div class="response" data-resp="prd001-q4-landing-policy">
     <label>Landing preference</label>
     <div class="discuss">
-      How hands-on do you want to be right now? "Check with me on
-      everything" and "fold what's verified, flag what's uncertain" are
-      both fine starting points — and you can adjust as you go. There's
-      no wrong answer, and it's not permanent.
+      "Check with me on everything" or "fold what's verified, flag
+      what's uncertain" are both fine. Not permanent.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
@@ -478,15 +451,11 @@
   <div class="response" data-resp="prd001-q5-first-work">
     <label>Which path</label>
     <div class="discuss">
-      <strong>Option A — Design first.</strong> Work with a designer agent
-      to nail down what you're building. Those sessions generate issues for
-      the factory while subagents explore the repo and get a head start on
-      the codebase.<br><br>
-      <strong>Option B — Build first.</strong> You already have issues in
-      mind and want to start shipping. We'll put training wheels on the
-      first few PRDs so you can learn the loop while getting real work
-      done.<br><br>
-      Pick whichever fits, or describe your own starting point.
+      <strong>A — Design first.</strong> Work with a designer agent to scope
+      what you're building; those sessions generate issues automatically.<br><br>
+      <strong>B — Build first.</strong> You already have issues in mind. The
+      first few PRDs have training wheels so you learn the loop on real work.<br><br>
+      Pick one, or describe your own starting point.
     </div>
     <textarea placeholder="Type your answer…"></textarea>
   </div>
@@ -515,8 +484,8 @@ bin/tracker remember --issue q-1 \
   "Filed i-suites-policy, i-protected-paths, i-landing-policy from PRD-001-orientation."
 bin/tracker set q-1 status=done</code></pre>
 
-  <p>If you're genuinely undecided on one of these, file it
-  <em>gated</em> so it's held back until you clear it:</p>
+  <p>Genuinely undecided? File it <em>gated</em> so it's held until you
+  clear it:</p>
 
   <pre><code>bin/tracker set i-suites-policy \
   status=notstarted \
@@ -524,15 +493,14 @@ bin/tracker set q-1 status=done</code></pre>
   gate="PRD-001#q1"</code></pre>
 
   <div class="callout good"><span class="tag">already done for you</span>
-    <code>q-1</code>, "Orient the factory to this repo," was already filed
-    and claimable the moment <code>bin/init</code> ran. Marking it
-    <code>status=done</code> above closes the loop this PRD opened.
+    <code>q-1</code> ("Orient the factory") was filed when
+    <code>bin/init</code> ran. Marking it <code>status=done</code> above
+    closes the loop.
   </div>
 
   <p>Next: <code>bin/dispatch &lt;id&gt; --files "…" --brief "…"</code>
-  on whichever issue is <code>ready</code> and makes sense to start
-  with — <code>docs/AGENT-QUICKSTART.md</code> walks through a full
-  dispatch-to-handoff cycle.</p>
+  on any <code>ready</code> issue.
+  <code>docs/AGENT-QUICKSTART.md</code> walks through a full cycle.</p>
 </section>
 
 </main>
