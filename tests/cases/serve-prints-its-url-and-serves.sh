@@ -13,6 +13,17 @@
 fixture_new
 fixture_init
 
+# Create a fake ui/dist/ so the SPA path is active (legacy HTML serving removed).
+SPA_DIR="$HARNESS/ui/dist"
+mkdir -p "$SPA_DIR/assets"
+cat > "$SPA_DIR/index.html" <<'HTML'
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>SPA</title></head>
+<body><div id="root"></div></body>
+</html>
+HTML
+
 PORT=$(free_port)
 LOG="$TEST_TMP/serve.log"
 SERVED=0
@@ -47,32 +58,25 @@ OUT=$(cat "$LOG"); ERR=""; ALL="$OUT"; RC=0; LAST_CMD="bin/serve $PORT"
 assert_out "serving $REPO" "the URL line names the project it is serving"
 assert_out "docs: $REPO/entropy-machines-docs" "and the docs directory it will serve from"
 
-# --- GET / ------------------------------------------------------------------
+# --- GET / serves the SPA ---------------------------------------------------
 run http_get "http://127.0.0.1:$PORT/"
 assert_rc 0 "GET / completes"
 case "$OUT" in
   200*) ;;
   *) _fail "GET / must return 200" "first line was: $(printf '%s' "$OUT" | head -1)" ;;
 esac
-assert_out "<!doctype html>" "the dashboard is an HTML page"
-assert_out "the factory" "titled as the factory dashboard"
+assert_out "<!doctype html>" "the SPA is an HTML page"
+assert_out '<div id="root">' "serves the SPA entry point"
 
-# --- GET a doc --------------------------------------------------------------
-run http_get "http://127.0.0.1:$PORT/PRD-001-orientation.html"
-assert_rc 0 "GET a doc completes"
+# --- unknown .html paths fall through to SPA --------------------------------
+run http_get "http://127.0.0.1:$PORT/no-such-doc.html"
+assert_rc 0 "GET an unknown .html path completes"
 case "$OUT" in
   200*) ;;
-  *) _fail "GET a real doc must return 200" "first line was: $(printf '%s' "$OUT" | head -1)" ;;
+  *) _fail "unknown .html paths must return 200 (SPA fallback)" \
+           "first line was: $(printf '%s' "$OUT" | head -1)" ;;
 esac
-assert_out "data-resp" "the served doc still carries its response boxes"
-
-# --- an unknown path is a 404, not a 200 of something else ------------------
-run http_get "http://127.0.0.1:$PORT/no-such-doc.html"
-assert_rc 0 "GET an unknown doc completes"
-case "$OUT" in
-  404*) ;;
-  *) _fail "an unknown doc must 404" "first line was: $(printf '%s' "$OUT" | head -1)" ;;
-esac
+assert_out '<div id="root">' "unknown .html paths fall through to SPA"
 
 # --- a second serve on the same port falls back to a different port ---------
 LOG2="$TEST_TMP/serve2.log"

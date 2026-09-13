@@ -1,11 +1,10 @@
-# bin/serve serves the React SPA from ui/dist/ when it exists, falling back to
-# the legacy dashboard when it does not.
+# bin/serve serves the React SPA from ui/dist/. Legacy HTML doc serving,
+# __docversion, __docstatus, and __save have been removed.
 #
 # WHAT THIS GUARDS: when ui/dist/index.html exists (the Vite build output),
 # the server (1) serves /assets/* with correct MIME types, (2) serves / as the
-# SPA entry point instead of the legacy dashboard, (3) falls back to index.html
-# for unmatched routes (React Router handles client-side routing), and
-# (4) keeps /api/*, /__docversion, TRACKER.html, and legacy doc serving intact.
+# SPA entry point, (3) falls back to index.html for unmatched routes (React
+# Router handles client-side routing), and (4) keeps /api/* intact.
 . "$TEST_LIB/harness.sh"
 
 fixture_new
@@ -121,25 +120,15 @@ case "$OUT" in
 esac
 assert_out '<div id="root">' "GET /prds/* falls through to SPA index.html"
 
-# --- legacy doc serving still works -------------------------------------------
+# --- legacy .html requests now fall through to SPA ----------------------------
 run http_get "http://127.0.0.1:$PORT/PRD-001-orientation.html"
-assert_rc 0 "GET a legacy doc completes"
+assert_rc 0 "GET a .html path completes"
 case "$OUT" in
   200*) ;;
-  *) _fail "GET a legacy doc must return 200" \
+  *) _fail "GET a .html path must return 200 (SPA fallback)" \
            "first line was: $(printf '%s' "$OUT" | head -1)" ;;
 esac
-assert_out "data-resp" "legacy doc serving is intact — the doc carries its response boxes"
-
-# --- /__docversion still works ------------------------------------------------
-run http_get "http://127.0.0.1:$PORT/__docversion?file=PRD-001-orientation.html"
-assert_rc 0 "GET /__docversion completes"
-case "$OUT" in
-  200*) ;;
-  *) _fail "GET /__docversion must return 200" \
-           "first line was: $(printf '%s' "$OUT" | head -1)" ;;
-esac
-assert_out "reviews" "__docversion still returns the reviews hash"
+assert_out '<div id="root">' ".html paths fall through to SPA (legacy serving removed)"
 
 # --- /api/* still routes to the API handler -----------------------------------
 # This will return a 404 or error from the API module, but the point is it
@@ -148,50 +137,5 @@ run http_get "http://127.0.0.1:$PORT/api/docs"
 assert_rc 0 "GET /api/docs completes"
 # The API handler responds with JSON (either a result or an error) — not SPA HTML.
 assert_not_out '<div id="root">' "/api/* does NOT fall through to SPA"
-
-stop_server
-
-# ============================================================================
-# PART 2: without ui/dist/, legacy behavior is preserved
-# ============================================================================
-rm -rf "$SPA_DIR"
-
-PORT2=$(free_port)
-LOG2="$TEST_TMP/serve2.log"
-
-( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT2" ) >"$LOG2" 2>&1 &
-SERVER_PID=$!
-SERVED=1
-
-if ! wait_for_line "$LOG2" "http://localhost:$PORT2" 80; then
-  OUT=$(cat "$LOG2" 2>/dev/null); ERR=""; ALL="$OUT"; RC="(still running)"
-  LAST_CMD="bin/serve $PORT2 (no SPA)"
-  _fail "bin/serve must print its URL within 8s (no SPA)" \
-        "nothing matching http://localhost:$PORT2 appeared in $LOG2"
-fi
-
-# The banner must say SPA is not found.
-OUT=$(cat "$LOG2"); ERR=""; ALL="$OUT"; RC=0; LAST_CMD="bin/serve $PORT2 banner (no SPA)"
-assert_out "spa: not found" "banner says SPA is not available"
-
-# --- GET / serves the legacy dashboard when no SPA ----------------------------
-run http_get "http://127.0.0.1:$PORT2/"
-assert_rc 0 "GET / without SPA completes"
-case "$OUT" in
-  200*|302*) ;;
-  *) _fail "GET / without SPA must return 200 or 302" \
-           "first line was: $(printf '%s' "$OUT" | head -1)" ;;
-esac
-# Either we get the dashboard or a redirect to a PRD — both are legacy behavior.
-# If we got a 302 redirect, that is fine — it is the legacy "first contact" path.
-
-# --- unknown routes 404 without SPA ------------------------------------------
-run http_get "http://127.0.0.1:$PORT2/tracker"
-assert_rc 0 "GET /tracker without SPA completes"
-case "$OUT" in
-  404*) ;;
-  *) _fail "GET /tracker without SPA must return 404" \
-           "first line was: $(printf '%s' "$OUT" | head -1)" ;;
-esac
 
 stop_server
