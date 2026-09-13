@@ -20,6 +20,7 @@ from api import (
     ApiError,
     add_issue_event,
     connect,
+    create_doc,
     create_issue,
     db_path,
     get_doc,
@@ -27,6 +28,7 @@ from api import (
     list_docs,
     list_issue_events,
     list_issues,
+    update_doc,
     update_issue,
 )
 
@@ -156,6 +158,68 @@ TOOLS = [
             "required": ["doc_id"],
         },
     },
+    {
+        "name": "create_doc",
+        "description": "Create a new document (PRD, report, or doc) with its pages and response boxes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Unique document id (e.g. 'prd-008-my-topic')."},
+                "title": {"type": "string", "description": "Document title."},
+                "short_name": {"type": "string", "description": "Short display name (e.g. 'PRD-008')."},
+                "type": {"type": "string", "description": "Document type: 'prd', 'report', or 'doc'."},
+                "status": {"type": "string", "description": "Initial status (default: open)."},
+                "foot": {"type": "string", "description": "Footer guidance text."},
+                "pages": {
+                    "type": "array",
+                    "description": "Array of page objects.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "description": "Page id (e.g. 'p0')."},
+                            "position": {"type": "integer", "description": "Page ordering position."},
+                            "nav_group": {"type": "string", "description": "Navigation group label."},
+                            "nav_title": {"type": "string", "description": "Navigation title."},
+                            "heading": {"type": "string", "description": "Page heading."},
+                            "subtitle": {"type": "string", "description": "Page subtitle."},
+                            "content": {"type": "string", "description": "HTML body of the page."},
+                        },
+                        "required": ["id", "content"],
+                    },
+                },
+                "responses": {
+                    "type": "array",
+                    "description": "Array of response box objects.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "page_id": {"type": "string", "description": "Page id this response belongs to."},
+                            "resp_key": {"type": "string", "description": "Stable response key."},
+                            "label": {"type": "string", "description": "Response label."},
+                            "discuss": {"type": "string", "description": "Discussion prompt HTML."},
+                        },
+                        "required": ["resp_key"],
+                    },
+                },
+            },
+            "required": ["id", "title", "type", "pages"],
+        },
+    },
+    {
+        "name": "update_doc_status",
+        "description": "Update a document's status or other metadata (title, short_name, foot).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "doc_id": {"type": "string", "description": "The document id to update."},
+                "status": {"type": "string", "description": "New status."},
+                "title": {"type": "string", "description": "New title."},
+                "short_name": {"type": "string", "description": "New short name."},
+                "foot": {"type": "string", "description": "New footer text."},
+            },
+            "required": ["doc_id"],
+        },
+    },
 ]
 
 
@@ -212,6 +276,15 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
 
         if name == "get_doc":
             return get_doc(conn, (arguments["doc_id"],), {}, None)
+
+        if name == "create_doc":
+            body = dict(arguments)
+            return create_doc(conn, (), {}, body)
+
+        if name == "update_doc_status":
+            doc_id = arguments["doc_id"]
+            body = {k: v for k, v in arguments.items() if k != "doc_id"}
+            return update_doc(conn, (doc_id,), {}, body)
 
         raise ApiError(404, "unknown tool: %s" % name)
     finally:

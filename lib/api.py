@@ -5,7 +5,9 @@ See entropy-machines-docs/PRD-006-react-migration.html page p4 ("Agent
 API") for the endpoint table this implements:
 
     GET  /api/docs
+    POST /api/docs
     GET  /api/docs/:id
+    PUT  /api/docs/:id
     GET  /api/docs/:id/responses
     GET  /api/docs/:id/responses/:key
     PUT  /api/docs/:id/responses/:key
@@ -166,6 +168,89 @@ def update_response(conn, args, query, body):
     )
     conn.commit()
     return get_response(conn, (doc_id, key), query, body)
+
+
+def create_doc(conn, args, query, body):
+    if not isinstance(body, dict) or not body.get("id") or not body.get("title") or not body.get("type"):
+        raise ApiError(400, 'expected a JSON body: {"id": "...", "title": "...", "type": "prd"|"report"|"doc", ...}')
+    if not isinstance(body.get("pages"), list):
+        raise ApiError(400, '"pages" must be an array')
+    doc_id = body["id"]
+    if conn.execute("SELECT 1 FROM docs WHERE id = ?", (doc_id,)).fetchone():
+        raise ApiError(409, "doc already exists: %r" % doc_id)
+    ts = now()
+    conn.execute(
+        "INSERT INTO docs (id, title, short_name, type, status, foot, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            doc_id,
+            body["title"],
+            body.get("short_name", ""),
+            body["type"],
+            body.get("status", "open"),
+            body.get("foot"),
+            ts,
+            ts,
+        ),
+    )
+    for page in body["pages"]:
+        if not isinstance(page, dict) or not page.get("id") or not page.get("content"):
+            raise ApiError(400, 'each page must have at least "id" and "content"')
+        conn.execute(
+            "INSERT INTO pages (id, doc_id, position, nav_group, nav_title, heading, subtitle, content) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                page["id"],
+                doc_id,
+                page.get("position", 0),
+                page.get("nav_group"),
+                page.get("nav_title", page.get("heading", "")),
+                page.get("heading", ""),
+                page.get("subtitle"),
+                page["content"],
+            ),
+        )
+    for resp in body.get("responses", []):
+        if not isinstance(resp, dict) or not resp.get("resp_key"):
+            raise ApiError(400, 'each response must have at least "resp_key"')
+        conn.execute(
+            "INSERT INTO responses (doc_id, page_id, resp_key, label, discuss, value, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                doc_id,
+                resp.get("page_id"),
+                resp["resp_key"],
+                resp.get("label"),
+                resp.get("discuss"),
+                resp.get("value", ""),
+                ts,
+            ),
+        )
+    conn.commit()
+    return get_doc(conn, (doc_id,), query, body)
+
+
+def update_doc(conn, args, query, body):
+    (doc_id,) = args
+    if not isinstance(body, dict):
+        raise ApiError(400, "expected a JSON object body")
+    _require_doc(conn, doc_id)
+    fields, values = [], []
+    for key in ("title", "short_name", "status", "foot"):
+        if key in body:
+            fields.append(key)
+            values.append(body[key])
+    if not fields:
+        raise ApiError(400, "no recognized fields in body — one of title, short_name, status, foot")
+    fields.append("updated_at")
+    values.append(now())
+    values.append(doc_id)
+    conn.execute(
+        "UPDATE docs SET %s WHERE id = ?" % ", ".join("%s = ?" % f for f in fields),
+        values,
+    )
+    conn.commit()
+    return get_doc(conn, (doc_id,), query, body)
 
 
 def add_reply(conn, args, query, body):
@@ -335,7 +420,9 @@ def put_setting(conn, args, query, body):
 # (paths are disjoint enough not to collide) but follows the PRD table.
 ROUTES = [
     ("GET", re.compile(r"^/api/docs$"), list_docs),
+    ("POST", re.compile(r"^/api/docs$"), create_doc),
     ("GET", re.compile(r"^/api/docs/([^/]+)$"), get_doc),
+    ("PUT", re.compile(r"^/api/docs/([^/]+)$"), update_doc),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses$"), list_responses),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), get_response),
     ("PUT", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), update_response),
