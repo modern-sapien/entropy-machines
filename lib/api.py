@@ -319,15 +319,21 @@ def create_issue(conn, args, query, body):
         raise ApiError(400, '"blocked_by" must be an array of issue ids')
     ts = now()
     conn.execute(
-        "INSERT INTO issues (id, title, description, status, source_doc, blocked_by, claimed_by, claimed_at, "
-        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO issues (id, title, description, status, effort, source_doc, blocked_by, "
+        "held_why, held_at, gate, gated_at, claimed_by, claimed_at, "
+        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             issue_id,
             body["title"],
             body.get("description"),
-            body.get("status", "open"),
+            body.get("status", "notstarted"),
+            body.get("effort", "S"),
             body.get("source_doc"),
             json.dumps(blocked_by),
+            body.get("held_why"),
+            body.get("held_at"),
+            body.get("gate"),
+            body.get("gated_at"),
             body.get("claimed_by"),
             body.get("claimed_at"),
             ts,
@@ -344,7 +350,8 @@ def update_issue(conn, args, query, body):
         raise ApiError(400, "expected a JSON object body")
     get_issue(conn, (issue_id,), query, body)  # 404s if missing
     fields, values = [], []
-    for key in ("title", "description", "status", "source_doc", "claimed_by", "claimed_at"):
+    for key in ("title", "description", "status", "effort", "source_doc",
+                "held_why", "held_at", "gate", "gated_at", "claimed_by", "claimed_at"):
         if key in body:
             fields.append(key)
             values.append(body[key])
@@ -355,8 +362,9 @@ def update_issue(conn, args, query, body):
         fields.append("blocked_by")
         values.append(json.dumps(blocked_by))
     if not fields:
-        raise ApiError(400, "no recognized fields in body — one of title, description, status, source_doc, "
-                             "blocked_by, claimed_by, claimed_at")
+        raise ApiError(400, "no recognized fields in body — one of title, description, status, effort, "
+                             "source_doc, blocked_by, held_why, held_at, gate, gated_at, "
+                             "claimed_by, claimed_at")
     fields.append("updated_at")
     values.append(now())
     values.append(issue_id)

@@ -137,7 +137,7 @@ assert_out "description" "the 400 names the missing field"
 
 run http_get "$BASE/api/issues/i-test-thing"
 assert_rc 0 "GET a single issue completes"
-assert_out "\"status\": \"open\"" "a freshly created issue defaults to open"
+assert_out "\"status\": \"notstarted\"" "a freshly created issue defaults to notstarted"
 
 run http_json PATCH "$BASE/api/issues/i-test-thing" '{"status":"progress","claimed_by":"agent-x"}'
 case "$OUT" in 200*) ;; *) _fail "PATCH an issue must 200" "$(printf '%s' "$OUT" | head -1)" ;; esac

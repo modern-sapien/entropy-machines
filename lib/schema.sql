@@ -66,9 +66,14 @@ CREATE TABLE IF NOT EXISTS issues (
   id          TEXT PRIMARY KEY,   -- "i-react-scaffold"
   title       TEXT NOT NULL,
   description TEXT,               -- free-text what/why/acceptance-criteria, set at creation
-  status      TEXT DEFAULT 'open',-- "open" | "progress" | "review" | "done"
+  status      TEXT DEFAULT 'notstarted', -- "notstarted" | "progress" | "done"
+  effort      TEXT NOT NULL DEFAULT 'S', -- T-shirt size: S, M, L
   source_doc  TEXT REFERENCES docs(id),  -- PRD/report/doc that created this issue (optional)
   blocked_by  TEXT,               -- JSON array of issue ids
+  held_why    TEXT,               -- free-text reason issue is held
+  held_at     TEXT,               -- ISO timestamp when held
+  gate        TEXT,               -- what this issue is gating on
+  gated_at    TEXT,               -- ISO timestamp when gated
   claimed_by  TEXT,
   claimed_at  TEXT,
   created_at  TEXT,

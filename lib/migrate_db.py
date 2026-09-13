@@ -358,7 +358,9 @@ DOC_ID_TYPE_RX = re.compile(r"^(PRD-\d+)")
 # dropped — each issue carrying any of them gets one `issue_events` row typed
 # "migration-extra" holding the leftover fields as JSON, so the migration
 # never silently loses data the schema simply wasn't shaped to carry.
-ISSUE_EXTRA_FIELDS = ("effort", "gate", "gatedAt", "heldWhy", "heldAt")
+# (effort, gate, gatedAt, heldWhy, heldAt moved to proper columns in the
+# i-schema-extension change.)
+ISSUE_EXTRA_FIELDS = ()
 
 NOTE_TYPE_MAP = {
     "DISPATCH": "dispatch",
@@ -543,14 +545,21 @@ def migrate(root, docs_dir, tracker_path, out_path, schema_path, force):
                     f"issue {iid}: prd={prd_key!r} does not resolve to a migrated doc — source_doc left NULL"
                 )
         conn.execute(
-            "INSERT INTO issues (id, title, status, source_doc, blocked_by, claimed_by, claimed_at, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO issues (id, title, description, status, effort, source_doc, blocked_by, "
+            "held_why, held_at, gate, gated_at, claimed_by, claimed_at, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 iid,
                 issue.get("title", ""),
-                issue.get("status", "open"),
+                issue.get("description"),
+                issue.get("status", "notstarted"),
+                issue.get("effort", "S"),
                 source_doc,
                 json.dumps(issue.get("blockedBy") or []),
+                issue.get("heldWhy"),
+                issue.get("heldAt"),
+                issue.get("gate"),
+                issue.get("gatedAt"),
                 issue.get("claimedBy"),
                 issue.get("claimedAt"),
                 None,
