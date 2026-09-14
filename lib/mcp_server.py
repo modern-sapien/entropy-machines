@@ -378,7 +378,7 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             agent_id = arguments.get("agent_id")
             # Claim the issue
             ts = now()
-            claim_body = {"claimed_by": agent_id or "agent", "claimed_at": ts}
+            claim_body = {"status": "progress", "claimed_by": agent_id or "agent", "claimed_at": ts}
             update_issue(conn, (issue_id,), {}, claim_body)
             # Record the dispatch event
             event_content = json.dumps({
@@ -442,7 +442,8 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
 
         if name == "get_active_claims":
             all_issues = list_issues(conn, (), {}, None)
-            return [i for i in all_issues if i.get("claimed_by")]
+            return [i for i in all_issues
+                    if i.get("claimed_by") and i.get("status") != "done"]
 
         raise ApiError(404, "unknown tool: %s" % name)
     finally:
