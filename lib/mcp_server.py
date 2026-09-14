@@ -235,8 +235,12 @@ TOOLS = [
     {
         "name": "dispatch_issue",
         "description": (
-            "Record that an issue is being dispatched to an agent. "
-            "Sets claimed_by/claimed_at and adds a 'dispatch' event with the brief and file scope."
+            "Dispatch an issue through the full pipeline: pre-flight checks, "
+            "worktree isolation, worker agent, auto-verify poller, and verifier "
+            "agent. One call runs the entire dispatch→worker→verify chain. The "
+            "orchestrator picks up at fold (review + commit) when this returns. "
+            "Shells out to bin/dispatch-run which chains bin/dispatch, the "
+            "worker agent (claude -p), bin/auto-verify, and the verifier agent."
         ),
         "inputSchema": {
             "type": "object",
@@ -248,9 +252,18 @@ TOOLS = [
                     "items": {"type": "string"},
                     "description": "File paths the agent expects to touch (advisory).",
                 },
-                "agent_id": {"type": "string", "description": "Identifier for the dispatched agent."},
+                "anyway": {"type": "boolean", "description": "Skip the already-landed check (--anyway)."},
+                "force": {"type": "boolean", "description": "Skip the recently-touched-files check (--force)."},
+                "timeout": {"type": "integer", "description": "Timeout in seconds for each agent (default 5400)."},
+                "record_only": {
+                    "type": "boolean",
+                    "description": (
+                        "Skip the full pipeline and only record the dispatch "
+                        "(claim + event). For programmatic use and tests only."
+                    ),
+                },
             },
-            "required": ["issue_id", "brief"],
+            "required": ["issue_id", "brief", "files"],
         },
     },
     {
@@ -375,23 +388,54 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             issue_id = arguments["issue_id"]
             brief = arguments["brief"]
             files = arguments.get("files", [])
+            record_only = arguments.get("record_only", False)
             agent_id = arguments.get("agent_id")
-            # Claim the issue
-            ts = now()
-            claim_body = {"status": "progress", "claimed_by": agent_id or "agent", "claimed_at": ts}
-            update_issue(conn, (issue_id,), {}, claim_body)
-            # Record the dispatch event
-            event_content = json.dumps({
-                "brief": brief,
-                "files": files,
-                "agent_id": agent_id,
-            })
-            add_issue_event(conn, (issue_id,), {}, {
-                "content": event_content,
-                "type": "dispatch",
-                "author": agent_id or "agent",
-            })
-            return get_issue(conn, (issue_id,), {}, None)
+
+            if record_only:
+                ts = now()
+                claim_body = {"status": "progress",
+                              "claimed_by": agent_id or "agent",
+                              "claimed_at": ts}
+                update_issue(conn, (issue_id,), {}, claim_body)
+                event_content = json.dumps({
+                    "brief": brief, "files": files, "agent_id": agent_id,
+                })
+                add_issue_event(conn, (issue_id,), {}, {
+                    "content": event_content,
+                    "type": "dispatch",
+                    "author": agent_id or "agent",
+                })
+                return get_issue(conn, (issue_id,), {}, None)
+
+            file_str = " ".join(files) if isinstance(files, list) else str(files)
+            anyway = arguments.get("anyway", False)
+            force = arguments.get("force", False)
+            timeout = arguments.get("timeout", 5400)
+
+            import os
+            import subprocess
+            harness = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cmd = [os.path.join(harness, "bin", "dispatch-run"),
+                   issue_id, "--brief", brief, "--files", file_str,
+                   "--timeout", str(timeout)]
+            if anyway:
+                cmd.append("--anyway")
+            if force:
+                cmd.append("--force")
+            result = subprocess.run(
+                cmd, cwd=root, capture_output=True, text=True,
+                timeout=timeout + 120)
+            if result.returncode != 0:
+                raise ApiError(400,
+                    "dispatch-run failed (exit %d): %s" % (
+                        result.returncode,
+                        (result.stderr or result.stdout or "no output").strip()))
+            return {
+                "status": "verified",
+                "issue_id": issue_id,
+                "output": result.stdout.strip(),
+                "message": "dispatch→worker→verify pipeline complete. Ready for fold.",
+            }
 
         if name == "handoff_issue":
             issue_id = arguments["issue_id"]

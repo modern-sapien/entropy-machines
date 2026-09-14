@@ -1,0 +1,239 @@
+#!/bin/sh
+# One-shot attended dispatch: pre-flight → worker → verify → report.
+#
+#   bin/dispatch-run <issue-id> --brief "one-line task" --files "path1 path2"
+#                    [--anyway] [--force] [--timeout <seconds>]
+#
+# Chains the full dispatch pipeline as a single blocking command:
+#   1. bin/dispatch  (pre-flight checks, context file, DISPATCH note, claim)
+#   2. Worker agent  (claude -p, isolated worktree, writes HANDOFF.md)
+#   3. bin/auto-verify inline (polls for HANDOFF.md, zero tokens)
+#   4. Verifier agent (claude -p, interrogate → lift → test → verify)
+#   5. Exits — orchestrator picks up at fold (review + commit)
+#
+# Modeled on bin/drain-run.sh, which does the same for scheduled batch work.
+# The difference: drain-run picks its own issues; this one takes an explicit
+# issue id and runs interactively (no armed flag, no branch guard).
+#
+# The MCP dispatch_issue tool shells out to this script. The orchestrator
+# (Claude Code) calls the MCP tool; this script runs the pipeline; the
+# orchestrator gets back a result when verification is complete.
+#
+# EXIT CODES:
+#   0  verified and ready for fold     3  bin/dispatch pre-flight refused
+#   1  internal error                  4  worker timed out
+#   2  usage error                     5  auto-verify timed out
+#                                      6  verifier timed out / failed
+set -e
+
+usage() {
+  echo "usage: bin/dispatch-run <issue-id> --brief \"<text>\" --files \"<paths>\" [--anyway] [--force] [--timeout <sec>]" >&2
+  exit 2
+}
+
+id=""; brief=""; files=""; anyway=""; force=""; timeout_s=5400
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --brief) brief="$2"; shift 2 ;;
+    --files) files="$2"; shift 2 ;;
+    --anyway) anyway="--anyway"; shift ;;
+    --force) force="--force"; shift ;;
+    --timeout) timeout_s="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    -*) usage ;;
+    *) [ -n "$id" ] && usage; id="$1"; shift ;;
+  esac
+done
+[ -n "$id" ] && [ -n "$brief" ] && [ -n "$files" ] || usage
+
+. "$(dirname "$0")/../lib/roots.sh"
+ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
+entropy_machines_require_root dispatch-run
+
+cd "$ENTROPY_MACHINES_ROOT"
+
+CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
+
+cfg() {
+  python3 "$CONFIG_PY" get "$1" 2>/dev/null || echo "$2"
+}
+
+stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+slug=$(date -u +%Y%m%d-%H%M%S)
+outdir="$ENTROPY_MACHINES_ROOT/.entropy-machines/dispatch-runs/$slug"
+mkdir -p "$outdir"
+
+# ---------------------------------------------------------------------------
+# STEP 1 — bin/dispatch (pre-flight, context file, DISPATCH note)
+# ---------------------------------------------------------------------------
+echo "dispatch-run($id): step 1 — pre-flight and context file"
+dispatch_args="$id --files \"$files\" --brief \"$brief\""
+[ -n "$anyway" ] && dispatch_args="$dispatch_args $anyway"
+[ -n "$force" ] && dispatch_args="$dispatch_args $force"
+
+dispatch_out="$outdir/dispatch.out"
+dispatch_err="$outdir/dispatch.err"
+if ! eval "$ENTROPY_MACHINES_HOME/bin/dispatch $dispatch_args" >"$dispatch_out" 2>"$dispatch_err"; then
+  echo "dispatch-run($id): REFUSED — bin/dispatch pre-flight failed:" >&2
+  cat "$dispatch_err" >&2
+  exit 3
+fi
+
+echo "dispatch-run($id): pre-flight passed."
+
+# Parse the agent call JSON from bin/dispatch's structured output.
+worker_json=$(sed -n '/^--- AGENT CALL ---$/,/^--- END AGENT CALL ---$/p' "$dispatch_out" | grep -v '^---')
+if [ -z "$worker_json" ]; then
+  echo "dispatch-run($id): ERROR — could not parse agent call from bin/dispatch output" >&2
+  exit 1
+fi
+
+# Extract the worker prompt from the JSON.
+worker_prompt=$(printf '%s' "$worker_json" | python3 -c '
+import json, sys
+call = json.loads(sys.stdin.read())
+print(call["prompt"])
+')
+
+# ---------------------------------------------------------------------------
+# STEP 2 — Worker agent (isolated worktree)
+# ---------------------------------------------------------------------------
+echo "dispatch-run($id): step 2 — launching worker agent"
+
+# Agent CLI is pluggable, same as drain-run.
+set --
+while IFS= read -r tok; do
+  [ -n "$tok" ] && set -- "$@" "$tok"
+done <<AGENTCMD
+$(python3 - "$ENTROPY_MACHINES_ROOT/config.json" <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    cmd = data.get("unattended", {}).get("agent", {}).get("cmd") or ["claude", "-p"]
+except Exception:
+    cmd = ["claude", "-p"]
+for tok in cmd:
+    print(tok)
+PY
+)
+AGENTCMD
+
+"$@" "$worker_prompt" > "$outdir/worker.json" 2> "$outdir/worker.err" &
+worker_pid=$!
+deadline=$(( $(date +%s) + timeout_s ))
+
+while kill -0 "$worker_pid" 2>/dev/null; do
+  if [ "$(date +%s)" -gt "$deadline" ]; then
+    kill -TERM "$worker_pid" 2>/dev/null || true
+    sleep 5
+    kill -KILL "$worker_pid" 2>/dev/null || true
+    echo "dispatch-run($id): TIMEOUT — worker killed after $((timeout_s / 60))m" >&2
+    exit 4
+  fi
+  sleep 10
+done
+
+wait "$worker_pid" || true
+echo "dispatch-run($id): worker finished."
+
+# ---------------------------------------------------------------------------
+# STEP 3 — auto-verify (poll for HANDOFF.md)
+# ---------------------------------------------------------------------------
+echo "dispatch-run($id): step 3 — polling for HANDOFF.md"
+
+main_wt="$ENTROPY_MACHINES_ROOT"
+worker_wt=""
+polls=0
+max_polls=40
+
+while [ -z "$worker_wt" ] && [ "$polls" -lt "$max_polls" ]; do
+  for wt in $(git worktree list --porcelain | grep '^worktree ' | sed 's/worktree //'); do
+    [ "$wt" = "$main_wt" ] && continue
+    if [ -f "$wt/.dispatch-issue" ] && [ "$(cat "$wt/.dispatch-issue" | tr -d '[:space:]')" = "$id" ]; then
+      if [ -f "$wt/HANDOFF.md" ]; then
+        worker_wt="$wt"
+        break
+      fi
+    fi
+  done
+  if [ -z "$worker_wt" ]; then
+    sleep 15
+    polls=$((polls + 1))
+  fi
+done
+
+if [ -z "$worker_wt" ]; then
+  echo "dispatch-run($id): TIMEOUT — no HANDOFF.md after $max_polls polls" >&2
+  exit 5
+fi
+
+echo "dispatch-run($id): HANDOFF.md found at $worker_wt"
+
+# ---------------------------------------------------------------------------
+# STEP 4 — Verifier agent
+# ---------------------------------------------------------------------------
+echo "dispatch-run($id): step 4 — launching verifier agent"
+
+ctx="$ENTROPY_MACHINES_ROOT/.dispatch-context/$id.md"
+
+verifier_prompt="VERIFIER for issue $id.
+
+A worker agent completed implementation in worktree: $worker_wt
+Dispatch context: $ctx
+
+Read BOTH files before doing anything else.
+
+## STEP 1 — INTERROGATE THE WORKER
+Run: bin/handoff $id --interrogate
+Use ListAgents to find the worker agent named \"$id\". Send ALL questions via SendMessage.
+Wait for the worker to respond. Record the answers:
+  bin/handoff $id --record-interrogation --answer \"<answers>\"
+If the worker cannot be reached, answer from artifacts:
+  1. Read $worker_wt/HANDOFF.md
+  2. Read the changed files in the worktree
+
+## STEP 2 — LIFT
+Run: bin/handoff $id --from $worker_wt --lift
+If any files are rejected (main drifted), merge manually.
+
+## STEP 3 — TEST
+Run: tests/run
+All tests must pass. Fix failures caused by the lift.
+
+## STEP 4 — VERIFY (do NOT commit)
+Run: bin/handoff $id --from $worker_wt --verified \"auto-verified: tests passed\"
+If HANDOFF.md had found: none AND next: none, add --clean.
+If it had real found: or next: values, pass --found \"...\" --next \"...\"
+
+DO NOT commit or push. Report what you verified and stop.
+The orchestrator reviews your work and commits."
+
+"$@" "$verifier_prompt" > "$outdir/verifier.json" 2> "$outdir/verifier.err" &
+verifier_pid=$!
+deadline=$(( $(date +%s) + timeout_s ))
+
+while kill -0 "$verifier_pid" 2>/dev/null; do
+  if [ "$(date +%s)" -gt "$deadline" ]; then
+    kill -TERM "$verifier_pid" 2>/dev/null || true
+    sleep 5
+    kill -KILL "$verifier_pid" 2>/dev/null || true
+    echo "dispatch-run($id): TIMEOUT — verifier killed after $((timeout_s / 60))m" >&2
+    exit 6
+  fi
+  sleep 10
+done
+
+wait "$verifier_pid" || true
+echo "dispatch-run($id): verifier finished."
+
+# ---------------------------------------------------------------------------
+# REPORT — ready for fold
+# ---------------------------------------------------------------------------
+echo
+echo "dispatch-run($id): READY FOR FOLD"
+echo "  worker worktree: $worker_wt"
+echo "  dispatch context: $ctx"
+echo "  logs: $outdir/"
+echo
+echo "Review the staged changes in this checkout, then commit."
+echo "The commit-msg hook (handoff-guard) will enforce the handoff record."

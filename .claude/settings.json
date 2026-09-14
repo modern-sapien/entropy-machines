@@ -7,9 +7,14 @@
           {
             "type": "command",
             "command": "bin/no-fork-gate"
+          },
+          {
+            "type": "command",
+            "command": "bin/dispatch-gate"
           }
         ]
       }
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

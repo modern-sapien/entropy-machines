@@ -1,0 +1,116 @@
+#!/bin/sh
+# PreToolUse hook: refuse Agent calls for tracked issues that have no
+# DISPATCH note in the tracker log. Forces all issue work through the
+# dispatch pipeline (bin/dispatch-run → worktree → auto-verify → handoff).
+#
+# Same mechanism as bin/no-fork-gate. Registered in .claude/settings.json
+# as a PreToolUse hook on "Agent".
+#
+# WHAT IT CHECKS:
+#   1. Does the Agent call's prompt mention a tracked issue id (i-<slug>)?
+#   2. If so, does the tracker's note log have a DISPATCH note for that id?
+#   3. If no DISPATCH note, REFUSE — the agent must go through dispatch.
+#
+# WHAT IT ALLOWS:
+#   - Agent calls with no issue id in the prompt (general work, not tracked)
+#   - Agent calls where the issue has been properly dispatched
+#   - Verifier agents (prompt starts with "VERIFIER for issue")
+#
+# WHY THE PROMPT, NOT THE NAME. The Agent tool's "name" field is optional
+# and often missing. The prompt always contains the issue id when work is
+# being done on a tracked issue.
+
+set -e
+
+# TOOL_INPUT is the JSON body of the Agent tool call, set by Claude Code.
+prompt=$(printf '%s' "$TOOL_INPUT" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    print(data.get("prompt", ""))
+except Exception:
+    pass
+')
+
+# Allow verifier agents — they are launched BY the dispatch pipeline.
+case "$prompt" in
+  "VERIFIER for issue"*) exit 0 ;;
+  "Verify"*) exit 0 ;;
+esac
+
+# Extract issue ids from the prompt.
+ids=$(printf '%s' "$prompt" | grep -oE '\bi-[a-z0-9][a-z0-9-]{4,}' | sort -u || true)
+
+# No issue ids → not tracked work → allow.
+[ -n "$ids" ] || exit 0
+
+# Resolve the project root.
+if [ -z "${ENTROPY_MACHINES_HOME:-}" ]; then
+  # Walk up from this script to find the harness.
+  ENTROPY_MACHINES_HOME="$(cd "$(dirname "$0")/.." && pwd -P)"
+fi
+. "$ENTROPY_MACHINES_HOME/lib/roots.sh"
+root=$(entropy_machines_root 2>/dev/null || true)
+
+# No project root → can't check → allow (don't block on misconfiguration).
+[ -n "$root" ] || exit 0
+
+# Read the tracker's note log.
+tracker="$ENTROPY_MACHINES_HOME/bin/tracker"
+[ -x "$tracker" ] || exit 0
+
+for id in $ids; do
+  # Check whether the issue exists in the tracker at all.
+  issue_json=$("$tracker" show "$id" 2>/dev/null || true)
+  if [ -z "$issue_json" ]; then
+    # Issue not in the tracker — not tracked work. Allow.
+    continue
+  fi
+
+  # Issue exists. Check whether it's already done — done issues don't need
+  # dispatch (verifiers, follow-ups, etc.).
+  is_done=$(printf '%s' "$issue_json" | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    if d.get("status") == "done":
+        print("yes")
+except Exception:
+    pass
+' 2>/dev/null || true)
+  [ "$is_done" = "yes" ] && continue
+
+  # Issue exists and is not done. Check for a DISPATCH note.
+  notes=$("$tracker" notes --issue "$id" 2>/dev/null || true)
+  has_dispatch=""
+  if [ -n "$notes" ]; then
+    has_dispatch=$(printf '%s' "$notes" | python3 -c '
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    verb = r.get("verb", "")
+    text = r.get("text", "")
+    if isinstance(text, str) and text.startswith("DISPATCH "):
+        print("yes")
+        break
+    if verb == "DISPATCH":
+        print("yes")
+        break
+' 2>/dev/null || true)
+  fi
+
+  if [ -z "$has_dispatch" ]; then
+    echo "DENIED: Agent call references issue $id, but no DISPATCH note exists in the tracker." >&2
+    echo "  Use the MCP dispatch_issue tool or bin/dispatch-run to dispatch through the full pipeline." >&2
+    echo "  This ensures pre-flight checks, worktree isolation, and auto-verification." >&2
+    exit 2
+  fi
+done
+
+exit 0

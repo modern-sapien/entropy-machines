@@ -34,7 +34,7 @@ assert_rc 0 "get_active_claims completes"
 assert_not_out "i-dispatch-test" "issue is not in active claims before dispatch"
 
 # --- dispatch the issue ---------------------------------------------------
-mcp_call '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"dispatch_issue","arguments":{"issue_id":"i-dispatch-test","brief":"implement the widget","files":["src/widget.py","src/widget_test.py"],"agent_id":"test-agent-42"}}}'
+mcp_call '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"dispatch_issue","arguments":{"issue_id":"i-dispatch-test","brief":"implement the widget","files":["src/widget.py","src/widget_test.py"],"agent_id":"test-agent-42","record_only":true}}}'
 assert_rc 0 "dispatch_issue completes"
 assert_out "progress" "dispatch sets status to progress"
 assert_out "test-agent-42" "dispatch sets claimed_by to the agent id"
@@ -99,7 +99,7 @@ assert_not_out "i-dispatch-test" "handed-off issue is no longer in active claims
 mcp_call '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"create_issue","arguments":{"id":"i-review-test","title":"review test issue","description":"test handoff with custom status"}}}'
 assert_rc 0 "create second issue"
 
-mcp_call '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"dispatch_issue","arguments":{"issue_id":"i-review-test","brief":"spike on caching"}}}'
+mcp_call '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"dispatch_issue","arguments":{"issue_id":"i-review-test","brief":"spike on caching","files":["src/cache.py"],"record_only":true}}}'
 assert_rc 0 "dispatch second issue"
 
 mcp_call '{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"handoff_issue","arguments":{"issue_id":"i-review-test","changed":"added cache layer","verified":"benchmarks pass","status":"review"}}}'
