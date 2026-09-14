@@ -204,8 +204,11 @@ def load_config(cwd=None, force=False):
     if _cached is not None and not force:
         return _cached
     root = find_repo_root(cwd)
-    # config.json lives in the harness dir, not at the git root.
+    # Vendored: config.json next to bin/ and lib/. External install: at the
+    # project root. Check harness dir first (vendored wins when both exist).
     file_path = os.path.join(_HARNESS_DIR, CONFIG_FILENAME)
+    if not os.path.exists(file_path):
+        file_path = os.path.join(root, CONFIG_FILENAME)
     user = {}
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:

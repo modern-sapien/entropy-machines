@@ -198,8 +198,12 @@ entropy_machines_require_root() {
     unset _err_tool
     exit 2
   fi
-  if [ ! -f "${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}/config.json" ]; then
-    echo "$_err_tool: REFUSED — no config.json at ${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}." >&2
+  if [ -f "${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}/config.json" ]; then
+    : # vendored layout — config.json next to bin/ and lib/
+  elif [ -f "$ENTROPY_MACHINES_ROOT/config.json" ]; then
+    : # external install — config.json at the project root
+  else
+    echo "$_err_tool: REFUSED — no config.json at $ENTROPY_MACHINES_ROOT." >&2
     echo "  That is this project's contract with the harness: every path," >&2
     echo "  command and suite the harness would otherwise hardcode lives in" >&2
     echo "  it. See ${ENTROPY_MACHINES_HOME:-<harness>}/docs/CONFIG.md." >&2

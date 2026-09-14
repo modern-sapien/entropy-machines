@@ -65,7 +65,13 @@ if ! project=$(entropy_machines_root); then
   exit 2
 fi
 
-target="$ENTROPY_MACHINES_HOME/config.json"
+# Vendored: ENTROPY_MACHINES_HOME is inside the project — config.json lives
+# next to bin/ and lib/. External install: harness is elsewhere — config.json
+# goes at the project root.
+case "$ENTROPY_MACHINES_HOME" in
+  "$project"|"$project"/?*) target="$ENTROPY_MACHINES_HOME/config.json" ;;
+  *) target="$project/config.json" ;;
+esac
 
 if [ -f "$target" ] && [ -z "$force" ]; then
   echo "init: REFUSED — config.json already exists at $target." >&2
@@ -186,6 +192,11 @@ else
   cp -- "$prd_src" "$prd_dst"
   prd_written=yes
   prd_note="init: wrote $prd_dst — open it. It is the first PRD, and the"
+fi
+
+manifest="$project/$docs_dir/manifest.json"
+if [ ! -f "$manifest" ]; then
+  printf '{}\n' > "$manifest"
 fi
 
 # STEP 6 — prove the tracker actually answers before claiming success.

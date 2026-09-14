@@ -72,6 +72,8 @@ def now():
 
 
 def load():
+    if not os.path.exists(MANIFEST):
+        return {}
     with open(MANIFEST, encoding="utf-8") as f:
         m = json.load(f)
     for e in m.get("docs", {}).values():
