@@ -29,7 +29,7 @@ run test -f "$HARNESS/lib/enhance.py"
 assert_rc_nonzero "enhance.py must not exist — replaced by React"
 
 # ---------------------------------------------------------------------------
-# doctracker.py and tracker-view.py templates use only 5 color vars
+# tracker-view.py templates use only 5 color vars
 # ---------------------------------------------------------------------------
 cat > "$TEST_TMP/check_py_templates.py" <<'PY'
 import re
@@ -60,7 +60,6 @@ print("Python templates clean")
 PY
 
 run python3 "$TEST_TMP/check_py_templates.py" \
-    "$HARNESS/lib/doctracker.py" \
     "$HARNESS/lib/tracker-view.py"
 assert_rc 0 "Python templates use only the 5 color vars"
 assert_no_traceback

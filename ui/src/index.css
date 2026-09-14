@@ -203,20 +203,6 @@ code {
   margin: 0 0 18px;
 }
 
-.doc-tabs-group {
-  margin-bottom: 8px;
-}
-
-.doc-tabs-label {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--fg);
-  margin-bottom: 4px;
-}
-
 .doc-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -267,20 +253,6 @@ code {
   color: var(--notice);
 }
 
-.doc-tabs-summary {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--fg);
-  border: 1px solid var(--accent);
-  margin: 8px 0 4px;
-  padding: 5px 9px;
-  display: inline-block;
-}
-
-.doc-tabs-summary .all-done {
-  color: var(--positive);
-}
-
 /* ---- Document sidebar — within-document page navigation ----
  * Fixed panel to the left of the centered content area. When present,
  * main shifts right via :has() so content never overlaps the sidebar. */
@@ -308,7 +280,7 @@ main:has(.doc-sidebar) {
 }
 
 .doc-header h1 {
-  font-size: var(--fs-title);
+  font-size: 1.85rem;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.2;
@@ -796,67 +768,9 @@ aside.review p {
 
 /* ---- Tracker page ---- */
 
-.tracker-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin: 0 0 18px;
-}
-
-.tracker-filters {
-  display: flex;
-  border: 1px solid var(--accent);
-}
-
-.tracker-filter {
-  font-family: var(--font);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--bg);
-  color: var(--fg);
-  border: none;
-  border-right: 1px solid var(--accent);
-  padding: 7px 14px;
-}
-
-.tracker-filter:last-child {
-  border-right: none;
-}
-
-.tracker-filter:hover {
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.tracker-filter.cur {
-  color: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
 .tracker-count {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-}
-
-.tracker-table .tracker-id {
-  white-space: nowrap;
-}
-
-.tracker-status-progress {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.tracker-status-done {
-  color: var(--positive);
-  font-weight: 700;
-}
-
-.tracker-blockers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 }
 
 .tracker-chip {
@@ -882,8 +796,7 @@ aside.review p {
 
 /* ---- Tracker v2 — parity with tracker-view.py ----
  * Bucket grouping, list + board views, slide-out detail panel, search,
- * faceted sidebar filters, notes audit trail, dependency chips.
- * The flat-table styles above are retained (dead CSS, append-only). */
+ * faceted sidebar filters, notes audit trail, dependency chips. */
 
 /* --- Sticky header bar --- */
 

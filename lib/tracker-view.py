@@ -75,7 +75,6 @@ _NAV_CATEGORIES = (
 def _read_nav_categories():
     """Return the sidebar nav category links."""
     return _NAV_CATEGORIES
-    return _NAV_CATEGORIES_CACHE
 
 
 def _base_nav(brand):
@@ -252,7 +251,7 @@ def finish(payload, docs_path, root, store_rel):
               "the first one.")
     print("  read-only view, generated from %s — re-run after any change; "
           "hand edits are lost." % store_rel)
-    print("  `bin/serve` already serves it: open /TRACKER.html there.")
+    print("  `bin/serve` already serves it: open /tracker there.")
     return 0
 
 

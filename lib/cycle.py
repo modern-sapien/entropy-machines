@@ -13,7 +13,7 @@ directory.
   python3 cycle.py set   <handle> <status>    # any status transition (open/in-review/resolved/held)
   python3 cycle.py new   <handle> <file> <title> [status]   # register a new doc
   python3 cycle.py history <handle>           # list this doc's versions
-  python3 cycle.py sync                       # regenerate STATE.md + INDEX.html from manifest
+  python3 cycle.py sync                       # regenerate STATE.md from manifest
 """
 import json
 import os
@@ -60,14 +60,14 @@ def cmd_responses(m, args):
 def cmd_start(m, args):
     did = _resolve_or_die(m, args[0])
     ds.set_status(m, did, "in-review")
-    print(f"{did} → in-review (v{m['docs'][did]['version']}). STATE.md + INDEX.html refreshed.")
+    print(f"{did} → in-review (v{m['docs'][did]['version']}). STATE.md refreshed.")
 
 
 def cmd_done(m, args):
     did = _resolve_or_die(m, args[0])
     label = args[1] if len(args) > 1 else "open"
     ds.set_status(m, did, "open", label)
-    print(f"{did} → open, ball back to you (v{m['docs'][did]['version']}). STATE.md + INDEX.html refreshed.")
+    print(f"{did} → open, ball back to you (v{m['docs'][did]['version']}). STATE.md refreshed.")
 
 
 def cmd_set(m, args):
@@ -98,7 +98,7 @@ def _open_in_serve(filename):
         s.close()
     except OSError:
         return
-    webbrowser.open(f"http://localhost:{port}/{filename}")
+    webbrowser.open(f"http://localhost:{port}/")
 
 
 def cmd_new(m, args):
@@ -109,9 +109,7 @@ def cmd_new(m, args):
     m["docs"][handle] = {"file": file, "title": title, "status": status, "version": 0}
     ds.store(m)
     ds.write_state(m)
-    ds.write_index(m)
-    ds.render_doctracker()
-    print(f"registered {handle} → {file} ({status}). STATE.md + INDEX.html + DOCS.html refreshed.")
+    print(f"registered {handle} → {file} ({status}). STATE.md refreshed.")
     _open_in_serve(file)
 
 
@@ -127,9 +125,7 @@ def cmd_history(m, args):
 
 def cmd_sync(m, _):
     ds.write_state(m)
-    ds.write_index(m)
-    ds.render_doctracker()
-    print("STATE.md + INDEX.html + DOCS.html regenerated from manifest.json")
+    print("STATE.md regenerated from manifest.json")
 
 
 CMDS = {

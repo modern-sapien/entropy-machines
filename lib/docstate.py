@@ -9,7 +9,6 @@ to move a doc through review). Keeping the logic here means both agree.
 
 Ported from browser-wrap's production-plan infrastructure.
 """
-import html as html_mod
 import json
 import os
 import re
@@ -22,20 +21,18 @@ DIR = None
 MANIFEST = None
 HISTORY = None
 STATE = None
-INDEX = None
 PENDING = None
 
 
 def init(docs_dir=None):
     """Set the docs directory. Must be called before any other function."""
-    global DIR, MANIFEST, HISTORY, STATE, INDEX, PENDING
+    global DIR, MANIFEST, HISTORY, STATE, PENDING
     if docs_dir is None:
         docs_dir = os.environ.get("ENTROPY_MACHINES_DOCS", os.getcwd())
     DIR = os.path.abspath(docs_dir)
     MANIFEST = os.path.join(DIR, "manifest.json")
     HISTORY = os.path.join(DIR, "history")
     STATE = os.path.join(DIR, "STATE.md")
-    INDEX = os.path.join(DIR, "INDEX.html")
     PENDING = os.path.join(DIR, "pending-review.jsonl")
 
 # Docs in these statuses are quiet — nothing pending either way — so their
@@ -137,8 +134,8 @@ SNAPSHOT_STATUSES = {"open", "resolved"}
 
 def set_status(m, did, status, label=""):
     """Move a doc to a new status. Content-bearing transitions snapshot a
-    version first; pure status moves don't. Persists + regenerates STATE.md,
-    INDEX.html and DOCS.html. Returns the doc's current version."""
+    version first; pure status moves don't. Persists + regenerates STATE.md.
+    Returns the doc's current version."""
     if status not in STATUS:
         raise ValueError(f"unknown status {status!r}; one of {list(STATUS)}")
     e = m["docs"][did]
@@ -150,8 +147,6 @@ def set_status(m, did, status, label=""):
         e["reviewedAt"] = now()
     store(m)
     write_state(m)
-    write_index(m)
-    render_doctracker()
     return e.get("version", 0)
 
 
@@ -204,8 +199,6 @@ def set_ready(m, did, ready, by):
     e["version"] = e.get("version", 0) + 1
     store(m)
     write_state(m)
-    write_index(m)
-    render_doctracker()
     return e.get("ready")
 
 
@@ -213,17 +206,6 @@ def is_ready(e):
     """True when the owner has ticked this doc's ready box."""
     return bool(e.get("ready"))
 
-
-def render_doctracker():
-    """Rebuild DOCS.html (the doc-level tracker UI). Lazy import — doctracker
-    imports this module at top level. Never fatal: a broken doctracker.py must
-    not block a status flip or a save."""
-    try:
-        import doctracker
-        doctracker.render()
-    except Exception as exc:  # noqa: BLE001 - advisory, never blocks the write
-        import sys
-        print(f"warning: DOCS.html not rebuilt ({exc})", file=sys.stderr)
 
 
 def queue_review(did, file, kind="save"):
@@ -332,8 +314,6 @@ def on_save(file):
     m["docs"][did]["updatedAt"] = now()
     store(m)
     write_state(m)
-    write_index(m)
-    render_doctracker()
 
 
 # ---- STATE.md generation -------------------------------------------------
@@ -354,8 +334,7 @@ there.
 > **Resume a fresh session by naming a doc:** e.g. _"my responses are in for
 > `prd-001`, take a look."_ The handle resolves via manifest, marks it in-review,
 > reads your answers, and the status/version/STATE bookkeeping happens
-> automatically. `bin/cycle list` shows every handle + status. Open `INDEX.html`
-> for the flat queue of open questions.
+> automatically. `bin/cycle list` shows every handle + status.
 """
 
 
@@ -395,167 +374,6 @@ def write_state(m):
     os.replace(tmp, STATE)
 
 
-# ---- INDEX.html generation -------------------------------------------------
-# The single-page "what's pending" view. Scans every non-quiet doc's response
-# boxes + review asides and buckets each *question* (not each doc) into one of
-# three states, independent of the doc's own status:
-#   - empty textarea            → still needs your answer
-#   - answered, no review aside → I owe you a reply
-#   - answered + review aside   → my reply is in; worth a read/confirm
-# This is what makes "did Claude read my answer" checkable in one place
-# instead of hunting through whichever of the 13 docs it landed in.
-
-_BOX_RX = re.compile(
-    r'<div class="response" data-resp="([^"]+)">\s*'
-    r'<label>(.*?)</label>\s*'
-    r'<div class="discuss">(.*?)</div>\s*'
-    r'<textarea[^>]*>(.*?)</textarea>\s*'
-    r'</div>',
-    re.S,
-)
-_SECTION_RX = re.compile(r'<section[^>]*\sid="([^"]+)"')
-_TAG_RX = re.compile(r"<[^>]+>")
-
-
-def _text(s):
-    return html_mod.unescape(_TAG_RX.sub("", s)).strip()
-
-
-def extract_boxes(path):
-    """Every response box in `path`, each tagged with its answer/review state.
-
-    Returns a list of dicts: key, label, answer, review (html or None),
-    section (enclosing <section id> or None, for deep-linking)."""
-    if not os.path.isfile(path):
-        return []
-    src = open(path, encoding="utf-8").read()
-    sections = [(m.start(), m.group(1)) for m in _SECTION_RX.finditer(src)]
-
-    def section_for(pos):
-        cur = None
-        for start, sid in sections:
-            if start > pos:
-                break
-            cur = sid
-        return cur
-
-    boxes = []
-    for m in _BOX_RX.finditer(src):
-        key, label, _discuss, answer = m.groups()
-        rm = re.search(
-            r'<aside class="review" data-review="%s">(.*?)</aside>' % re.escape(key),
-            src, re.S,
-        )
-        boxes.append({
-            "key": key,
-            "label": _text(label),
-            "answer": html_mod.unescape(answer).strip(),
-            "review": rm.group(1).strip() if rm else None,
-            "section": section_for(m.start()),
-        })
-    return boxes
-
-
-def _esc(s):
-    return html_mod.escape(s)
-
-
 def write_index(m):
     # INDEX.html generation removed — the React SPA serves the dashboard.
     return
-    needs_answer, owe_reply, for_your_read, quiet = [], [], [], []
-    for did, e in m["docs"].items():
-        status = e.get("status", "")
-        title = e.get("title", e.get("file", did))
-        file = e.get("file", "")
-        if status in QUIET_STATUSES:
-            quiet.append((did, e))
-            continue
-        for b in extract_boxes(os.path.join(DIR, file)):
-            link = f"{file}#{b['section']}" if b["section"] else file
-            row = {**b, "did": did, "title": title, "link": link}
-            if not b["answer"]:
-                needs_answer.append(row)
-            elif not b["review"]:
-                owe_reply.append(row)
-            else:
-                for_your_read.append(row)
-
-    def section(icon, heading, sub, rows, show_answer=False, show_review=False):
-        if not rows:
-            return ""
-        items = []
-        for r in rows:
-            bits = [f'<div class="q"><a href="{_esc(r["link"])}">{_esc(r["title"])}</a> · <strong>{_esc(r["label"])}</strong></div>']
-            if show_answer and r["answer"]:
-                bits.append(f'<div class="ans">{_esc(r["answer"])}</div>')
-            if show_review and r["review"]:
-                bits.append(f'<div class="rev">{r["review"]}</div>')
-            items.append(f'<li>{"".join(bits)}</li>')
-        return (
-            f'<section><h2>{icon} {heading} <span class="count">{len(rows)}</span></h2>'
-            f'<p class="sub">{sub}</p><ul class="qlist">{"".join(items)}</ul></section>'
-        )
-
-    body = (
-        section("🟡", "Needs your answer", "New questions nobody has answered yet.", needs_answer)
-        + section("🔵", "I owe you a reply", "You answered — I haven't folded a reply in yet.", owe_reply, show_answer=True)
-        + section("✅", "My reply — take a look", "Answered and replied to; read or reopen if you want more.", for_your_read, show_answer=True, show_review=True)
-    )
-    if not body:
-        body = '<section><p class="sub">Nothing pending — every active doc is caught up.</p></section>'
-
-    quiet_rows = "".join(
-        f'<tr><td><a href="{_esc(e.get("file",""))}">{_esc(e.get("title", did))}</a></td>'
-        f'<td>{STATUS.get(e.get("status",""), (e.get("status","?"),))[0]}</td></tr>'
-        for did, e in quiet
-    )
-
-    html_out = f"""<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open questions</title>
-<style>
-  :root{{
-    --bg:#faf9fc; --surface:#ffffff; --border:#ddd6fe; --text:#18181b; --muted:#71717a;
-    --accent:#7c3aed; --code-bg:#f4f2f8; --warn:#f59e0b; --good:#1a7f37;
-    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  }}
-  @media (prefers-color-scheme:dark){{
-    :root{{ --bg:#0a0a0d; --surface:#18181b; --border:#3a2f5c; --text:#fafafa; --muted:#a1a1aa;
-      --accent:#a78bfa; --code-bg:#232030; --warn:#fbbf24; --good:#4ec97a; }}
-  }}
-  *{{box-sizing:border-box}}
-  body{{font-family:var(--font); color:var(--text); background:var(--bg); margin:0; padding:2rem 2.4rem 5rem; line-height:1.55;}}
-  h1{{font-size:1.4rem; margin:0 0 .2rem;}}
-  .sub{{color:var(--muted); margin:.2rem 0 1.6rem;}}
-  h2{{font-size:1.05rem; margin:1.6rem 0 .1rem;}}
-  h2 .count{{display:inline-block; font-size:.72rem; font-weight:700; background:var(--code-bg); color:var(--muted); border-radius:99px; padding:.05rem .5rem; vertical-align:middle;}}
-  section > .sub{{margin:0 0 .6rem;}}
-  ul.qlist{{list-style:none; margin:0; padding:0;}}
-  ul.qlist li{{border-left:3px solid var(--warn); background:var(--surface); border:1px solid var(--border); border-left-width:3px; border-radius:0 8px 8px 0; padding:.6rem .8rem; margin:.5rem 0;}}
-  .q{{font-size:.95rem;}}
-  .q a{{color:var(--text); text-decoration:none; font-weight:600;}}
-  .q a:hover{{color:var(--accent);}}
-  .ans{{margin-top:.4rem; padding:.4rem .6rem; background:var(--code-bg); border-radius:6px; font-size:.88rem; white-space:pre-wrap;}}
-  .rev{{margin-top:.4rem; padding:.4rem .6rem; border-left:2px solid var(--good); font-size:.88rem;}}
-  .rev p{{margin:.3rem 0;}}
-  table{{border-collapse:collapse; width:100%; font-size:.85rem; margin-top:.5rem;}}
-  td{{padding:.3rem .5rem; border-bottom:1px solid var(--border);}}
-  td a{{color:var(--text);}}
-  details summary{{cursor:pointer; color:var(--muted); font-size:.85rem; margin-top:2rem;}}
-</style>
-</head><body>
-<h1>Open questions</h1>
-<p class="sub">Generated {_esc(now())} from every doc's response boxes — one place to check what's pending, instead of 13 files.</p>
-{body}
-<details><summary>Everything else — resolved / held, no action needed ({len(quiet)})</summary>
-<table>{quiet_rows}</table>
-</details>
-</body></html>
-"""
-    tmp = INDEX + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(html_out)
-    os.replace(tmp, INDEX)

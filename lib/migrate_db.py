@@ -11,12 +11,10 @@ Reads three pre-React sources and writes one file:
   ->  .entropy-machines/entropy-machines.db
 
 manifest.json is the list of docs to migrate — not every HTML file under
-entropy-machines-docs/ is a dialogue doc; TRACKER.html, INDEX.html, DOCS.html,
-PRDS.html, REPORTS.html and CONFERENCE-LIST.html are GENERATED views
-(doctracker.py / docstate.write_index), not source docs, and are correctly
-left out because manifest.json never lists them. A doc file manifest.json
-points at that is missing on disk is skipped, not fatal, and named in the
-report.
+entropy-machines-docs/ is a dialogue doc; generated views are not source docs
+and are correctly left out because manifest.json never lists them. A doc file
+manifest.json points at that is missing on disk is skipped, not fatal, and
+named in the report.
 
 PARSING CONTRACT (see the comment header any dialogue doc carries): a
 `<section class="page" id="pN">` per page, `<nav>` anchors carrying the same

@@ -3,12 +3,9 @@
 // different mood is a different hex value, not the same hex value made
 // translucent.
 //
-// These are the SAME theme configs the old HTML templates carried inline
-// in <script id="__theme-selector-patch"> (see lib/doc-template.html),
-// plus `notice` (amber/warm) added to distinguish "needs attention" from
-// "agent voice" — accent was doing double duty before this.
-// Keeping the names and values identical means a reader's stored
-// localStorage theme choice still resolves to the same colors here.
+// Keeping the names and values identical to the legacy HTML templates means
+// a reader's stored localStorage theme choice still resolves to the same
+// colors here.
 export interface Theme {
   bg: string;
   fg: string;
