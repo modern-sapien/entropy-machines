@@ -63,7 +63,7 @@ EOF
 ENTROPY_MACHINES_HOME=$(entropy_machines_home "$0")
 entropy_machines_require_root tracker
 
-config="$ENTROPY_MACHINES_HOME/config.json"
+config="$ENTROPY_MACHINES_CONFIG"
 
 # One read of config.json, here, once. Prints four tab-separated fields:
 #   backend            "file" or "command" (defaults to "file")

@@ -198,11 +198,18 @@ entropy_machines_require_root() {
     unset _err_tool
     exit 2
   fi
-  if [ -f "${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}/config.json" ]; then
-    : # vendored layout — config.json next to bin/ and lib/
-  elif [ -f "$ENTROPY_MACHINES_ROOT/config.json" ]; then
-    : # external install — config.json at the project root
-  else
+  # Resolve config.json: vendored layout (next to bin/lib/) wins over project
+  # root, but node_modules/ is never vendored.
+  ENTROPY_MACHINES_CONFIG=""
+  case "${ENTROPY_MACHINES_HOME:-}" in
+    */node_modules/*) ;; # npm install — skip harness dir
+    *) [ -f "${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}/config.json" ] && \
+         ENTROPY_MACHINES_CONFIG="${ENTROPY_MACHINES_HOME:-$ENTROPY_MACHINES_ROOT}/config.json" ;;
+  esac
+  if [ -z "$ENTROPY_MACHINES_CONFIG" ] && [ -f "$ENTROPY_MACHINES_ROOT/config.json" ]; then
+    ENTROPY_MACHINES_CONFIG="$ENTROPY_MACHINES_ROOT/config.json"
+  fi
+  if [ -z "$ENTROPY_MACHINES_CONFIG" ]; then
     echo "$_err_tool: REFUSED — no config.json at $ENTROPY_MACHINES_ROOT." >&2
     echo "  That is this project's contract with the harness: every path," >&2
     echo "  command and suite the harness would otherwise hardcode lives in" >&2
@@ -211,6 +218,6 @@ entropy_machines_require_root() {
     unset _err_tool
     exit 2
   fi
-  export ENTROPY_MACHINES_ROOT
+  export ENTROPY_MACHINES_ROOT ENTROPY_MACHINES_CONFIG
   unset _err_tool
 }

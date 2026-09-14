@@ -35,7 +35,7 @@ os=$(uname)
 # refusal is this script's job for the keys that truly have none, e.g. an
 # unsupported scheduler below).
 cfg() {
-  python3 - "$ENTROPY_MACHINES_HOME/config.json" "$1" "$2" <<'PY'
+  python3 - "${ENTROPY_MACHINES_CONFIG:-$ENTROPY_MACHINES_HOME/config.json}" "$1" "$2" <<'PY'
 import json, sys
 path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
 try:

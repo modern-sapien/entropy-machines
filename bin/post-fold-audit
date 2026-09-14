@@ -111,7 +111,7 @@ def _require_root():
               "config.json found by walking up from %s." % os.getcwd(), file=sys.stderr)
         print("  cd into the project you are running the factory on.", file=sys.stderr)
         sys.exit(2)
-    if not os.path.exists(os.path.join(ENTROPY_MACHINES_HOME, "config.json")):
+    if not os.path.exists(os.environ.get("ENTROPY_MACHINES_CONFIG", os.path.join(ENTROPY_MACHINES_HOME, "config.json"))):
         print("post-fold-audit: REFUSED -- no config.json at %s." % project, file=sys.stderr)
         print("  That is this project's contract with the harness. See "
               "%s/docs/CONFIG.md." % ENTROPY_MACHINES_HOME, file=sys.stderr)

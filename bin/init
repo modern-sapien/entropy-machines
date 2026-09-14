@@ -65,10 +65,12 @@ if ! project=$(entropy_machines_root); then
   exit 2
 fi
 
-# Vendored: ENTROPY_MACHINES_HOME is inside the project — config.json lives
-# next to bin/ and lib/. External install: harness is elsewhere — config.json
-# goes at the project root.
+# Vendored (plain tracked files next to project code): config.json lives next
+# to bin/ and lib/. npm install (node_modules/) or external path: config.json
+# goes at the project root. node_modules is inside the project tree but is NOT
+# a vendored layout — it is a package manager install.
 case "$ENTROPY_MACHINES_HOME" in
+  */node_modules/*) target="$project/config.json" ;;
   "$project"|"$project"/?*) target="$ENTROPY_MACHINES_HOME/config.json" ;;
   *) target="$project/config.json" ;;
 esac
