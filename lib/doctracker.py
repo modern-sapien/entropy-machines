@@ -31,10 +31,10 @@ OUT = None
 # Sidebar nav category links — the canonical set for all generated pages.
 _NAV_CATEGORIES = (
     '  <div class="grp">Categories</div>\n'
-    '  <a href="TRACKER.html">issues</a>\n'
-    '  <a href="PRDS.html">PRDs</a>\n'
-    '  <a href="REPORTS.html">reports</a>\n'
-    '  <a href="DOCS.html">docs</a>')
+    '  <a href="/tracker">issues</a>\n'
+    '  <a href="/prds">PRDs</a>\n'
+    '  <a href="/reports">reports</a>\n'
+    '  <a href="/docs">docs</a>')
 
 
 def _read_nav_categories():
@@ -225,37 +225,15 @@ def render_category(cat_docs, title, out_path, statuses):
 
 
 def render():
-    """Rebuild DOCS.html and the category landing pages. Returns the
-    DOCS.html output path (the main doc tracker)."""
-    if DIR is None:
-        init()
-    all_docs = collect()
-    statuses = {k: v[0] for k, v in ds.STATUS.items()}
-    payload = {"docs": all_docs, "statuses": statuses}
-    blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
-    html = (TEMPLATE
-            .replace("__NAV__", _base_nav("Doc tracker"))
-            .replace("__DATA__", blob))
-    with open(OUT, "w") as f:
-        f.write(html)
-
-    # Category landing pages — PRDS.html and REPORTS.html.
-    cats = categorize(all_docs)
-    render_category(cats["prd"], "PRDs", os.path.join(DIR, "PRDS.html"), statuses)
-    render_category(cats["report"], "Reports", os.path.join(DIR, "REPORTS.html"), statuses)
-
-    return OUT
+    """No-op — DOCS.html, PRDS.html, REPORTS.html are replaced by the React
+    SPA. Kept as a callable so existing callers (docstate.render_doctracker)
+    don't crash."""
+    pass
 
 
 def main():
-    init()
-    all_docs = collect()
-    out = render()
-    cats = categorize(all_docs)
-    print(f"wrote {out} ({len(all_docs)} docs)")
-    print(f"  PRDS.html ({len(cats['prd'])} docs), REPORTS.html ({len(cats['report'])} docs)")
-    if "--open" in sys.argv:
-        subprocess.run(["open", out])
+    print("doctracker: legacy HTML pages (DOCS.html, PRDS.html, REPORTS.html) removed.")
+    print("  The React SPA serves /docs, /prds, /reports instead.")
 
 
 TEMPLATE = r"""<!doctype html>

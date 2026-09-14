@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { TopNav } from "./components/TopNav";
 import { ThemeProvider } from "./context/ThemeProvider";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -15,6 +15,30 @@ function Layout({ children }: { children: ReactNode }) {
       <TopNav />
       <main>{children}</main>
     </>
+  );
+}
+
+const LEGACY_REDIRECTS: Record<string, string> = {
+  "/REPORTS.html": "/reports",
+  "/PRDS.html": "/prds",
+  "/DOCS.html": "/docs",
+  "/INDEX.html": "/",
+  "/TRACKER.html": "/tracker",
+};
+
+function LegacyRedirect() {
+  const { pathname } = useLocation();
+  const target = LEGACY_REDIRECTS[pathname];
+  if (target) return <Navigate to={target} replace />;
+  return (
+    <Layout>
+      <section className="page">
+        <h1>Page not found</h1>
+        <p className="sub">
+          Nothing lives at <code>{pathname}</code>.
+        </p>
+      </section>
+    </Layout>
   );
 }
 
@@ -103,6 +127,7 @@ export default function App() {
               </Layout>
             }
           />
+          <Route path="*" element={<LegacyRedirect />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

@@ -461,6 +461,8 @@ def _esc(s):
 
 
 def write_index(m):
+    # INDEX.html generation removed — the React SPA serves the dashboard.
+    return
     needs_answer, owe_reply, for_your_read, quiet = [], [], [], []
     for did, e in m["docs"].items():
         status = e.get("status", "")

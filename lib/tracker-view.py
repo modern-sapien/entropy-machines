@@ -66,10 +66,10 @@ BUCKET_ORDER = ["ready", "inflight", "held", "gated", "blocked", "done"]
 # Sidebar nav category links — the canonical set for all generated pages.
 _NAV_CATEGORIES = (
     '  <div class="grp">Categories</div>\n'
-    '  <a href="TRACKER.html">issues</a>\n'
-    '  <a href="PRDS.html">PRDs</a>\n'
-    '  <a href="REPORTS.html">reports</a>\n'
-    '  <a href="DOCS.html">docs</a>')
+    '  <a href="/tracker">issues</a>\n'
+    '  <a href="/prds">PRDs</a>\n'
+    '  <a href="/reports">reports</a>\n'
+    '  <a href="/docs">docs</a>')
 
 
 def _read_nav_categories():
