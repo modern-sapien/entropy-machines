@@ -9,7 +9,6 @@
 #                                 reading/writing .entropy-machines/
 #                                 entropy-machines.db — see lib/api.py's own
 #                                 docstring for the endpoint table.
-#   GET  /TRACKER.html           dynamically rendered from live issues.json.
 #   GET  /assets/*               SPA static assets from ui/dist/assets/.
 #
 set -e
@@ -35,13 +34,6 @@ CONFIG_PY="$ENTROPY_MACHINES_HOME/lib/config.py"
 # infrastructure, not this bullet's to extend) — so a project that has not
 # set it fails config.py's "no such key" lookup, and that failure IS the
 # default path, not an error to surface.
-# tracker config — read here so the Python half can render TRACKER.html
-# dynamically from live issues.json without re-reading config.json itself
-# (docs/CONFIG.md rule 3).
-tracker_backend=$(python3 "$CONFIG_PY" get tracker.backend 2>/dev/null) || tracker_backend="file"
-tracker_file_path=$(python3 "$CONFIG_PY" get tracker.file.path 2>/dev/null) || tracker_file_path=".entropy-machines/issues.json"
-project_name=$(python3 "$CONFIG_PY" get project.name 2>/dev/null) || project_name=""
-
 docs_dir=$(python3 "$CONFIG_PY" get docs.dir 2>/dev/null) || docs_dir="entropy-machines-docs"
 case "$docs_dir" in
   /*) docs_path="$docs_dir" ;;
@@ -86,9 +78,6 @@ export SERVE_DOCS_PATH="$docs_path"
 export SERVE_DOCS_DIR="$docs_dir"
 export SERVE_PORT="$port"
 export SERVE_NO_OPEN="$SERVE_NO_OPEN"
-export SERVE_TRACKER_BACKEND="$tracker_backend"
-export SERVE_TRACKER_FILE_PATH="$tracker_file_path"
-export SERVE_PROJECT_NAME="$project_name"
 export SERVE_SPA_ROOT="$SERVE_SPA_ROOT"
 
 exec python3 - <<'PY'
@@ -100,10 +89,7 @@ python half).
 """
 from __future__ import annotations
 
-import html
 import json
-import importlib
-import importlib.util
 import os
 import sys
 import threading
@@ -116,15 +102,10 @@ ENTROPY_MACHINES_ROOT = os.environ["ENTROPY_MACHINES_ROOT"]
 DOCS_PATH = os.environ["SERVE_DOCS_PATH"]
 DOCS_DIR = os.environ["SERVE_DOCS_DIR"]
 PORT = int(os.environ["SERVE_PORT"])
-TRACKER_BACKEND = os.environ.get("SERVE_TRACKER_BACKEND", "file")
-TRACKER_FILE_PATH = os.environ.get("SERVE_TRACKER_FILE_PATH",
-                                    ".entropy-machines/issues.json")
-PROJECT_NAME = os.environ.get("SERVE_PROJECT_NAME", "")
-
 # SPA — the React frontend's production build. When SPA_ROOT is set and the
 # directory contains index.html, the server serves its static files at
 # /assets/* and uses index.html as the SPA fallback for any route not
-# matched by /api/*, TRACKER.html, or /assets/*.
+# matched by /api/* or /assets/*.
 SPA_ROOT = os.environ.get("SERVE_SPA_ROOT", "")
 SPA_INDEX = os.path.join(SPA_ROOT, "index.html") if SPA_ROOT else ""
 SPA_AVAILABLE = bool(SPA_ROOT and os.path.isfile(SPA_INDEX))
@@ -161,73 +142,8 @@ try:
 except ImportError:
     api_module = None
 
-# tracker_view — dynamic rendering of the tracker page from live issues.json.
-# Optional: if missing the server falls through to the static TRACKER.html.
-# The file is named tracker-view.py (with a hyphen), so a plain `import` cannot
-# reach it; importlib loads it by path.
-try:
-    _tv_spec = importlib.util.spec_from_file_location(
-        "tracker_view",
-        os.path.join(ENTROPY_MACHINES_HOME, "lib", "tracker-view.py"))
-    tracker_view = importlib.util.module_from_spec(_tv_spec)
-    _tv_spec.loader.exec_module(tracker_view)
-except Exception:  # noqa: BLE001 — any failure: fall back to static file
-    tracker_view = None
-
 # THEME — config-driven. Themes are 5-color config objects embedded directly
 # in templates and applied via style.setProperty. No CSS file reading needed.
-
-
-# ---------------------------------------------------------------------------
-# DYNAMIC TRACKER RENDERING — live from issues.json, no stale static file.
-#
-# Every GET /TRACKER.html reads the issue store directly and renders a fresh
-# page using tracker_view's build_payload + TEMPLATE, so changes to issues
-# show up immediately without needing to re-run `bin/tracker render`. The
-# static TRACKER.html in the docs directory is still written by that command
-# and remains the fallback for file:// access, but the served version is
-# always live.
-#
-# Only the "file" backend is supported for live rendering — a "command"
-# backend's store is opaque (see tracker-view.py's own docstring for why).
-# When dynamic rendering is unavailable, the request falls through to the
-# normal doc-serving path, which serves the static file if it exists.
-# ---------------------------------------------------------------------------
-def render_tracker_live():
-    """Render TRACKER.html in memory from the live issues.json store.
-
-    Returns the HTML string, or None if dynamic rendering is not available
-    (wrong backend, missing module, etc.) — the caller falls through to
-    the static file.
-    """
-    if tracker_view is None or TRACKER_BACKEND != "file":
-        return None
-    store_rel = TRACKER_FILE_PATH
-    store_path = (store_rel if os.path.isabs(store_rel)
-                  else os.path.join(ENTROPY_MACHINES_ROOT, store_rel))
-    # A missing store is an empty store, not an error — same rule as
-    # tracker-view.py's main() and lib/tracker-file's _load().
-    store = {"issues": {}, "notes": []}
-    if os.path.isfile(store_path):
-        try:
-            with open(store_path, encoding="utf-8") as f:
-                store = json.load(f)
-        except (OSError, ValueError):
-            return None  # corrupt store — fall through to the static file
-    project = PROJECT_NAME or os.path.basename(ENTROPY_MACHINES_ROOT)
-    payload = tracker_view.build_payload(store, project, store_rel)
-    # Same substitution as tracker_view.render(), but in memory — no temp
-    # file, no disk I/O. The five placeholders are stable: they are the page's
-    # only moving parts and are tested by tracker-render-writes-a-browsable-view.
-    blob = json.dumps(payload, ensure_ascii=False,
-                      sort_keys=True).replace("</", "<\\/")
-    return (tracker_view.TEMPLATE
-            .replace("__NAV__", tracker_view._base_nav("Issue tracker"))
-            .replace("__PROJECT__",
-                     html.escape(payload["project"] or "this repo"))
-            .replace("__GENERATED__", html.escape(payload["generated"]))
-            .replace("__STORE__", html.escape(payload["store"]))
-            .replace("__DATA__", blob))
 
 
 # ---------------------------------------------------------------------------
@@ -338,20 +254,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
-
-        # TRACKER.html — rendered dynamically from live issues.json so changes
-        # show up immediately, without needing `bin/tracker render`.
-        if path == "/TRACKER.html":
-            try:
-                body = render_tracker_live()
-            except Exception as exc:
-                sys.stderr.write("  tracker live render failed: %s\n" % exc)
-                body = None
-            if body is not None:
-                self._send(200, body.encode("utf-8"),
-                           "text/html; charset=utf-8")
-                return
-            # Fall through to SPA fallback.
 
         # SPA fallback — serves index.html so React Router can handle
         # client-side routing (/, /tracker, /prds/*, /docs/*, etc.).
