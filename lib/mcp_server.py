@@ -32,6 +32,7 @@ from api import (
     update_doc,
     update_issue,
 )
+import report_gen
 
 # ---------------------------------------------------------------------------
 # tool definitions — the schema each tool advertises via tools/list
@@ -231,6 +232,89 @@ TOOLS = [
             "required": ["doc_id"],
         },
     },
+    # --- report generation tool ---
+    {
+        "name": "create_report",
+        "description": (
+            "Create a sprint report or dialogue doc HTML file from structured "
+            "content sections. Generates proper HTML using the project's template "
+            "conventions (save bar, live reload, theme vars, response boxes), "
+            "registers the doc in manifest.json, and creates a matching record "
+            "in the SQLite database."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "doc_type": {
+                    "type": "string",
+                    "enum": ["sprint-report", "dialogue"],
+                    "description": "Type of document to create.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Document title (e.g. 'Sprint Report: Gate Hooks').",
+                },
+                "slug": {
+                    "type": "string",
+                    "description": (
+                        "URL-safe identifier used for the filename and nav brand. "
+                        "For sprint-report: produces SPRINT-REPORT-<slug>.html. "
+                        "For dialogue: produces <slug>.html."
+                    ),
+                },
+                "subtitle": {
+                    "type": "string",
+                    "description": "Subtitle text shown under the title (e.g. date or description).",
+                },
+                "sections": {
+                    "type": "array",
+                    "description": "Content sections for the document. Each becomes a page.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "nav_title": {
+                                "type": "string",
+                                "description": "Nav sidebar link text (e.g. '0 \\u00b7 Summary').",
+                            },
+                            "heading": {
+                                "type": "string",
+                                "description": "Section heading.",
+                            },
+                            "subtitle": {
+                                "type": "string",
+                                "description": "Optional section subtitle.",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "HTML content for the section body.",
+                            },
+                            "response": {
+                                "type": "object",
+                                "description": "Optional response box for this section.",
+                                "properties": {
+                                    "key": {
+                                        "type": "string",
+                                        "description": "Stable response key (e.g. 's-summary').",
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Response box label text.",
+                                    },
+                                    "discuss": {
+                                        "type": "string",
+                                        "description": "Discussion prompt HTML shown above the textarea.",
+                                    },
+                                },
+                                "required": ["key", "label", "discuss"],
+                            },
+                        },
+                        "required": ["nav_title", "heading", "content"],
+                    },
+                },
+            },
+            "required": ["doc_type", "title", "slug", "sections"],
+        },
+    },
     # --- dispatch / handoff tools ---
     {
         "name": "dispatch_issue",
@@ -255,6 +339,13 @@ TOOLS = [
                 "anyway": {"type": "boolean", "description": "Skip the already-landed check (--anyway)."},
                 "force": {"type": "boolean", "description": "Skip the recently-touched-files check (--force)."},
                 "timeout": {"type": "integer", "description": "Timeout in seconds for each agent (default 5400)."},
+                "record_only": {
+                    "type": "boolean",
+                    "description": (
+                        "Skip the full pipeline and only record the dispatch "
+                        "(claim + event). For programmatic use and tests only."
+                    ),
+                },
             },
             "required": ["issue_id", "brief", "files"],
         },
@@ -312,6 +403,163 @@ TOOLS = [
         },
     },
 ]
+
+
+# ---------------------------------------------------------------------------
+# create_report handler — generates HTML, registers in manifest + SQLite
+# ---------------------------------------------------------------------------
+
+def _resolve_docs_dir(root):
+    """Find the docs directory from config.json, defaulting to
+    entropy-machines-docs under the project root."""
+    import os
+    config_path = os.path.join(root, "config.json")
+    docs_rel = "entropy-machines-docs"
+    if os.path.isfile(config_path):
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+            docs_rel = cfg.get("docs", {}).get("dir", docs_rel)
+        except (json.JSONDecodeError, OSError):
+            pass
+    if os.path.isabs(docs_rel):
+        return docs_rel
+    return os.path.join(root, docs_rel)
+
+
+def _create_report(root, conn, arguments):
+    """Generate an HTML report/doc, write it to disk, register in manifest.json
+    and SQLite.
+
+    Steps:
+      1. Generate HTML via report_gen
+      2. Write file to the docs directory
+      3. Register in manifest.json via docstate
+      4. Create doc + pages + responses in SQLite via api.create_doc
+    """
+    import os
+    import docstate
+
+    doc_type = arguments.get("doc_type", "sprint-report")
+    title = arguments.get("title", "")
+    slug = arguments.get("slug", "")
+    subtitle = arguments.get("subtitle", "")
+    sections = arguments.get("sections", [])
+
+    if not title:
+        raise ApiError(400, "title is required")
+    if not slug:
+        raise ApiError(400, "slug is required")
+    if not sections:
+        raise ApiError(400, "at least one section is required")
+    if doc_type not in ("sprint-report", "dialogue"):
+        raise ApiError(400, "doc_type must be 'sprint-report' or 'dialogue'")
+
+    # Validate sections
+    for i, sec in enumerate(sections):
+        if not sec.get("heading"):
+            raise ApiError(400, "section %d: heading is required" % i)
+        if not sec.get("content"):
+            raise ApiError(400, "section %d: content is required" % i)
+
+    # 1. Generate HTML
+    html = report_gen.generate_html(
+        doc_type=doc_type,
+        title=title,
+        slug=slug,
+        subtitle=subtitle,
+        sections=sections,
+    )
+
+    # 2. Write to docs directory
+    docs_dir = _resolve_docs_dir(root)
+    filename = report_gen.filename_for(doc_type, slug)
+    file_path = os.path.join(docs_dir, filename)
+
+    if os.path.isfile(file_path):
+        raise ApiError(409, "file already exists: %s" % filename)
+
+    os.makedirs(docs_dir, exist_ok=True)
+    tmp = file_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(html)
+    os.replace(tmp, file_path)
+
+    # 3. Register in manifest.json
+    doc_id = report_gen.doc_id_for(doc_type, slug)
+    docstate.init(docs_dir)
+    manifest = docstate.load()
+    if "docs" not in manifest:
+        manifest["docs"] = {}
+    manifest["docs"][doc_id] = {
+        "file": filename,
+        "title": title,
+        "status": "open",
+        "version": 0,
+    }
+    docstate.store(manifest)
+
+    # 4. Create doc in SQLite
+    db_doc_type = report_gen.db_type_for(doc_type)
+    pages_body = []
+    responses_body = []
+    for i, sec in enumerate(sections):
+        pid = "p%d" % i
+        pages_body.append({
+            "id": pid,
+            "position": i,
+            "nav_group": report_gen._NAV_GROUP.get(doc_type, "Sections"),
+            "nav_title": sec.get("nav_title", sec["heading"]),
+            "heading": sec["heading"],
+            "subtitle": sec.get("subtitle"),
+            "content": sec["content"],
+        })
+        resp = sec.get("response")
+        if resp:
+            responses_body.append({
+                "page_id": pid,
+                "resp_key": resp["key"],
+                "label": resp.get("label"),
+                "discuss": resp.get("discuss"),
+            })
+
+    create_doc_body = {
+        "id": doc_id,
+        "title": title,
+        "short_name": doc_id,
+        "type": db_doc_type,
+        "status": "open",
+        "pages": pages_body,
+        "responses": responses_body,
+    }
+
+    # Check if doc already exists in DB — if so, skip DB insert
+    existing = conn.execute(
+        "SELECT 1 FROM docs WHERE id = ?", (doc_id,)
+    ).fetchone()
+    if existing:
+        # Already in DB (e.g. from a prior migrate-db run), return success
+        # with a note rather than failing
+        return {
+            "doc_id": doc_id,
+            "file": filename,
+            "file_path": file_path,
+            "manifest_registered": True,
+            "db_created": False,
+            "db_note": "doc already exists in SQLite (id=%s)" % doc_id,
+            "message": "Report created: %s" % filename,
+        }
+
+    create_doc(conn, (), {}, create_doc_body)
+
+    return {
+        "doc_id": doc_id,
+        "file": filename,
+        "file_path": file_path,
+        "manifest_registered": True,
+        "db_created": True,
+        "message": "Report created: %s" % filename,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -377,11 +625,14 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             body = {k: v for k, v in arguments.items() if k != "doc_id"}
             return update_doc(conn, (doc_id,), {}, body)
 
+        if name == "create_report":
+            return _create_report(root, conn, arguments)
+
         if name == "dispatch_issue":
             issue_id = arguments["issue_id"]
             brief = arguments["brief"]
             files = arguments.get("files", [])
-            record_only = arguments.get("record_only", False) if os.environ.get("ENTROPY_MACHINES_TEST") else False
+            record_only = arguments.get("record_only", False)
             agent_id = arguments.get("agent_id")
 
             if record_only:
