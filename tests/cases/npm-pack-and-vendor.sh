@@ -28,7 +28,7 @@ TARBALL=$(ls "$TEST_TMP"/entropy-machines-*.tgz 2>/dev/null | head -1)
 # CONTRIBUTING.md — those are source-only.
 TAR_LIST=$(tar tzf "$TARBALL")
 
-for d in bin/ lib/ docs/ doctrine/ hooks/ agents/; do
+for d in bin/ lib/ docs/ doctrine/ hooks/ agents/ ui/dist/; do
   echo "$TAR_LIST" | grep -q "^package/$d" \
     || _fail "tarball contents" "expected $d in the tarball"
 done
@@ -63,11 +63,13 @@ assert_file "$DEFAULT_REPO/node_modules/.bin/entropy-machines" \
 run_in "$DEFAULT_REPO" "$DEFAULT_REPO/node_modules/.bin/entropy-machines" init
 assert_rc 0 "entropy-machines init (default layout)"
 
-# The six harness directories must be vendored.
-for d in bin lib docs doctrine hooks agents; do
+# The harness directories must be vendored, including ui/dist for the SPA.
+for d in bin lib docs doctrine hooks agents ui; do
   assert_dir "$DEFAULT_REPO/entropy-machines/$d" \
     "default layout: $d/ vendored"
 done
+assert_file "$DEFAULT_REPO/entropy-machines/ui/dist/index.html" \
+  "default layout: SPA index.html vendored"
 
 # config.json must exist (written by bin/init, not by the npm wrapper).
 assert_file "$DEFAULT_REPO/entropy-machines/config.json" \
@@ -120,11 +122,13 @@ assert_rc 0 "npm install tarball (--dir . layout)"
 run_in "$DOTDIR_REPO" "$DOTDIR_REPO/node_modules/.bin/entropy-machines" init --dir .
 assert_rc 0 "entropy-machines init --dir ."
 
-# The six directories must be at the repo root.
-for d in bin lib docs doctrine hooks agents; do
+# The harness directories must be at the repo root, including ui/dist.
+for d in bin lib docs doctrine hooks agents ui; do
   assert_dir "$DOTDIR_REPO/$d" \
     "--dir . layout: $d/ vendored at root"
 done
+assert_file "$DOTDIR_REPO/ui/dist/index.html" \
+  "--dir . layout: SPA index.html vendored at root"
 
 # config.json at root.
 assert_file "$DOTDIR_REPO/config.json" \
@@ -133,7 +137,7 @@ assert_file "$DOTDIR_REPO/config.json" \
 # The commit hint for --dir . must name the individual directories, not
 # "git add ." — the repo now contains node_modules/ and a package-lock.json
 # that the harness's .gitignore does not cover.
-assert_out_words "git add bin lib docs doctrine hooks agents LICENSE" \
+assert_out_words "git add bin lib docs doctrine hooks agents ui LICENSE" \
   "--dir . layout: commit hint names dirs, not 'git add .'"
 assert_not_out "git add ." \
   "--dir . layout: commit hint must not say 'git add .'"

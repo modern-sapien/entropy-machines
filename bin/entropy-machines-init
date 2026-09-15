@@ -42,7 +42,7 @@ const PKG = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf
 // README names because the harness points at it from inside itself —
 // lib/roots.sh's refusal message cites `<harness>/docs/CONFIG.md`, and
 // docs/QUICKSTART.md is the document the next agent is told to read.
-const HARNESS_DIRS = ['bin', 'lib', 'docs', 'doctrine', 'hooks', 'agents'];
+const HARNESS_DIRS = ['bin', 'lib', 'docs', 'doctrine', 'hooks', 'agents', 'ui'];
 
 // Never copied, at any depth. `.git` is the load-bearing one.
 const NEVER_COPY = new Set(['.git', '__pycache__', 'node_modules', '.DS_Store']);
