@@ -381,12 +381,16 @@ function PageSection({
     return responses.map((r) => [r]);
   }, [responses]);
 
+  const sanitizedContent = useMemo(
+    () => page.content.replace(/<textarea[^>]*>[\s\S]*?<\/textarea>/gi, ''),
+    [page.content]
+  );
   const contentHasH1 = /<h1[\s>]/i.test(page.content);
   return (
     <section className="page" id={page.id} ref={sectionRef}>
       {!contentHasH1 && page.heading && <h1>{page.heading}</h1>}
       {!contentHasH1 && page.subtitle && <p className="sub">{page.subtitle}</p>}
-      <div dangerouslySetInnerHTML={{ __html: page.content }} />
+      <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
       {groups.map((group) =>
         group.length === 1 ? (
           <div key={group[0].resp_key}>
