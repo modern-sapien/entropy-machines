@@ -382,7 +382,7 @@ function PageSection({
   }, [responses]);
 
   const sanitizedContent = useMemo(
-    () => page.content.replace(/<textarea[^>]*>[\s\S]*?<\/textarea>/gi, ''),
+    () => page.content.replace(/<div\s[^>]*class="response"[^>]*>[\s\S]*?<\/textarea>\s*<\/div>/gi, ''),
     [page.content]
   );
   const contentHasH1 = /<h1[\s>]/i.test(page.content);
