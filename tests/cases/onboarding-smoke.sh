@@ -91,11 +91,9 @@ fi
 
 stop_server
 
-# ---- bin/migrate-db actually creates the database ---------------------------
-run "$HARNESS/bin/migrate-db"
-assert_rc 0 "bin/migrate-db succeeds after a real npm install"
+# ---- bin/init created the database (it runs migrate-db internally) ----------
 assert_file "$PROJECT/.entropy-machines/entropy-machines.db" \
-  "migrate-db creates .entropy-machines/entropy-machines.db"
+  "init creates .entropy-machines/entropy-machines.db via migrate-db"
 
 # ---- bin/doclint passes on what init actually wrote --------------------------
 run "$HARNESS/bin/doclint"

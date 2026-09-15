@@ -90,7 +90,7 @@ export function LandingPage({ kind }: { kind: LandingKind }) {
       .catch(() => {
         if (!cancelled) {
           setError(
-            "Could not reach the docs API. Is the server running? If the database does not exist yet, run bin/migrate-db to create it.",
+            "Could not reach the docs API. Is the server running? If the database hasn't been set up yet, run bin/migrate-db to create it.",
           );
           setLoading(false);
         }

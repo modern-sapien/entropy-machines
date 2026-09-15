@@ -289,7 +289,7 @@ export function TrackerPage() {
         if (!cancelled) {
           setError(
             "Could not reach the issue API. Is the server running? " +
-              "If the database does not exist yet, run bin/migrate-db to create it.",
+              "If the database hasn't been set up yet, run bin/migrate-db to create it.",
           );
           setLoading(false);
         }

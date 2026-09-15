@@ -36,6 +36,15 @@ assert_rc 0 ".gitignore carries an exact 'entropy-machines-docs/' line for docs.
 # The PRD is the point of init: it is what gives the owner something to answer.
 assert_file "$REPO/entropy-machines-docs/PRD-001-orientation.html" "init installs the orientation PRD into docs.dir"
 
+# A PRD written to disk but absent from manifest.json is invisible to anything
+# that reads manifest.json for doc status (bin/tracker render, the API). init
+# must register PRD-001, not just write an empty manifest.
+assert_file "$REPO/entropy-machines-docs/manifest.json" "init writes manifest.json"
+run python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["docs"]["PRD-001-orientation"]["file"]); print(d["docs"]["PRD-001-orientation"]["status"])' "$REPO/entropy-machines-docs/manifest.json"
+assert_rc 0 "manifest.json parses as JSON and has a PRD-001-orientation entry"
+assert_out "PRD-001-orientation.html" "PRD-001-orientation.file points at the copied PRD"
+assert_out "open" "PRD-001-orientation.status starts open"
+
 # init's own last step claims the tracker is live. Check the claim rather than
 # the sentence.
 run "$HARNESS/bin/tracker" ready

@@ -77,8 +77,8 @@ function ErrorBanner({ message }: { message: string }) {
       <h2>API unreachable</h2>
       {isMigrate ? (
         <p>
-          The database has not been created yet. Run{" "}
-          <code>bin/migrate-db</code> to initialise it.
+          The local database hasn't been set up yet. Run{" "}
+          <code>bin/migrate-db</code> to create it.
         </p>
       ) : (
         <p>{message}</p>

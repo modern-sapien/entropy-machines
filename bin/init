@@ -198,7 +198,27 @@ fi
 
 manifest="$project/$docs_dir/manifest.json"
 if [ ! -f "$manifest" ]; then
-  printf '{}\n' > "$manifest"
+  if [ -n "$prd_written" ]; then
+    # The PRD was just copied in, so it is a real doc the tracker/serve layer
+    # needs to know about — an empty manifest would leave PRD-001 written to
+    # disk but invisible to anything that reads manifest.json for status.
+    cat > "$manifest" <<'EOF'
+{
+  "docs": {
+    "PRD-001-orientation": {
+      "file": "PRD-001-orientation.html",
+      "title": "Orientation",
+      "status": "open",
+      "version": 0
+    }
+  }
+}
+EOF
+  else
+    # No PRD was written this run (it already existed and --force wasn't
+    # given), so there is nothing to register yet.
+    printf '{}\n' > "$manifest"
+  fi
 fi
 
 # STEP 6 — prove the tracker actually answers before claiming success.
@@ -224,6 +244,13 @@ if ! (cd "$project" && "$ENTROPY_MACHINES_HOME/bin/tracker" ready >/dev/null 2>&
   printf "      ${CYAN}$ENTROPY_MACHINES_HOME/bin/init --force${RESET}\n" >&2
   exit 2
 fi
+
+# STEP 7 — build the SQLite database so bin/serve's dashboard works on first
+# run. Non-fatal: a missing db is inconvenient (the dashboard says "API
+# unreachable") but not broken — the user can always run migrate-db by hand.
+# Must come after the manifest write (step 5) so the PRD gets migrated.
+(cd "$project" && "$ENTROPY_MACHINES_HOME/bin/migrate-db" >/dev/null 2>&1) || \
+  printf "${YELLOW}init: warning — could not build the database; run \`${CYAN}bin/migrate-db${YELLOW}\` before serving.${RESET}\n" >&2
 
 printf "${GREEN}init: wrote $target${RESET}\n"
 printf "${GREEN}$prd_note${RESET}\n"
