@@ -1,32 +1,12 @@
 # lib/api.py's /api/* endpoints — the REST surface the React SPA (ui/) reads
-# and writes through (entropy-machines-docs/PRD-006-react-migration.html,
-# page p4). Exercises every route in that table against a real migrated db:
-# docs, responses + replies, issues + notes, settings — both the happy path
-# and the refusals (missing doc/issue/setting, malformed body, wrong method,
-# duplicate id), plus the "no db yet" 503 before migration ever runs.
+# and writes through. Exercises every route against a real db (created by
+# bin/init's built-in migrate-db): docs, responses + replies, issues + notes,
+# settings — both the happy path and the refusals (missing doc/issue/setting,
+# malformed body, wrong method, duplicate id).
 . "$TEST_LIB/harness.sh"
 
 fixture_new
 fixture_init
-
-# migrate_db.py reads entropy-machines-docs/manifest.json as its list of docs
-# to migrate, and nothing in `bin/init` writes one — a brand-new project has
-# no doc history to report until something calls docstate.store() for the
-# first time, which plain serving never does. That gap belongs to
-# lib/migrate_db.py, not to this case; write the minimal manifest by hand so
-# migrating PRD-001 does not depend on it being closed first.
-cat > "$REPO/entropy-machines-docs/manifest.json" <<'JSON'
-{
-  "docs": {
-    "prd-001": {
-      "file": "PRD-001-orientation.html",
-      "title": "First-run orientation",
-      "status": "open",
-      "version": 0
-    }
-  }
-}
-JSON
 
 PORT=$(free_port)
 LOG="$TEST_TMP/serve.log"
@@ -37,29 +17,6 @@ stop_server() {
   SERVER_PID=""
 }
 trap 'stop_server' EXIT INT TERM
-
-# --- before migration: /api/* must refuse clearly, not crash or fake a 200 --
-( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT" ) >"$LOG" 2>&1 &
-SERVER_PID=$!
-wait_for_line "$LOG" "http://localhost:$PORT" 80 || {
-  OUT=$(cat "$LOG"); ERR=""; ALL="$OUT"; RC="(still running)"; LAST_CMD="bin/serve $PORT"
-  _fail "bin/serve must start" "nothing matching http://localhost:$PORT in $LOG"
-}
-
-run http_get "http://127.0.0.1:$PORT/api/docs"
-assert_rc 0 "GET /api/docs before migration completes"
-case "$OUT" in
-  503*) ;;
-  *) _fail "GET /api/docs with no db must 503, not 500 or a fake 200" \
-        "first line: $(printf '%s' "$OUT" | head -1)" ;;
-esac
-assert_out "run bin/migrate-db" "the 503 names the fix"
-
-stop_server
-
-# --- migrate, then serve for real --------------------------------------------
-run "$HARNESS/bin/migrate-db" --force
-assert_rc 0 "bin/migrate-db --force builds the db"
 
 ( cd "$REPO" && exec "$HARNESS/bin/serve" --no-open "$PORT" ) >"$LOG" 2>&1 &
 SERVER_PID=$!

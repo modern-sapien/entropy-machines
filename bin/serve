@@ -324,6 +324,9 @@ def main(no_open=False):
     print("  theme: config-driven (5-color, embedded in templates)", flush=True)
     if SPA_AVAILABLE:
         print("  spa: %s" % SPA_ROOT, flush=True)
+        if os.path.isfile(os.path.join(DOCS_PATH, "PRD-001-orientation.html")):
+            print("  start here: http://localhost:%d/prds/PRD-001-orientation" % port,
+                  flush=True)
     else:
         print("  spa: not found (SPA build missing — run `npm run build` in ui/)",
               flush=True)
