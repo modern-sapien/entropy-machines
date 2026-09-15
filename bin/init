@@ -252,6 +252,58 @@ fi
 (cd "$project" && "$ENTROPY_MACHINES_HOME/bin/migrate-db" >/dev/null 2>&1) || \
   printf "${YELLOW}init: warning — could not build the database; run \`${CYAN}bin/migrate-db${YELLOW}\` before serving.${RESET}\n" >&2
 
+# STEP 8 — install Claude Code hooks so agents are forced through the dispatch
+# pipeline. Three gates: dispatch-gate-writes blocks Edit/Write on main,
+# mcp-gate blocks Bash calls to bin/* when MCP is connected, dispatch-gate
+# and no-fork-gate block Agent misuse. Non-fatal: missing hooks degrade to
+# convention enforcement via CLAUDE.md.
+claude_dir="$project/.claude"
+claude_settings="$claude_dir/settings.json"
+if [ ! -f "$claude_settings" ]; then
+  mkdir -p "$claude_dir"
+  # Paths are relative to the project root, adjusted for harness location.
+  case "$ENTROPY_MACHINES_HOME" in
+    "$project") hook_prefix="" ;;
+    "$project"/?*) hook_prefix="${ENTROPY_MACHINES_HOME#"$project"/}/" ;;
+    *) hook_prefix="$ENTROPY_MACHINES_HOME/" ;;
+  esac
+  cat > "$claude_settings" <<SETTINGS
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {"type": "command", "command": "${hook_prefix}bin/no-fork-gate"},
+          {"type": "command", "command": "${hook_prefix}bin/dispatch-gate"}
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {"type": "command", "command": "${hook_prefix}hooks/dispatch-gate-writes"}
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {"type": "command", "command": "${hook_prefix}hooks/dispatch-gate-writes"}
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "${hook_prefix}hooks/mcp-gate"}
+        ]
+      }
+    ]
+  },
+  "enableAllProjectMcpServers": true
+}
+SETTINGS
+  add_ignore ".claude/"
+fi
+
 printf "${GREEN}init: wrote $target${RESET}\n"
 printf "${GREEN}$prd_note${RESET}\n"
 if [ -n "$prd_written" ]; then

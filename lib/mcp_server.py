@@ -255,13 +255,6 @@ TOOLS = [
                 "anyway": {"type": "boolean", "description": "Skip the already-landed check (--anyway)."},
                 "force": {"type": "boolean", "description": "Skip the recently-touched-files check (--force)."},
                 "timeout": {"type": "integer", "description": "Timeout in seconds for each agent (default 5400)."},
-                "record_only": {
-                    "type": "boolean",
-                    "description": (
-                        "Skip the full pipeline and only record the dispatch "
-                        "(claim + event). For programmatic use and tests only."
-                    ),
-                },
             },
             "required": ["issue_id", "brief", "files"],
         },
@@ -388,7 +381,7 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             issue_id = arguments["issue_id"]
             brief = arguments["brief"]
             files = arguments.get("files", [])
-            record_only = arguments.get("record_only", False)
+            record_only = arguments.get("record_only", False) if os.environ.get("ENTROPY_MACHINES_TEST") else False
             agent_id = arguments.get("agent_id")
 
             if record_only:

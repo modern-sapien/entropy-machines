@@ -1,0 +1,60 @@
+#!/bin/sh
+# PreToolUse hook: block Bash calls to bin/* CLI tools when the MCP
+# server is connected. Forces agents to use the structured MCP tools
+# instead of shelling out.
+#
+# Registered in .claude/settings.json as a PreToolUse hook on "Bash".
+# bin/init wires this automatically.
+#
+# WHAT IT BLOCKS:
+#   Bash commands that invoke bin/reply, bin/dispatch, bin/tracker,
+#   bin/handoff, bin/migrate-db when .mcp.json exists (MCP is configured).
+#
+# WHAT IT ALLOWS:
+#   - All Bash commands when no .mcp.json exists (MCP not configured)
+#   - bin/serve, bin/init, bin/doclint, bin/status and other non-MCP tools
+#   - Bash commands that don't invoke gated bin/ tools
+set -e
+
+if [ -z "${ENTROPY_MACHINES_ROOT:-}" ]; then
+  root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+else
+  root="$ENTROPY_MACHINES_ROOT"
+fi
+
+if [ ! -f "$root/.mcp.json" ]; then
+  exit 0
+fi
+
+command_str=$(printf '%s' "$TOOL_INPUT" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    print(data.get("command", ""))
+except Exception:
+    pass
+')
+
+[ -n "$command_str" ] || exit 0
+
+gated="bin/reply bin/dispatch bin/tracker bin/handoff bin/migrate-db"
+for tool in $gated; do
+  case "$command_str" in
+    *"$tool"*)
+      mcp_name=""
+      case "$tool" in
+        bin/reply)      mcp_name="update_doc / reply endpoints" ;;
+        bin/dispatch)   mcp_name="dispatch_issue" ;;
+        bin/tracker)    mcp_name="list_issues / get_issue / update_issue" ;;
+        bin/handoff)    mcp_name="handoff_issue" ;;
+        bin/migrate-db) mcp_name="(handled automatically by bin/init)" ;;
+      esac
+      echo "DENIED: Bash call to $tool is blocked — MCP server is connected." >&2
+      echo "  Use the MCP tool instead: $mcp_name" >&2
+      echo "  bin/* CLI tools are fallbacks for when MCP is unavailable." >&2
+      exit 2
+      ;;
+  esac
+done
+
+exit 0

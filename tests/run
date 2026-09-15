@@ -140,6 +140,7 @@ export GIT_TERMINAL_PROMPT=0
 # left alone (setting LC_ALL=C here would be the bug) and only Python's stream
 # encoding is pinned, because it is the one that varies with how it was spawned.
 export PYTHONIOENCODING=utf-8
+export ENTROPY_MACHINES_TEST=1
 
 selected=""
 for case_file in "$TESTS_DIR"/cases/*.sh; do

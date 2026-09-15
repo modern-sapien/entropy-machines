@@ -13,6 +13,33 @@
             "command": "bin/dispatch-gate"
           }
         ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/dispatch-gate-writes"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/dispatch-gate-writes"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/mcp-gate"
+          }
+        ]
       }
     ]
   },

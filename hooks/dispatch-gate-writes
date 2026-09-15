@@ -1,0 +1,51 @@
+#!/bin/sh
+# PreToolUse hook: block Edit/Write to source directories when on
+# main/master and no .dispatch-context/ marker exists in the cwd.
+# Forces all code changes through the dispatch pipeline (worktree isolation).
+#
+# Registered in .claude/settings.json as a PreToolUse hook on "Edit"
+# and "Write". bin/init wires this automatically.
+#
+# WHAT IT BLOCKS:
+#   Edit/Write to files under: ui/src/, bin/, lib/, tests/, hooks/,
+#   docs/, doctrine/ — when the current branch is main or master
+#   and no .dispatch-context/ directory exists (meaning this is not
+#   a dispatch worktree).
+#
+# WHAT IT ALLOWS:
+#   - Any edit inside a dispatch worktree (.dispatch-context/ exists)
+#   - Any edit on a non-main branch
+#   - Edits to files outside the protected directories (config, etc.)
+set -e
+
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+case "$branch" in
+  main|master) ;;
+  *) exit 0 ;;
+esac
+
+if [ -d ".dispatch-context" ] || [ -d "$ENTROPY_MACHINES_ROOT/.dispatch-context" ]; then
+  exit 0
+fi
+
+file_path=$(printf '%s' "$TOOL_INPUT" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    print(data.get("file_path", ""))
+except Exception:
+    pass
+')
+
+[ -n "$file_path" ] || exit 0
+
+case "$file_path" in
+  */ui/src/*|*/bin/*|*/lib/*|*/tests/*|*/hooks/*|*/docs/*|*/doctrine/*)
+    echo "DENIED: direct edit to $file_path on $branch without a dispatch worktree." >&2
+    echo "  Use the MCP dispatch_issue tool to run changes through the dispatch pipeline." >&2
+    echo "  This ensures worktree isolation, verification, and proper handoff." >&2
+    exit 2
+    ;;
+esac
+
+exit 0
