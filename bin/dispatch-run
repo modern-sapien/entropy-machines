@@ -96,9 +96,31 @@ print(call["prompt"])
 ')
 
 # ---------------------------------------------------------------------------
+# STEP 1.5 — Create an isolated worktree for the worker
+# ---------------------------------------------------------------------------
+# dispatch-run manages the worktree lifecycle itself. The orchestrator flow
+# uses the Agent tool's isolation: "worktree" parameter, but claude -p has
+# no such parameter — so we create and populate the worktree here.
+# git worktree add triggers the post-checkout hook, which links shared paths
+# (config.json, node_modules, etc.) automatically if hooks are installed.
+wt_branch="dispatch/$id/$slug"
+wt_dir="$ENTROPY_MACHINES_ROOT/.claude/worktrees/dispatch-$id-$slug"
+
+echo "dispatch-run($id): creating worktree at $wt_dir"
+mkdir -p "$(dirname "$wt_dir")"
+if ! git worktree add -b "$wt_branch" "$wt_dir" HEAD 2>"$outdir/worktree.err"; then
+  echo "dispatch-run($id): ERROR — could not create worktree:" >&2
+  cat "$outdir/worktree.err" >&2
+  exit 1
+fi
+
+echo "$id" > "$wt_dir/.dispatch-issue"
+echo "dispatch-run($id): worktree ready, .dispatch-issue written."
+
+# ---------------------------------------------------------------------------
 # STEP 2 — Worker agent (isolated worktree)
 # ---------------------------------------------------------------------------
-echo "dispatch-run($id): step 2 — launching worker agent"
+echo "dispatch-run($id): step 2 — launching worker agent in $wt_dir"
 
 # Agent CLI is pluggable, same as drain-run.
 set --
@@ -118,7 +140,7 @@ PY
 )
 AGENTCMD
 
-"$@" "$worker_prompt" > "$outdir/worker.json" 2> "$outdir/worker.err" &
+(cd "$wt_dir" && exec "$@" "$worker_prompt") > "$outdir/worker.json" 2> "$outdir/worker.err" &
 worker_pid=$!
 deadline=$(( $(date +%s) + timeout_s ))
 
@@ -137,37 +159,21 @@ wait "$worker_pid" || true
 echo "dispatch-run($id): worker finished."
 
 # ---------------------------------------------------------------------------
-# STEP 3 — auto-verify (poll for HANDOFF.md)
+# STEP 3 — Check for HANDOFF.md (worker already finished, check directly)
 # ---------------------------------------------------------------------------
-echo "dispatch-run($id): step 3 — polling for HANDOFF.md"
+# No polling needed: dispatch-run created the worktree and waited for the
+# worker synchronously. The worktree path is known; just check it.
+worker_wt="$wt_dir"
 
-main_wt="$ENTROPY_MACHINES_ROOT"
-worker_wt=""
-polls=0
-max_polls=40
-
-while [ -z "$worker_wt" ] && [ "$polls" -lt "$max_polls" ]; do
-  for wt in $(git worktree list --porcelain | grep '^worktree ' | sed 's/worktree //'); do
-    [ "$wt" = "$main_wt" ] && continue
-    if [ -f "$wt/.dispatch-issue" ] && [ "$(cat "$wt/.dispatch-issue" | tr -d '[:space:]')" = "$id" ]; then
-      if [ -f "$wt/HANDOFF.md" ]; then
-        worker_wt="$wt"
-        break
-      fi
-    fi
-  done
-  if [ -z "$worker_wt" ]; then
-    sleep 15
-    polls=$((polls + 1))
-  fi
-done
-
-if [ -z "$worker_wt" ]; then
-  echo "dispatch-run($id): TIMEOUT — no HANDOFF.md after $max_polls polls" >&2
+if [ -f "$worker_wt/HANDOFF.md" ]; then
+  echo "dispatch-run($id): HANDOFF.md found at $worker_wt"
+else
+  echo "dispatch-run($id): worker finished but left no HANDOFF.md at $worker_wt" >&2
+  echo "  The worker may have exited early or failed. Check:" >&2
+  echo "    $outdir/worker.err" >&2
+  echo "    $outdir/worker.json" >&2
   exit 5
 fi
-
-echo "dispatch-run($id): HANDOFF.md found at $worker_wt"
 
 # ---------------------------------------------------------------------------
 # STEP 4 — Verifier agent
