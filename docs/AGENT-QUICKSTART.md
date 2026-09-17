@@ -1,8 +1,11 @@
 # Agent quickstart
 
-This doc is for the coding agent bootstrapping and running the harness.
+Read this entire doc before bootstrapping or running the harness. These are
+directives, not suggestions — follow every step.
 If you are the project owner (a human), start at [../README.md](../README.md).
-The *why*: [../doctrine/](../doctrine/).
+
+**MANDATED READING — you MUST read [../doctrine/](../doctrine/) before
+proceeding.** It explains why the gates exist.
 
 ## Context
 
@@ -35,8 +38,8 @@ in a subdirectory.
 ### MCP tools (primary interface when connected)
 
 When the MCP server is connected (`bin/mcp-serve` over stdio, configured in
-`.mcp.json`), use these tools instead of shelling out to `bin/*`. They call the
-same handlers as the REST API — same validation, same database.
+`.mcp.json`), you MUST use these tools — do not shell out to `bin/*`. They call
+the same handlers as the REST API — same validation, same database.
 
 **Issue tracker:**
 
@@ -71,8 +74,8 @@ same handlers as the REST API — same validation, same database.
 
 ### Shell commands (pipeline operations)
 
-These are the mechanical gates. Use them directly only when MCP is not
-connected, or for operations that have no MCP equivalent.
+These are the mechanical gates. Use them only when MCP is not connected or
+for operations with no MCP equivalent.
 
 ```
 bin/status                                        # read-only: ready, in flight, unanswered
@@ -90,8 +93,10 @@ bin/mcp-serve                                     # MCP server (stdio, launched 
 excludes held (`heldWhy`) and gated (`gate`). `dispatch --files` is advisory;
 what is enforced is the denylist of files other agents hold, pasted into your
 brief. The tracker backend is adaptable — see
-[TRACKER-ADAPTER.md](TRACKER-ADAPTER.md). See also
-[CONFIG.md](CONFIG.md), [SERVE.md](SERVE.md).
+[TRACKER-ADAPTER.md](TRACKER-ADAPTER.md).
+
+**MANDATED READING — you MUST read [CONFIG.md](CONFIG.md) and
+[SERVE.md](SERVE.md) before proceeding.**
 
 ## The job
 
@@ -111,25 +116,29 @@ steps.
    committer. Doctrine: `<path>/doctrine/`.
    ```
 
-2. **`bin/init`** — writes `config.json`, gitignores `.entropy-machines/`,
-   copies the orientation PRD into `docs.dir`, builds the SQLite database. A
-   second run exits 2; that refusal is working.
+2. **Run `bin/init`.** It writes `config.json`, gitignores `.entropy-machines/`,
+   copies the orientation PRD into `docs.dir`, and builds the SQLite database.
+   **Then run `bin/init` again and confirm it exits 2.** That refusal proves
+   the bootstrap landed. If it does not exit 2, stop and report the output.
 
 3. **Baseline discovery — record only what you RAN.** `init` writes
-   `suites: []` rather than guess. **Run** the candidate test, typecheck, and
-   build commands and enter only those that passed; one that fails is a finding,
-   not an entry.
+   `suites: []` rather than guess. **Spawn an Explore subagent** to locate the
+   project's test, typecheck, and build commands — do not guess commands
+   yourself. Then **run** each candidate command the Explore subagent found
+   and enter only those that passed into `config.json`; one that fails is a
+   finding, not an entry.
 
 4. **Fill the PRD's data-informational sections.** Use the `update_doc` MCP
    tool to write your findings into the database. The orientation PRD has pages
-   the agent fills (what you found in the repo, what you could not verify) and
-   pages only the owner answers (open questions, priorities). Fill yours, leave
-   the owner's. **Do not edit the HTML file on disk** — the browser reads from
+   you fill (what you found in the repo, what you could not verify) and pages
+   only the owner answers (open questions, priorities). Fill yours, leave the
+   owner's. **Do not edit the HTML file on disk** — the browser reads from
    SQLite, so edits to the file are invisible until the next `migrate-db` run,
    which would overwrite your database writes.
 
-5. **Start `bin/serve`** — actually start it, backgrounded; it holds the
-   terminal. Binds `127.0.0.1` and prints its URL. Run `bin/doclint` first.
+5. **Run `bin/doclint`** first. Then **run `bin/serve`** — start it
+   backgrounded; it holds the terminal. It binds `127.0.0.1` and prints its
+   URL.
 
 Hand over that URL and **stop**. A PRD you answered yourself produces issues
 nobody agreed to.
