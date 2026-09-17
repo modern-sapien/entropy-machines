@@ -253,6 +253,48 @@ def update_doc(conn, args, query, body):
     return get_doc(conn, (doc_id,), query, body)
 
 
+# Pattern that matches response box divs — the agent must not write these.
+_RESPONSE_BOX_RE = re.compile(
+    r'<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bresponse\b[^"\']*["\'][^>]*\bdata-resp\b',
+    re.IGNORECASE,
+)
+
+
+def update_doc_content(conn, args, query, body):
+    """Update the HTML content of one or more pages (data-informational
+    sections) within a doc.  Rejects writes that contain response-box markup.
+
+    Body: {"sections": {"p0": "<h2>...</h2><p>...</p>", ...}}
+    """
+    (doc_id,) = args
+    if not isinstance(body, dict):
+        raise ApiError(400, "expected a JSON object body")
+    _require_doc(conn, doc_id)
+    sections = body.get("sections")
+    if not isinstance(sections, dict) or not sections:
+        raise ApiError(400, '"sections" must be a non-empty object mapping page id to HTML content')
+    ts = now()
+    for page_id, content in sections.items():
+        if not isinstance(content, str):
+            raise ApiError(400, 'section %r: content must be a string' % page_id)
+        if _RESPONSE_BOX_RE.search(content):
+            raise ApiError(400,
+                'section %r: content must not contain response boxes '
+                '(data-resp divs) — use the response API instead' % page_id)
+        row = conn.execute(
+            "SELECT 1 FROM pages WHERE doc_id = ? AND id = ?", (doc_id, page_id)
+        ).fetchone()
+        if row is None:
+            raise ApiError(404, 'no such page %r in doc %r' % (page_id, doc_id))
+        conn.execute(
+            "UPDATE pages SET content = ? WHERE doc_id = ? AND id = ?",
+            (content, doc_id, page_id),
+        )
+    conn.execute("UPDATE docs SET updated_at = ? WHERE id = ?", (ts, doc_id))
+    conn.commit()
+    return get_doc(conn, (doc_id,), query, body)
+
+
 def add_reply(conn, args, query, body):
     doc_id, key = args
     if not isinstance(body, dict) or not isinstance(body.get("content"), str) or not body["content"].strip():

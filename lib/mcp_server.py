@@ -30,6 +30,7 @@ from api import (
     list_issues,
     now,
     update_doc,
+    update_doc_content,
     update_issue,
 )
 import report_gen
@@ -230,6 +231,36 @@ TOOLS = [
                 "foot": {"type": "string", "description": "New footer text."},
             },
             "required": ["doc_id"],
+        },
+    },
+    {
+        "name": "update_doc",
+        "description": (
+            "Update the HTML content of data-informational sections within a "
+            "document. Accepts a doc id and a map of page ids to new HTML "
+            "content. Only updates the informational body of each page — "
+            "writes that contain response-box markup (data-resp divs) are "
+            "rejected. Use this to fill or revise the prose sections of a doc "
+            "stored in SQLite."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "doc_id": {
+                    "type": "string",
+                    "description": "The document id whose pages to update.",
+                },
+                "sections": {
+                    "type": "object",
+                    "description": (
+                        "Map of page id (e.g. 'p0', 'p1') to new HTML content "
+                        "string. Only data-informational content is accepted — "
+                        "response boxes (data-resp divs) are rejected."
+                    ),
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["doc_id", "sections"],
         },
     },
     # --- report generation tool ---
@@ -624,6 +655,11 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
             doc_id = arguments["doc_id"]
             body = {k: v for k, v in arguments.items() if k != "doc_id"}
             return update_doc(conn, (doc_id,), {}, body)
+
+        if name == "update_doc":
+            doc_id = arguments["doc_id"]
+            body = {"sections": arguments.get("sections", {})}
+            return update_doc_content(conn, (doc_id,), {}, body)
 
         if name == "create_report":
             return _create_report(root, conn, arguments)
