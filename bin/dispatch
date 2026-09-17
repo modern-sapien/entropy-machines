@@ -199,6 +199,17 @@ if [ -n "$hits" ]; then
   fi
 fi
 
+# CHECK — issue existence. A nonexistent issue is usually a typo. Checked
+# after scope/history so safety guards always fire first.
+if ! "$ENTROPY_MACHINES_HOME/bin/tracker" show "$id" >/dev/null 2>&1; then
+  if [ "$force" != "1" ]; then
+    echo "dispatch: REFUSED — issue '$id' not found in the tracker." >&2
+    echo "  Check the id for typos, or pass --force to dispatch anyway." >&2
+    exit 1
+  fi
+  echo "dispatch: WARNING — issue '$id' not found in the tracker (--force overrides)."
+fi
+
 # CHECK 4 — recently-touched files. A declared file that was touched in the
 # last 5 commits on any branch is hot: the change may still be landing, the
 # agent may be re-doing work that already shipped, or the base commit already
@@ -661,6 +672,7 @@ fi
 echo
 if [ "$dry" -eq 1 ]; then
   echo "dispatch: OK (dry run) — nothing recorded on $id."
+  exit 0
 else
   echo "dispatch: OK — brief + scope recorded on $id."
 fi

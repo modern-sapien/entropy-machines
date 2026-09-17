@@ -1,0 +1,4 @@
+#!/bin/sh
+# bin/install-hooks — install git hook shims for this clone.
+# Delegates to lib/install-hooks.sh.
+exec "$(dirname "$0")/../lib/install-hooks.sh" "$@"
