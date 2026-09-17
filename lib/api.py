@@ -8,6 +8,7 @@ API") for the endpoint table this implements:
     POST /api/docs
     GET  /api/docs/:id
     PUT  /api/docs/:id
+    PUT  /api/docs/:id/content
     GET  /api/docs/:id/responses
     GET  /api/docs/:id/responses/:key
     PUT  /api/docs/:id/responses/:key
@@ -473,6 +474,7 @@ ROUTES = [
     ("POST", re.compile(r"^/api/docs$"), create_doc),
     ("GET", re.compile(r"^/api/docs/([^/]+)$"), get_doc),
     ("PUT", re.compile(r"^/api/docs/([^/]+)$"), update_doc),
+    ("PUT", re.compile(r"^/api/docs/([^/]+)/content$"), update_doc_content),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses$"), list_responses),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), get_response),
     ("PUT", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), update_response),
