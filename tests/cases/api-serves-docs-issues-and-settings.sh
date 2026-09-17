@@ -1,6 +1,6 @@
 # lib/api.py's /api/* endpoints — the REST surface the React SPA (ui/) reads
-# and writes through. Exercises every route against a real db (created by
-# bin/init's built-in migrate-db): docs, responses + replies, issues + notes,
+# and writes through. Exercises every route against a real db (seeded by
+# bin/init directly into SQLite): docs, responses + replies, issues + notes,
 # settings — both the happy path and the refusals (missing doc/issue/setting,
 # malformed body, wrong method, duplicate id).
 . "$TEST_LIB/harness.sh"

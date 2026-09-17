@@ -11,25 +11,7 @@
 fixture_new
 fixture_init
 
-# Same manifest-by-hand setup as api-serves-docs-issues-and-settings.sh: a
-# brand-new project has no manifest.json until docstate.store() runs once,
-# and migrating PRD-001 (which bin/init already vendored into the docs dir)
-# shouldn't depend on that being solved first.
-cat > "$REPO/entropy-machines-docs/manifest.json" <<'JSON'
-{
-  "docs": {
-    "prd-001": {
-      "file": "PRD-001-orientation.html",
-      "title": "First-run orientation",
-      "status": "open",
-      "version": 0
-    }
-  }
-}
-JSON
-
-run "$HARNESS/bin/migrate-db" --force
-assert_rc 0 "bin/migrate-db --force builds the db"
+# bin/init seeds the PRD directly into SQLite — no migrate-db needed.
 
 PORT=$(free_port)
 LOG="$TEST_TMP/serve.log"

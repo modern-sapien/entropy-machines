@@ -95,12 +95,12 @@ project_name=$(basename -- "$project")
 # browser. init used to copy the quickstart here, which put a document written
 # for agents in front of the human and gave them nothing to answer.
 #
-# It lands in the project's docs directory because that is what bin/serve
-# serves; docs.dir is config, defaulting to entropy-machines-docs/.
+# The PRD's canonical source is lib/PRD-001-orientation.html. It is parsed and
+# seeded directly into SQLite — no HTML copy lands in the project's docs dir.
+# The SPA (ui/) reads it from the database via /api/docs/PRD-001-orientation.
 prd_src="$ENTROPY_MACHINES_HOME/lib/PRD-001-orientation.html"
 docs_dir=$(python3 "$ENTROPY_MACHINES_HOME/lib/config.py" get docs.dir 2>/dev/null | tr -d '"')
 if [ -z "$docs_dir" ] || [ "$docs_dir" = "null" ]; then docs_dir="entropy-machines-docs"; fi
-prd_dst="$project/$docs_dir/PRD-001-orientation.html"
 
 if [ ! -f "$prd_src" ]; then
   echo "init: REFUSED — $prd_src is missing." >&2
@@ -174,7 +174,7 @@ add_ignore ".scratch"
 # its docs in history removes the line deliberately.
 add_ignore "$docs_dir/"
 
-# STEP 5 — put the orientation PRD in front of the owner.
+# STEP 5 — seed the orientation PRD into SQLite and write the manifest.
 #
 # THIS IS THE POINT OF init, AND IT DOES NOT FILE ANY ISSUES. A PRD is the
 # UPSTREAM artifact here: it is what CREATES issues. Seeding a task called
@@ -183,26 +183,17 @@ add_ignore "$docs_dir/"
 # only step no code path can reach. The PRD's open questions are the owner's
 # to rule on, and the issues fall out of those rulings.
 #
-# lib/PRD-001-orientation.html IS that PRD. It is not a tutorial about a PRD,
-# it is the first one, and it is copied into the project so the owner fills in
-# THEIR answers rather than editing the harness's shipped copy.
-prd_written=""
-if [ -f "$prd_dst" ] && [ -z "$force" ]; then
-  prd_note="init: left existing $prd_dst alone (--force overwrites)."
-else
-  mkdir -p -- "$(dirname -- "$prd_dst")"
-  cp -- "$prd_src" "$prd_dst"
-  prd_written=yes
-  prd_note="init: wrote $prd_dst — open it. It is the first PRD, and the"
-fi
+# lib/PRD-001-orientation.html IS that PRD. It is parsed and seeded directly
+# into SQLite — no HTML copy lands in the project's docs dir. The SPA reads
+# it from the database. migrate-db stays as an optional tool for importing
+# external HTML but is no longer required on the happy path.
+
+# Create docs dir (still needed for create_report output and manifest.json).
+mkdir -p -- "$project/$docs_dir"
 
 manifest="$project/$docs_dir/manifest.json"
 if [ ! -f "$manifest" ]; then
-  if [ -n "$prd_written" ]; then
-    # The PRD was just copied in, so it is a real doc the tracker/serve layer
-    # needs to know about — an empty manifest would leave PRD-001 written to
-    # disk but invisible to anything that reads manifest.json for status.
-    cat > "$manifest" <<'EOF'
+  cat > "$manifest" <<'EOF'
 {
   "docs": {
     "PRD-001-orientation": {
@@ -214,10 +205,73 @@ if [ ! -f "$manifest" ]; then
   }
 }
 EOF
+fi
+
+# Seed PRD into SQLite. Only runs when the database does not exist — a --force
+# re-init leaves an existing db (and any owner answers in it) alone, matching
+# the previous behavior where migrate-db was called without --force.
+db_path="$project/.entropy-machines/entropy-machines.db"
+prd_seeded=""
+if [ ! -f "$db_path" ]; then
+  if python3 - "$prd_src" "$ENTROPY_MACHINES_HOME/lib/schema.sql" "$db_path" <<'SEED_PY'
+import os, sys, sqlite3
+
+lib_dir = os.path.dirname(os.path.abspath(sys.argv[2]))
+sys.path.insert(0, lib_dir)
+import migrate_db
+
+prd_path, schema_path, db_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(prd_path, encoding='utf-8') as f:
+    src = f.read()
+
+doc_id = 'PRD-001-orientation'
+parsed = migrate_db.parse_dialogue_doc(doc_id, src, 'Orientation')
+
+os.makedirs(os.path.dirname(db_path) or '.', exist_ok=True)
+conn = sqlite3.connect(db_path)
+conn.execute('PRAGMA foreign_keys = ON')
+migrate_db.build_schema(conn, schema_path)
+migrate_db.upgrade_schema(conn)
+
+tm = migrate_db.DOC_ID_TYPE_RX.match(doc_id)
+short_name = tm.group(1) if tm else doc_id
+conn.execute(
+    'INSERT INTO docs (id, title, short_name, type, status, foot, created_at, updated_at) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    (doc_id, parsed['title'], short_name, 'prd', 'open', parsed['foot'], None, None))
+
+for pg in parsed['pages']:
+    conn.execute(
+        'INSERT INTO pages (id, doc_id, position, nav_group, nav_title, heading, subtitle, content) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (pg['id'], doc_id, pg['position'], pg['nav_group'], pg['nav_title'],
+         pg['heading'], pg['subtitle'], pg['content']))
+
+resp_id_by_key = {}
+for r in parsed['responses']:
+    cur = conn.execute(
+        'INSERT INTO responses (doc_id, page_id, resp_key, label, discuss, value, updated_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (doc_id, r['page_id'], r['resp_key'], r['label'], r['discuss'], r['value'], None))
+    resp_id_by_key[r['resp_key']] = cur.lastrowid
+
+for key, author, content in parsed['replies']:
+    rid = resp_id_by_key.get(key)
+    conn.execute(
+        'INSERT INTO replies (response_id, author, content, created_at) VALUES (?, ?, ?, ?)',
+        (rid, author, content, None))
+
+conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+             ('doc:' + doc_id + ':version', '0'))
+
+conn.commit()
+conn.close()
+SEED_PY
+  then
+    prd_seeded=yes
   else
-    # No PRD was written this run (it already existed and --force wasn't
-    # given), so there is nothing to register yet.
-    printf '{}\n' > "$manifest"
+    printf "${YELLOW}init: warning — could not seed the database; run \`${CYAN}bin/migrate-db${YELLOW}\` before serving.${RESET}\n" >&2
   fi
 fi
 
@@ -245,12 +299,9 @@ if ! (cd "$project" && "$ENTROPY_MACHINES_HOME/bin/tracker" ready >/dev/null 2>&
   exit 2
 fi
 
-# STEP 7 — build the SQLite database so bin/serve's dashboard works on first
-# run. Non-fatal: a missing db is inconvenient (the dashboard says "API
-# unreachable") but not broken — the user can always run migrate-db by hand.
-# Must come after the manifest write (step 5) so the PRD gets migrated.
-(cd "$project" && "$ENTROPY_MACHINES_HOME/bin/migrate-db" >/dev/null 2>&1) || \
-  printf "${YELLOW}init: warning — could not build the database; run \`${CYAN}bin/migrate-db${YELLOW}\` before serving.${RESET}\n" >&2
+# STEP 7 — (removed) migrate-db is no longer required on the happy path.
+# The PRD is seeded directly into SQLite in step 5 above. migrate-db stays
+# as an optional tool for importing external HTML docs.
 
 # STEP 8 — install Claude Code hooks so agents are forced through the dispatch
 # pipeline. Three gates: dispatch-gate-writes blocks Edit/Write on main,
@@ -305,9 +356,10 @@ SETTINGS
 fi
 
 printf "${GREEN}init: wrote $target${RESET}\n"
-printf "${GREEN}$prd_note${RESET}\n"
-if [ -n "$prd_written" ]; then
-  echo "      questions in it are the ones only you can answer."
+if [ -n "$prd_seeded" ]; then
+  printf "${GREEN}init: seeded PRD-001-orientation into the database — start the server to see it.${RESET}\n"
+else
+  printf "${GREEN}init: database already exists; PRD-001-orientation is in it.${RESET}\n"
 fi
 # PATHS ARE PRINTED AS THE READER MUST TYPE THEM. These lines used to say a
 # bare `bin/serve`, which is only correct when the harness sits at the repo
@@ -330,7 +382,7 @@ printf "${GREEN}init: tracker is live and empty${RESET} — \`${CYAN}$cmd_prefix
 printf "${BOLD}init: next —${RESET}\n"
 printf "  ${BOLD}1.${RESET} \`${CYAN}$cmd_prefix/install-hooks${RESET}\`  install git hooks (per-clone, not shared)\n"
 printf "  ${BOLD}2.${RESET} \`${CYAN}$cmd_prefix/serve${RESET}\`           start the factory\n"
-if [ -n "$prd_written" ]; then
+if [ -n "$prd_seeded" ]; then
   printf "      ${BOLD}Open the orientation PRD at ${CYAN}/prds/PRD-001-orientation${RESET}\n"
 fi
 echo "      Filing the issues it produces is step one."

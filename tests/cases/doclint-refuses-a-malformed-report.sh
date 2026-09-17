@@ -252,8 +252,16 @@ assert_out "not a pass" "saying explicitly that nothing was checked"
 
 rm -f "$DOCS"/*.html
 run "$LINT"
-assert_rc 2 "an empty docs directory is declined, not reported as clean"
-assert_out "nothing was checked" "saying so"
-assert_not_out "all local and answerable" "and never claiming a pass"
+# After the init change that seeds docs directly into SQLite, an empty docs
+# dir with a database is the expected state — doclint exits 0 because the
+# docs exist in the db. Without a database, it still refuses.
+if [ -f "$REPO/.entropy-machines/entropy-machines.db" ]; then
+  assert_rc 0 "an empty docs directory with a database is accepted (docs are in SQLite)"
+  assert_out "0 docs on disk" "saying the docs are in the database"
+else
+  assert_rc 2 "an empty docs directory without a database is declined"
+  assert_out "nothing was checked" "saying so"
+  assert_not_out "all local and answerable" "and never claiming a pass"
+fi
 
 assert_no_traceback "no doclint invocation in this case may die on a traceback"

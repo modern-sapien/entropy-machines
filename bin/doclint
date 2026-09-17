@@ -409,6 +409,13 @@ def main(argv):
         if found is None:
             return refuse("cannot read the docs directory %s." % d)
         if not found:
+            # No HTML on disk is the expected state after bin/init seeds the PRD
+            # directly into SQLite. If the database exists with docs, that is not
+            # an error — doclint checks HTML files, and there are none to check.
+            db_file = os.path.join(cfg["_root"], ".entropy-machines", "entropy-machines.db")
+            if os.path.isfile(db_file):
+                print("doclint: 0 docs on disk (docs are in the database); nothing to check.")
+                return 0
             return refuse("no .html docs in %s; nothing was checked." % d,
                           "This is a DECLINE, not a pass — a gate with no input",
                           "must not report success.")

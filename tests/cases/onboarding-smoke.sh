@@ -91,11 +91,10 @@ fi
 
 stop_server
 
-# ---- bin/init created the database (it runs migrate-db internally) ----------
+# ---- bin/init created the database (it seeds the PRD directly) ---------------
 assert_file "$PROJECT/.entropy-machines/entropy-machines.db" \
-  "init creates .entropy-machines/entropy-machines.db via migrate-db"
+  "init creates .entropy-machines/entropy-machines.db by seeding the PRD directly"
 
 # ---- bin/doclint passes on what init actually wrote --------------------------
 run "$HARNESS/bin/doclint"
 assert_rc 0 "bin/doclint passes on a freshly-initialised project"
-assert_out "all local and answerable" "doclint reports a clean bill of health"

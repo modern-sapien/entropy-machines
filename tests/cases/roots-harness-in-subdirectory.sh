@@ -19,7 +19,8 @@ assert_rc 0 "bin/init with the harness in a subdirectory"
 
 assert_file    "$HARNESS/config.json"             "config.json belongs to the HARNESS directory"
 assert_no_file "$REPO/config.json"                "and NOT to the repo root"
-assert_file    "$REPO/entropy-machines-docs/PRD-001-orientation.html" "the PRD lands in the root's docs dir"
+assert_file    "$REPO/.entropy-machines/entropy-machines.db" "the PRD is seeded into SQLite at the root"
+assert_dir     "$REPO/entropy-machines-docs"                "docs dir is created at the root"
 assert_no_file "$HARNESS/entropy-machines-docs"             "and not inside the harness directory"
 
 run_in "$REPO" "$HARNESS/bin/tracker" set i-sub title="subdir layout" description="subdir test issue"

@@ -51,44 +51,76 @@ def scan_unanswered_docs(root):
     """Best-effort: dialogue docs in this harness's convention mark each
     question with <div class="response" data-resp="KEY"> and record answers in
     a <script id="responses-data"> JSON blob (see bin/serve). Returns
-    [(path, unanswered_count), ...] for docs
+    [(name, unanswered_count), ...] for docs
     with at least one unanswered question. Never raises -- a doc this cannot
-    parse is skipped."""
+    parse is skipped.
+
+    Checks HTML files on disk first (the legacy path), then falls back to
+    SQLite (the default after bin/init seeds the PRD directly into the db)."""
     # THE CONFIGURED DOCS DIRECTORY. bin/init installs the orientation PRD into
-    # docs.dir and bin/serve serves it from there; this must agree with both.
+    # the SQLite database; some docs (reports) may still exist as HTML on disk.
     docs = os.path.join(root, docs_dir_for(root))
-    if not os.path.isdir(docs):
-        return []
     out = []
-    resp_re = re.compile(r'class="response"[^>]*data-resp="([^"]+)"')
-    data_re = re.compile(r'<script[^>]*id="responses-data"[^>]*>(.*?)</script>', re.DOTALL)
-    for fname in sorted(os.listdir(docs)):
-        if not fname.endswith(".html"):
-            continue
-        path = os.path.join(docs, fname)
-        try:
-            with open(path, encoding="utf-8") as f:
-                content = f.read()
-            # Strip HTML comments first. A template's header comment may
-            # contain a literal data-resp example -- counting it made every
-            # doc report one phantom question nobody could ever answer.
-            content = re.sub(r"<!--[\s\S]*?-->", "", content)
-            keys = set(resp_re.findall(content))
-            if not keys:
+    if os.path.isdir(docs):
+        resp_re = re.compile(r'class="response"[^>]*data-resp="([^"]+)"')
+        data_re = re.compile(r'<script[^>]*id="responses-data"[^>]*>(.*?)</script>', re.DOTALL)
+        for fname in sorted(os.listdir(docs)):
+            if not fname.endswith(".html"):
                 continue
-            m = data_re.search(content)
-            answered = set()
-            if m:
-                try:
-                    answered = {k for k, v in json.loads(m.group(1)).items() if str(v).strip()}
-                except (json.JSONDecodeError, AttributeError):
-                    pass
-            unanswered_n = len(keys - answered)
-            if unanswered_n:
-                out.append((path, unanswered_n))
-        except OSError:
-            continue
-    return out
+            path = os.path.join(docs, fname)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    content = f.read()
+                # Strip HTML comments first. A template's header comment may
+                # contain a literal data-resp example -- counting it made every
+                # doc report one phantom question nobody could ever answer.
+                content = re.sub(r"<!--[\s\S]*?-->", "", content)
+                keys = set(resp_re.findall(content))
+                if not keys:
+                    continue
+                m = data_re.search(content)
+                answered = set()
+                if m:
+                    try:
+                        answered = {k for k, v in json.loads(m.group(1)).items() if str(v).strip()}
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                unanswered_n = len(keys - answered)
+                if unanswered_n:
+                    out.append((path, unanswered_n))
+            except OSError:
+                continue
+    if out:
+        return out
+    # No HTML files with unanswered questions — check SQLite (the default path
+    # after bin/init seeds the PRD directly into the database).
+    return _scan_unanswered_db(root)
+
+
+def _scan_unanswered_db(root):
+    """Query SQLite for docs with unanswered responses."""
+    import sqlite3 as _sqlite3
+    db_file = os.path.join(root, ".entropy-machines", "entropy-machines.db")
+    if not os.path.isfile(db_file):
+        return []
+    try:
+        conn = _sqlite3.connect(db_file)
+        conn.row_factory = _sqlite3.Row
+        rows = conn.execute(
+            "SELECT docs.id, COUNT(*) AS total, "
+            "SUM(CASE WHEN TRIM(COALESCE(value,'')) != '' THEN 1 ELSE 0 END) AS answered "
+            "FROM responses JOIN docs ON responses.doc_id = docs.id "
+            "GROUP BY docs.id"
+        ).fetchall()
+        out = []
+        for r in rows:
+            unanswered = r["total"] - r["answered"]
+            if unanswered > 0:
+                out.append((r["id"], unanswered))
+        conn.close()
+        return out
+    except Exception:
+        return []
 
 
 def main(argv):

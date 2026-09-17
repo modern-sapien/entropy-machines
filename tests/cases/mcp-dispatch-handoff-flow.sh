@@ -7,8 +7,7 @@
 fixture_new
 fixture_init
 
-run "$HARNESS/bin/migrate-db" --force
-assert_rc 0 "bin/migrate-db --force builds the db"
+# bin/init seeds the PRD directly into SQLite — no migrate-db needed.
 
 # Helper: send one JSON-RPC line to mcp-serve, capture the response.
 mcp_call() {

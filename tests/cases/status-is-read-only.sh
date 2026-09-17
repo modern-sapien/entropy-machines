@@ -33,8 +33,8 @@ assert_out "i-ready"   "it lists what is ready"
 assert_not_out "i-held" "and excludes what is held"
 assert_out "in flight" "it reports what is dispatched and not handed off"
 assert_out "i-flying"  "by id"
-assert_out "unanswered" "it counts the open questions in the docs directory"
-assert_out "PRD-001-orientation.html" "naming the doc"
+assert_out "unanswered" "it counts the open questions"
+assert_out "PRD-001-orientation" "naming the doc"
 
 # --- an unexpected argument is a usage error, not a silent success ----------
 run "$HARNESS/bin/status" --wat

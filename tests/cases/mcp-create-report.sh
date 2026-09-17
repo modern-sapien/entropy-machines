@@ -5,22 +5,7 @@
 fixture_new
 fixture_init
 
-# Build the manifest so migrate-db has a doc to import.
-cat > "$REPO/entropy-machines-docs/manifest.json" <<'JSON'
-{
-  "docs": {
-    "prd-001": {
-      "file": "PRD-001-orientation.html",
-      "title": "First-run orientation",
-      "status": "open",
-      "version": 0
-    }
-  }
-}
-JSON
-
-run "$HARNESS/bin/migrate-db" --force
-assert_rc 0 "bin/migrate-db --force builds the db"
+# bin/init seeds the PRD directly into SQLite — no migrate-db needed.
 
 # Helper: send one JSON-RPC line to mcp-serve, capture the response.
 mcp_call() {
