@@ -75,6 +75,10 @@ assert_file "$DEFAULT_REPO/entropy-machines/ui/dist/index.html" \
 assert_file "$DEFAULT_REPO/entropy-machines/config.json" \
   "default layout: config.json written"
 
+# .mcp.json must point at the project root.
+assert_file "$DEFAULT_REPO/.mcp.json" \
+  "default layout: .mcp.json written"
+
 # .version stamp for auto-update detection.
 assert_file "$DEFAULT_REPO/entropy-machines/.version" \
   "default layout: .version stamp written"

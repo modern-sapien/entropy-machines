@@ -37,12 +37,11 @@ def docs_dir_for(root):
     """config.json's docs.dir, defaulting to entropy-machines-docs -- the same
     default bin/init writes to and bin/serve reads from. Never raises."""
     try:
-        with open(os.environ.get("ENTROPY_MACHINES_CONFIG", os.path.join(ENTROPY_MACHINES_HOME, "config.json")), encoding="utf-8") as f:
-            cfg = json.load(f)
+        cfg = config.load_config()
         d = (cfg.get("docs") or {}).get("dir")
         if isinstance(d, str) and d.strip():
             return d.strip().strip("/")
-    except Exception:
+    except (SystemExit, Exception):
         pass
     return "entropy-machines-docs"
 
@@ -133,7 +132,9 @@ def main(argv):
 
     config.refuse_nested_clone("status")
     root = config.find_repo_root()
-    if not os.path.isfile(os.environ.get("ENTROPY_MACHINES_CONFIG", os.path.join(ENTROPY_MACHINES_HOME, "config.json"))):
+    try:
+        cfg = config.load_config()
+    except SystemExit:
         print("entropy-machines: not configured here -- run %s/bin/init" % ENTROPY_MACHINES_HOME)
         return 0
 

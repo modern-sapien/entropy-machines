@@ -355,6 +355,28 @@ SETTINGS
   add_ignore ".claude/"
 fi
 
+# STEP 9 — write .mcp.json so agents' MCP tools talk to THIS project's
+# database, not whatever .mcp.json is in scope from a parent directory or
+# the harness source. Without it the agent silently reads the wrong db.
+mcp_json="$project/.mcp.json"
+if [ ! -f "$mcp_json" ]; then
+  case "$ENTROPY_MACHINES_HOME" in
+    "$project") mcp_cmd="bin/mcp-serve" ;;
+    "$project"/?*) mcp_cmd="${ENTROPY_MACHINES_HOME#"$project"/}/bin/mcp-serve" ;;
+    *) mcp_cmd="$ENTROPY_MACHINES_HOME/bin/mcp-serve" ;;
+  esac
+  cat > "$mcp_json" <<MCP
+{
+  "mcpServers": {
+    "entropy-machines": {
+      "command": "$mcp_cmd",
+      "cwd": "$project"
+    }
+  }
+}
+MCP
+fi
+
 printf "${GREEN}init: wrote $target${RESET}\n"
 if [ -n "$prd_seeded" ]; then
   printf "${GREEN}init: seeded PRD-001-orientation into the database — start the server to see it.${RESET}\n"

@@ -55,6 +55,13 @@ assert_rc 0 "manifest.json parses as JSON and has a PRD-001-orientation entry"
 assert_out "PRD-001-orientation.html" "PRD-001-orientation.file names the source HTML"
 assert_out "open" "PRD-001-orientation.status starts open"
 
+# .mcp.json must point mcp-serve at this project so MCP tools talk to the
+# right database.
+assert_file "$REPO/.mcp.json" "init writes .mcp.json"
+run python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); s=d["mcpServers"]["entropy-machines"]; print(s["cwd"])' "$REPO/.mcp.json"
+assert_rc 0 ".mcp.json parses and has an entropy-machines server entry"
+assert_out "$REPO" ".mcp.json cwd points at the project root"
+
 # init's own last step claims the tracker is live. Check the claim rather than
 # the sentence.
 run "$HARNESS/bin/tracker" ready
