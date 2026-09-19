@@ -9,6 +9,7 @@ API") for the endpoint table this implements:
     GET  /api/docs/:id
     PUT  /api/docs/:id
     PUT  /api/docs/:id/content
+    PUT  /api/docs/:id/ready
     GET  /api/docs/:id/responses
     GET  /api/docs/:id/responses/:key
     PUT  /api/docs/:id/responses/:key
@@ -169,7 +170,10 @@ def update_response(conn, args, query, body):
     )
     conn.execute("UPDATE docs SET version = version + 1 WHERE id = ?", (doc_id,))
     conn.commit()
-    return get_response(conn, (doc_id, key), query, body)
+    new_version = conn.execute("SELECT version FROM docs WHERE id = ?", (doc_id,)).fetchone()["version"]
+    result = get_response(conn, (doc_id, key), query, body)
+    result["doc_version"] = new_version
+    return result
 
 
 def create_doc(conn, args, query, body):
@@ -325,6 +329,78 @@ def get_doc_version(conn, args, query, body):
     return {"version": row["version"]}
 
 
+# ---------------------------------------------------------------------------
+# ready (owner accept)
+# ---------------------------------------------------------------------------
+
+def _resolve_docs_dir(root):
+    """Find the docs directory from config.json, defaulting to
+    entropy-machines-docs under the project root."""
+    config_path = os.path.join(root, "config.json")
+    docs_rel = "entropy-machines-docs"
+    if os.path.isfile(config_path):
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+            docs_rel = cfg.get("docs", {}).get("dir", docs_rel)
+        except (json.JSONDecodeError, OSError):
+            pass
+    if os.path.isabs(docs_rel):
+        return docs_rel
+    return os.path.join(root, docs_rel)
+
+
+def set_doc_ready(conn, args, query, body):
+    """PUT /api/docs/:id/ready — owner's accept button.
+
+    Calls docstate.set_ready() with the manifest, which is the owner-click
+    gated path. Also bumps the SQLite doc version so the live-reload poller
+    in the SPA picks up the change.
+
+    The project root comes from dispatch() (stored on the module before the
+    call) because this handler needs the filesystem — the docs directory —
+    not just the database.
+    """
+    (doc_id,) = args
+    _require_doc(conn, doc_id)
+
+    root = _dispatch_root
+    if root is None:
+        raise ApiError(500, "ready endpoint requires a project root")
+
+    import sys
+    lib_dir = os.path.dirname(os.path.abspath(__file__))
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+
+    import docstate
+
+    docs_dir = _resolve_docs_dir(root)
+    docstate.init(docs_dir)
+    m = docstate.load()
+
+    if not m or "docs" not in m:
+        raise ApiError(404, "no manifest.json found — docstate not available for this project")
+
+    # Resolve the doc in the manifest
+    did = docstate.resolve(m, doc_id)
+    if did is None or did.startswith("AMBIGUOUS:"):
+        raise ApiError(404, "doc %r not found in manifest" % doc_id)
+
+    result = docstate.set_ready(m, did, True, docstate.OWNER_CLICK)
+
+    # Bump the SQLite version so the SPA live-reload poller picks up the change
+    conn.execute("UPDATE docs SET version = version + 1, updated_at = ? WHERE id = ?",
+                 (now(), doc_id))
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM docs WHERE id = ?", (doc_id,)).fetchone()
+    doc = row_to_dict(row)
+    doc["counts"] = _doc_counts(conn, doc_id)
+    doc["ready"] = result
+    return doc
+
+
 def add_reply(conn, args, query, body):
     doc_id, key = args
     if not isinstance(body, dict) or not isinstance(body.get("content"), str) or not body["content"].strip():
@@ -339,7 +415,10 @@ def add_reply(conn, args, query, body):
     )
     conn.execute("UPDATE docs SET version = version + 1 WHERE id = ?", (doc_id,))
     conn.commit()
-    return row_to_dict(conn.execute("SELECT * FROM replies WHERE id = ?", (cur.lastrowid,)).fetchone())
+    new_version = conn.execute("SELECT version FROM docs WHERE id = ?", (doc_id,)).fetchone()["version"]
+    result = row_to_dict(conn.execute("SELECT * FROM replies WHERE id = ?", (cur.lastrowid,)).fetchone())
+    result["doc_version"] = new_version
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -499,12 +578,18 @@ def put_setting(conn, args, query, body):
 # (method, path-regex, handler) — handler(conn, args, query, body), args is
 # the tuple of unquoted path captures. Order does not matter for correctness
 # (paths are disjoint enough not to collide) but follows the PRD table.
+
+# Set by dispatch() before calling a handler, so handlers that need the
+# project root (set_doc_ready) can read it without changing the call signature.
+_dispatch_root = None
+
 ROUTES = [
     ("GET", re.compile(r"^/api/docs$"), list_docs),
     ("POST", re.compile(r"^/api/docs$"), create_doc),
     ("GET", re.compile(r"^/api/docs/([^/]+)$"), get_doc),
     ("PUT", re.compile(r"^/api/docs/([^/]+)$"), update_doc),
     ("PUT", re.compile(r"^/api/docs/([^/]+)/content$"), update_doc_content),
+    ("PUT", re.compile(r"^/api/docs/([^/]+)/ready$"), set_doc_ready),
     ("GET", re.compile(r"^/api/docs/([^/]+)/version$"), get_doc_version),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses$"), list_responses),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), get_response),
@@ -528,6 +613,7 @@ def dispatch(root: str, method: str, path: str, query: dict, body):
     ("/api/") before calling this; that check is what decides "is this
     request ours at all", so it stays in the HTTP layer, not here.
     """
+    global _dispatch_root
     matched_path = False
     for m_method, rx, fn in ROUTES:
         mo = rx.match(path)
@@ -540,6 +626,7 @@ def dispatch(root: str, method: str, path: str, query: dict, body):
         if not os.path.isfile(db_file):
             return 503, {"error": "no database at %s — run bin/migrate-db first" % db_file}
         args = tuple(unquote(g) for g in mo.groups())
+        _dispatch_root = root
         conn = connect(root)
         try:
             result = fn(conn, args, query, body)

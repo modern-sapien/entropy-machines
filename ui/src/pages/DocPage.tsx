@@ -190,6 +190,53 @@ function navMark(item: PageNavItem) {
   );
 }
 
+// ---- todo banner (sticky bar above content, unanswered sections) ---------
+
+function TodoBanner({ groups, onSelect }: { groups: PageNavGroup[]; onSelect: (id: string) => void }) {
+  const unanswered = groups
+    .flatMap((g) => g.items)
+    .filter((it) => (it.total ?? 0) > 0 && it.answered !== it.total);
+  if (unanswered.length === 0) return null;
+  const totalNeeded = unanswered.reduce(
+    (sum, it) => sum + ((it.total ?? 0) - (it.answered ?? 0)),
+    0,
+  );
+
+  function handleChipClick(pageId: string) {
+    onSelect(pageId);
+    // After scrolling, focus the first empty textarea in the section
+    requestAnimationFrame(() => {
+      const section = document.getElementById(pageId);
+      if (!section) return;
+      const textareas = section.querySelectorAll<HTMLTextAreaElement>("textarea");
+      for (const ta of textareas) {
+        if (!ta.value.trim()) {
+          ta.focus();
+          return;
+        }
+      }
+    });
+  }
+
+  return (
+    <div className="todo-banner">
+      <strong>{totalNeeded} {totalNeeded === 1 ? "answer" : "answers"} needed</strong>
+      <span className="todo-chips">
+        {unanswered.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            className="todo-chip"
+            onClick={() => handleChipClick(it.id)}
+          >
+            {it.navTitle} ({(it.answered ?? 0)}/{it.total})
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 // ---- sections summary line ------------------------------------------------
 
 function sectionsSummary(groups: PageNavGroup[]) {
@@ -457,6 +504,10 @@ export function DocPage() {
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Ready (owner accept) state
+  const [readySubmitting, setReadySubmitting] = useState(false);
+  const [readyDone, setReadyDone] = useState(false);
+
   // Track the last-known doc version for polling
   const knownVersion = useRef<number>(-1);
 
@@ -671,6 +722,10 @@ export function DocPage() {
           },
         );
         if (!res.ok) throw new Error(`Save failed for ${key}: ${res.status}`);
+        const saved = await res.json();
+        if (typeof saved.doc_version === "number") {
+          knownVersion.current = Math.max(knownVersion.current, saved.doc_version);
+        }
       }
       setDirty(new Set());
       setSaveStatus("saved");
@@ -679,6 +734,44 @@ export function DocPage() {
       console.error("Save error:", err);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ---- ready (owner accept) ----
+  const readyLabel = useMemo(() => {
+    if (!data) return "Mark as reviewed";
+    switch (data.doc.type) {
+      case "prd": return "PRD ready to build";
+      case "report": return "Sprint closed — delivery accepted";
+      default: return "Mark as reviewed";
+    }
+  }, [data]);
+
+  const allAnswered = data
+    ? data.doc.counts.total > 0 && data.doc.counts.answered === data.doc.counts.total
+    : false;
+
+  async function handleReady() {
+    if (!slug || readySubmitting || readyDone) return;
+    const msg = data?.doc.type === "prd"
+      ? "Mark this PRD as ready to build? This signals the doc is accepted."
+      : data?.doc.type === "report"
+        ? "Close this sprint and accept delivery? This cannot be undone easily."
+        : "Mark this document as reviewed and accepted?";
+    if (!window.confirm(msg)) return;
+    setReadySubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/docs/${encodeURIComponent(slug)}/ready`,
+        { method: "PUT", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      if (!res.ok) throw new Error(`Ready failed: ${res.status}`);
+      setReadyDone(true);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error("Ready error:", err);
+    } finally {
+      setReadySubmitting(false);
     }
   }
 
@@ -745,6 +838,8 @@ export function DocPage() {
         <h1>{data.doc.short_name} — {data.doc.title}</h1>
       </header>
 
+      <TodoBanner groups={navGroups} onSelect={selectSection} />
+
       {data.pages.map((page) => (
         <PageSection
           key={page.id}
@@ -775,6 +870,16 @@ export function DocPage() {
         <button type="button" onClick={handleSave} disabled={!hasDirty && !saving}>
           Save
         </button>
+        {allAnswered && (
+          <button
+            type="button"
+            className={readyDone ? "ready-done" : ""}
+            onClick={handleReady}
+            disabled={readySubmitting || readyDone}
+          >
+            {readyDone ? "Accepted" : readySubmitting ? "Submitting..." : readyLabel}
+          </button>
+        )}
       </div>
     </>
   );
