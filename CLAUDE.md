@@ -3,14 +3,10 @@
 This repo **is** the harness. Vendored at repo root (no subdirectory prefix).
 Docs dir: `entropy-machines-docs/`. Tracker: file-backed at `.entropy-machines/issues.json`.
 
-**Read `docs/AGENT-QUICKSTART.md` and `doctrine/` before doing anything.**
-
-## Roles
-
-- **Owner** decides and ticks response boxes.
-- **Orchestrator** dispatches, folds, lands — the only committer on `main`.
-- **Worker** does one scoped issue in an isolated worktree and commits nothing.
-- **Verifier** sweeps a sprint once, on a clean tree.
+**MANDATED READING — read `doctrine/` (ROLES.md, WORKFLOW.md) and
+`docs/AGENT-QUICKSTART.md` before doing anything.** The doctrine defines the
+full cycle, fold discipline, held-work rules, and isolation invariants. This
+file is the quick-reference, not the source of truth.
 
 ## Orchestrator rules
 
