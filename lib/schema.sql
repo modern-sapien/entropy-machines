@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS docs (
   type        TEXT NOT NULL,      -- "prd" | "report" | "doc"
   status      TEXT DEFAULT 'open',-- "open" | "in-review" | "answered" | "closed"
   foot        TEXT,               -- footer guidance text
+  version     INTEGER NOT NULL DEFAULT 0, -- bumped on every mutation (reply, response update, content update)
   created_at  TEXT,
   updated_at  TEXT
 );
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS pages (
   nav_title   TEXT NOT NULL,      -- "What a dialogue doc is"
   heading     TEXT NOT NULL,
   subtitle    TEXT,
-  content     TEXT NOT NULL,      -- HTML body of the page
+  content     TEXT NOT NULL,      -- HTML body of the page (or markdown when content_format='markdown')
+  content_format TEXT NOT NULL DEFAULT 'html',  -- 'html' | 'markdown'
   PRIMARY KEY (doc_id, id)
 );
 

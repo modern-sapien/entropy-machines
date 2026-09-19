@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ExportButton } from "../components/ExportButton";
+import { MarkdownContent } from "../components/MarkdownContent";
 
 // ============================================================================
 // SprintReportPage — standalone report renderer at /reports/:slug.
@@ -28,6 +29,7 @@ interface DocData {
   type: string;
   status: string;
   foot: string | null;
+  version: number;
   counts: { total: number; answered: number };
 }
 
@@ -40,6 +42,7 @@ interface PageData {
   heading: string;
   subtitle: string | null;
   content: string;
+  content_format?: "html" | "markdown";
 }
 
 interface ReplyData {
@@ -275,6 +278,9 @@ export function SprintReportPage() {
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Track the last-known doc version for polling
+  const knownVersion = useRef<number>(-1);
+
   // -- data fetch -----------------------------------------------------------
 
   useEffect(() => {
@@ -306,6 +312,10 @@ export function SprintReportPage() {
         }
         setUnlocked(new Set());
         setError(null);
+        // Sync known version from the doc payload
+        if (typeof result.doc.version === "number") {
+          knownVersion.current = result.doc.version;
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -327,6 +337,34 @@ export function SprintReportPage() {
       (key) => responses[key] !== savedValues[key]
     );
   }, [responses, savedValues]);
+
+  // -- poll for version changes (live reload on API mutation) ---------------
+  useEffect(() => {
+    if (!slug) return;
+    const id = setInterval(() => {
+      fetch(`/api/docs/${encodeURIComponent(slug)}/version`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body) => {
+          if (!body || typeof body.version !== "number") return;
+          if (knownVersion.current < 0) {
+            knownVersion.current = body.version;
+            return;
+          }
+          if (body.version > knownVersion.current) {
+            if (dirty) {
+              console.log("[live-reload] new version available but skipping — unsaved changes");
+              return;
+            }
+            knownVersion.current = body.version;
+            setRefreshKey((k) => k + 1);
+          }
+        })
+        .catch(() => {
+          // Polling failure is non-fatal
+        });
+    }, 4000);
+    return () => clearInterval(id);
+  }, [slug, dirty]);
 
   function updateResponse(key: string, value: string) {
     setResponses((prev) => ({ ...prev, [key]: value }));
@@ -541,9 +579,13 @@ export function SprintReportPage() {
           return (
             <section key={page.id} id={page.id}>
               {page.content && (
-                <div
-                  dangerouslySetInnerHTML={{ __html: page.content }}
-                />
+                page.content_format === "markdown" ? (
+                  <MarkdownContent content={page.content} />
+                ) : (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: page.content }}
+                  />
+                )
               )}
               {pageResps.map((resp) => (
                 <ResponseThread

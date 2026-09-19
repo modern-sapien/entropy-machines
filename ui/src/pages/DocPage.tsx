@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ExportButton } from "../components/ExportButton";
+import { MarkdownContent } from "../components/MarkdownContent";
 
 // ============================================================================
 // DocPage — full document renderer with multi-page nav, response boxes,
@@ -25,6 +26,7 @@ interface Doc {
   type: string;
   status: string;
   foot: string | null;
+  version: number;
   counts: DocCounts;
 }
 
@@ -37,6 +39,7 @@ interface Page {
   heading: string;
   subtitle: string | null;
   content: string;
+  content_format?: "html" | "markdown";
 }
 
 interface Reply {
@@ -381,16 +384,22 @@ function PageSection({
     return responses.map((r) => [r]);
   }, [responses]);
 
+  const isMarkdown = page.content_format === "markdown";
+
   const sanitizedContent = useMemo(
-    () => page.content.replace(/<div\s[^>]*class="response"[^>]*>[\s\S]*?<\/textarea>\s*<\/div>/gi, ''),
-    [page.content]
+    () => isMarkdown ? "" : page.content.replace(/<div\s[^>]*class="response"[^>]*>[\s\S]*?<\/textarea>\s*<\/div>/gi, ''),
+    [page.content, isMarkdown]
   );
-  const contentHasH1 = /<h1[\s>]/i.test(page.content);
+  const contentHasH1 = isMarkdown ? /^#\s/m.test(page.content) : /<h1[\s>]/i.test(page.content);
   return (
     <section className="page" id={page.id} ref={sectionRef}>
       {!contentHasH1 && page.heading && <h1>{page.heading}</h1>}
       {!contentHasH1 && page.subtitle && <p className="sub">{page.subtitle}</p>}
-      <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
+      {isMarkdown ? (
+        <MarkdownContent content={page.content} />
+      ) : (
+        <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
+      )}
       {groups.map((group) =>
         group.length === 1 ? (
           <div key={group[0].resp_key}>
@@ -448,6 +457,9 @@ export function DocPage() {
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Track the last-known doc version for polling
+  const knownVersion = useRef<number>(-1);
+
   // ---- fetch doc data ----
   useEffect(() => {
     if (!slug) return;
@@ -474,12 +486,46 @@ export function DocPage() {
         if (payload.pages.length > 0) {
           setCurrentPageId(payload.pages[0].id);
         }
+        // Sync known version from the doc payload
+        if (typeof payload.doc.version === "number") {
+          knownVersion.current = payload.doc.version;
+        }
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
   }, [slug, refreshKey]);
+
+  // ---- poll for version changes (live reload on API mutation) ----
+  useEffect(() => {
+    if (!slug) return;
+    const id = setInterval(() => {
+      fetch(`/api/docs/${encodeURIComponent(slug)}/version`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body) => {
+          if (!body || typeof body.version !== "number") return;
+          if (knownVersion.current < 0) {
+            // First poll — just record the version
+            knownVersion.current = body.version;
+            return;
+          }
+          if (body.version > knownVersion.current) {
+            if (dirty.size > 0) {
+              // Don't auto-refresh while user has unsaved edits
+              console.log("[live-reload] new version available but skipping — unsaved changes");
+              return;
+            }
+            knownVersion.current = body.version;
+            setRefreshKey((k) => k + 1);
+          }
+        })
+        .catch(() => {
+          // Polling failure is non-fatal — silently retry next interval
+        });
+    }, 4000);
+    return () => clearInterval(id);
+  }, [slug, dirty]);
 
   // ---- scrollspy ----
   useEffect(() => {

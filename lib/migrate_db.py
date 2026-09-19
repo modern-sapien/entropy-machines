@@ -378,19 +378,27 @@ def upgrade_schema(conn):
     guarded — it is a no-op when the column already exists (fresh DB
     from the current schema.sql) and only takes effect on a DB created
     before the column was added."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(issues)")}
-    if "description" not in existing:
+    existing_issues = {row[1] for row in conn.execute("PRAGMA table_info(issues)")}
+    if "description" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN description TEXT")
-    if "effort" not in existing:
+    if "effort" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN effort TEXT NOT NULL DEFAULT 'S'")
-    if "held_why" not in existing:
+    if "held_why" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN held_why TEXT")
-    if "held_at" not in existing:
+    if "held_at" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN held_at TEXT")
-    if "gate" not in existing:
+    if "gate" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN gate TEXT")
-    if "gated_at" not in existing:
+    if "gated_at" not in existing_issues:
         conn.execute("ALTER TABLE issues ADD COLUMN gated_at TEXT")
+
+    existing_pages = {row[1] for row in conn.execute("PRAGMA table_info(pages)")}
+    if "content_format" not in existing_pages:
+        conn.execute("ALTER TABLE pages ADD COLUMN content_format TEXT NOT NULL DEFAULT 'html'")
+
+    existing_docs = {row[1] for row in conn.execute("PRAGMA table_info(docs)")}
+    if "version" not in existing_docs:
+        conn.execute("ALTER TABLE docs ADD COLUMN version INTEGER NOT NULL DEFAULT 0")
 
 
 def doc_id_for(manifest_key, entry):

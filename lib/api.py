@@ -167,6 +167,7 @@ def update_response(conn, args, query, body):
         "UPDATE responses SET value = ?, updated_at = ? WHERE id = ?",
         (value, now(), row["id"]),
     )
+    conn.execute("UPDATE docs SET version = version + 1 WHERE id = ?", (doc_id,))
     conn.commit()
     return get_response(conn, (doc_id, key), query, body)
 
@@ -197,9 +198,12 @@ def create_doc(conn, args, query, body):
     for page in body["pages"]:
         if not isinstance(page, dict) or not page.get("id") or not page.get("content"):
             raise ApiError(400, 'each page must have at least "id" and "content"')
+        content_format = page.get("content_format", "html")
+        if content_format not in ("html", "markdown"):
+            raise ApiError(400, 'content_format must be "html" or "markdown"')
         conn.execute(
-            "INSERT INTO pages (id, doc_id, position, nav_group, nav_title, heading, subtitle, content) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO pages (id, doc_id, position, nav_group, nav_title, heading, subtitle, content, content_format) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 page["id"],
                 doc_id,
@@ -209,6 +213,7 @@ def create_doc(conn, args, query, body):
                 page.get("heading", ""),
                 page.get("subtitle"),
                 page["content"],
+                content_format,
             ),
         )
     for resp in body.get("responses", []):
@@ -274,26 +279,50 @@ def update_doc_content(conn, args, query, body):
     sections = body.get("sections")
     if not isinstance(sections, dict) or not sections:
         raise ApiError(400, '"sections" must be a non-empty object mapping page id to HTML content')
+    # Accept an optional content_format override for each section, or a
+    # top-level content_format that applies to all sections in this call.
+    default_format = body.get("content_format")
+    if default_format is not None and default_format not in ("html", "markdown"):
+        raise ApiError(400, 'content_format must be "html" or "markdown"')
+
     ts = now()
     for page_id, content in sections.items():
         if not isinstance(content, str):
             raise ApiError(400, 'section %r: content must be a string' % page_id)
-        if _RESPONSE_BOX_RE.search(content):
-            raise ApiError(400,
-                'section %r: content must not contain response boxes '
-                '(data-resp divs) — use the response API instead' % page_id)
         row = conn.execute(
-            "SELECT 1 FROM pages WHERE doc_id = ? AND id = ?", (doc_id, page_id)
+            "SELECT content_format FROM pages WHERE doc_id = ? AND id = ?", (doc_id, page_id)
         ).fetchone()
         if row is None:
             raise ApiError(404, 'no such page %r in doc %r' % (page_id, doc_id))
-        conn.execute(
-            "UPDATE pages SET content = ? WHERE doc_id = ? AND id = ?",
-            (content, doc_id, page_id),
-        )
-    conn.execute("UPDATE docs SET updated_at = ? WHERE id = ?", (ts, doc_id))
+        # Determine the effective content_format for this page update
+        effective_format = default_format or row["content_format"]
+        # Only check for response-box markup in HTML content — markdown can't
+        # contain response-box HTML divs.
+        if effective_format != "markdown" and _RESPONSE_BOX_RE.search(content):
+            raise ApiError(400,
+                'section %r: content must not contain response boxes '
+                '(data-resp divs) — use the response API instead' % page_id)
+        if default_format is not None:
+            conn.execute(
+                "UPDATE pages SET content = ?, content_format = ? WHERE doc_id = ? AND id = ?",
+                (content, default_format, doc_id, page_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE pages SET content = ? WHERE doc_id = ? AND id = ?",
+                (content, doc_id, page_id),
+            )
+    conn.execute("UPDATE docs SET version = version + 1, updated_at = ? WHERE id = ?", (ts, doc_id))
     conn.commit()
     return get_doc(conn, (doc_id,), query, body)
+
+
+def get_doc_version(conn, args, query, body):
+    (doc_id,) = args
+    row = conn.execute("SELECT version FROM docs WHERE id = ?", (doc_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "no such doc: %r" % doc_id)
+    return {"version": row["version"]}
 
 
 def add_reply(conn, args, query, body):
@@ -308,6 +337,7 @@ def add_reply(conn, args, query, body):
         "INSERT INTO replies (response_id, author, content, created_at) VALUES (?, ?, ?, ?)",
         (row["id"], author, body["content"], now()),
     )
+    conn.execute("UPDATE docs SET version = version + 1 WHERE id = ?", (doc_id,))
     conn.commit()
     return row_to_dict(conn.execute("SELECT * FROM replies WHERE id = ?", (cur.lastrowid,)).fetchone())
 
@@ -475,6 +505,7 @@ ROUTES = [
     ("GET", re.compile(r"^/api/docs/([^/]+)$"), get_doc),
     ("PUT", re.compile(r"^/api/docs/([^/]+)$"), update_doc),
     ("PUT", re.compile(r"^/api/docs/([^/]+)/content$"), update_doc_content),
+    ("GET", re.compile(r"^/api/docs/([^/]+)/version$"), get_doc_version),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses$"), list_responses),
     ("GET", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), get_response),
     ("PUT", re.compile(r"^/api/docs/([^/]+)/responses/([^/]+)$"), update_response),
