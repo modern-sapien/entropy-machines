@@ -195,7 +195,8 @@ TOOLS = [
                             "nav_title": {"type": "string", "description": "Navigation title."},
                             "heading": {"type": "string", "description": "Page heading."},
                             "subtitle": {"type": "string", "description": "Page subtitle."},
-                            "content": {"type": "string", "description": "HTML body of the page."},
+                            "content": {"type": "string", "description": "Page content (HTML or markdown)."},
+                            "content_format": {"type": "string", "description": "Content format: 'html' (default) or 'markdown'."},
                         },
                         "required": ["id", "content"],
                     },
@@ -236,12 +237,12 @@ TOOLS = [
     {
         "name": "update_doc",
         "description": (
-            "Update the HTML content of data-informational sections within a "
-            "document. Accepts a doc id and a map of page ids to new HTML "
-            "content. Only updates the informational body of each page — "
-            "writes that contain response-box markup (data-resp divs) are "
-            "rejected. Use this to fill or revise the prose sections of a doc "
-            "stored in SQLite."
+            "Update the content of data-informational sections within a "
+            "document. Accepts a doc id and a map of page ids to new content "
+            "(HTML or markdown). Only updates the informational body of each "
+            "page — HTML writes that contain response-box markup (data-resp "
+            "divs) are rejected. Use this to fill or revise the prose sections "
+            "of a doc stored in SQLite."
         ),
         "inputSchema": {
             "type": "object",
@@ -253,11 +254,15 @@ TOOLS = [
                 "sections": {
                     "type": "object",
                     "description": (
-                        "Map of page id (e.g. 'p0', 'p1') to new HTML content "
+                        "Map of page id (e.g. 'p0', 'p1') to new content "
                         "string. Only data-informational content is accepted — "
-                        "response boxes (data-resp divs) are rejected."
+                        "response boxes (data-resp divs) are rejected for HTML."
                     ),
                     "additionalProperties": {"type": "string"},
+                },
+                "content_format": {
+                    "type": "string",
+                    "description": "Content format for the sections: 'html' (default) or 'markdown'.",
                 },
             },
             "required": ["doc_id", "sections"],
@@ -659,6 +664,8 @@ def _call_tool(root: str, name: str, arguments: dict) -> object:
         if name == "update_doc":
             doc_id = arguments["doc_id"]
             body = {"sections": arguments.get("sections", {})}
+            if "content_format" in arguments:
+                body["content_format"] = arguments["content_format"]
             return update_doc_content(conn, (doc_id,), {}, body)
 
         if name == "create_report":
