@@ -30,4 +30,34 @@ set -euo pipefail
 export ENTROPY_MACHINES_HOME
 entropy_machines_require_root pre-commit
 
+# ── Block direct edits to the issue tracker ──────────────────────────
+# Agents must use MCP create_issue / update_issue (or the REST API).
+# The API sets ENTROPY_MACHINES_API=1 so its own commits pass through.
+if [ "${ENTROPY_MACHINES_API:-}" != "1" ]; then
+  if git diff --cached --name-only | grep -qx '.entropy-machines/issues.json'; then
+    echo >&2 "error: Direct edits to .entropy-machines/issues.json are blocked."
+    echo >&2 "Use the MCP create_issue/update_issue tools or the REST API instead."
+    exit 1
+  fi
+fi
+
+# ── Warn on orphan planning files ────────────────────────────────────
+# planning/i-*.md should have a matching tracker issue. Legacy files
+# exist, so this is a warning, not a block.
+orphan_planning_files=$(git diff --cached --name-only | grep '^planning/i-.*\.md$' || true)
+if [ -n "$orphan_planning_files" ] && [ -f .entropy-machines/issues.json ]; then
+  echo "$orphan_planning_files" | while IFS= read -r f; do
+    issue_id=$(echo "$f" | sed 's|^planning/||; s|\.md$||')
+    if ! python3 -c "
+import json, sys
+with open('.entropy-machines/issues.json') as fh:
+    issues = json.load(fh)
+ids = [i.get('id','') for i in issues] if isinstance(issues, list) else list(issues.keys())
+sys.exit(0 if '$issue_id' in ids else 1)
+" 2>/dev/null; then
+      echo >&2 "Warning: $f has no matching tracker issue. File issues via MCP create_issue first."
+    fi
+  done
+fi
+
 exec "$ENTROPY_MACHINES_HOME/lib/changelog-guard.sh" --staged

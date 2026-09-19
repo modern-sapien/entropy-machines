@@ -4,7 +4,8 @@
     "name": "entropy-machines",
     "protectedPaths": [
       "doctrine/",
-      "LICENSE"
+      "LICENSE",
+      ".entropy-machines/"
     ]
   },
   "tracker": {

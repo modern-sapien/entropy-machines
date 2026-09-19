@@ -150,6 +150,9 @@ nobody agreed to.
 - **Commit**, unless you are the orchestrator landing via `handoff`.
 - **Edit HTML doc files on disk** expecting the browser to reflect it. The SPA
   reads from SQLite. Use `update_doc` (MCP) or the REST API to write content.
+- **Edit the tracker directly.** File issues via MCP `create_issue` / `update_issue`
+  or the REST API. Direct edits to `.entropy-machines/issues.json` are blocked by
+  pre-commit hooks.
 - **Claim a command you did not run.** Suites, typecheck, build — if you say it
   passed, you ran it.
 - **Write a file another live dispatch holds.** Stop, ship nothing, name the
